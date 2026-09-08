@@ -141,6 +141,61 @@ async function refresh() {
   }
 }
 
+// ---------------------------------------------------------------- ranking lens
+/* Which categories a ranking is taken over. Aesthetics is the bottle and value is the price, so
+   "which is the better whiskey" is a different question from "which was the better buy" — and on
+   the full card several spirits often tie while their flavour scores separate cleanly.
+
+   Which categories count as flavour is config, not code: `flavour: false` in config.yaml. Add a
+   third non-flavour category one day and the chips below generate themselves. */
+const sameKeys = (a, b) => a.length === b.length && a.every((k) => b.includes(k));
+
+function categoryMax() {
+  return Object.fromEntries(state.config.rubric.categories.map((c) => [c.key, c.max]));
+}
+function flavourKeys() {
+  return state.config.rubric.categories.filter((c) => c.flavour).map((c) => c.key);
+}
+function lensMax(keys) {
+  const by = categoryMax();
+  return keys.reduce((a, k) => a + (by[k] || 0), 0);
+}
+function lensIsEverything(keys) {
+  return lensMax(keys) === state.config.rubric.max_total;
+}
+
+/** The six lenses, built from config: flavour, flavour plus each non-flavour, everything, and
+    each non-flavour on its own. */
+function lensPresets() {
+  const cats = state.config.rubric.categories;
+  const flavour = cats.filter((c) => c.flavour);
+  const other = cats.filter((c) => !c.flavour);
+  const keysOf = (list) => list.map((c) => c.key);
+  const total = (list) => list.reduce((a, c) => a + c.max, 0);
+
+  const out = [{ id: "flavour", label: `Flavour ${total(flavour)}`, keys: keysOf(flavour) }];
+  for (const c of other) {
+    out.push({ id: `flavour+${c.key}`, label: `+ ${c.label.toLowerCase()} ${total(flavour) + c.max}`,
+               keys: [...keysOf(flavour), c.key] });
+  }
+  out.push({ id: "all", label: `Everything ${total(cats)}`, keys: keysOf(cats) });
+  for (const c of other) out.push({ id: c.key, label: `${c.label} ${c.max}`, keys: [c.key] });
+  return out;
+}
+
+/** Sum a subset of per-category figures. `source` is exact career means or a sitting's integers;
+    null when the spirit has nothing scored, so unscored rows still sink to the bottom. */
+function lensScore(source, keys) {
+  if (!source || !keys.length) return null;
+  let sum = 0;
+  for (const k of keys) {
+    const v = source[k];
+    if (v === null || v === undefined) return null;
+    sum += v;
+  }
+  return Math.round(sum * 10) / 10;
+}
+
 // ---------------------------------------------------------------- pending bottles
 /* The approval gate (SPEC.md §8.5). A bottle added away from the computer queues here; nothing
    reaches the 147 MB master until it is approved on the PC, one row at a time, with the parsed

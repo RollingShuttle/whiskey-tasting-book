@@ -672,6 +672,58 @@ class TestPendingApproval(AppCase):
         self.assertEqual(self.codes(), {"B-1", "B-2", "B-3", "B-4"})
 
 
+class TestRankingLens(AppCase):
+    """Everything a ranking lens needs is served with the rows, so switching lens is instant."""
+
+    def test_the_rubric_says_which_categories_are_flavour(self):
+        cats = {c["key"]: c for c in self.c.get("/api/config").get_json()["rubric"]["categories"]}
+        self.assertTrue(cats["aroma"]["flavour"])
+        self.assertTrue(cats["flavor"]["flavour"])
+        self.assertFalse(cats["aesthetics"]["flavour"], "aesthetics is the bottle, not the liquid")
+        self.assertFalse(cats["value"]["flavour"], "value is the price, not the liquid")
+        flavour_max = sum(c["max"] for c in cats.values() if c["flavour"])
+        self.assertEqual(flavour_max, 90)
+
+    def test_collection_rows_carry_per_category_means(self):
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})
+        row = {r["code"]: r for r in
+               self.c.get("/api/table/collection").get_json()["rows"]}["B-18"]
+        self.assertEqual(row["category_means"]["flavor"], 12)
+        self.assertEqual(row["category_means"]["aesthetics"], 3)
+
+    def test_an_unscored_spirit_has_no_means(self):
+        row = {r["code"]: r for r in
+               self.c.get("/api/table/collection").get_json()["rows"]}["B-18"]
+        self.assertEqual(row["category_means"], {})
+
+    def test_the_everything_lens_equals_the_career_score_exactly(self):
+        """The §3.6 trap: summing rounded means drifts. These are exact, so it cannot."""
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})                   # 66
+        self._post({"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD, flavor=13)})  # 67
+        self._post({"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD, flavor=17)})  # 71
+        row = {r["code"]: r for r in
+               self.c.get("/api/table/collection").get_json()["rows"]}["B-18"]
+        lens_total = round(sum(row["category_means"].values()), 1)
+        self.assertEqual(lens_total, row["career_score"])
+
+    def test_a_flavour_lens_leaves_out_exactly_the_non_flavour_categories(self):
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})
+        cats = self.c.get("/api/config").get_json()["rubric"]["categories"]
+        flavour = [c["key"] for c in cats if c["flavour"]]
+        row = {r["code"]: r for r in
+               self.c.get("/api/table/collection").get_json()["rows"]}["B-18"]
+        subtotal = round(sum(row["category_means"][k] for k in flavour), 1)
+        # the example card is 66 with aesthetics 3 and value 4
+        self.assertEqual(subtotal, 59)
+        self.assertEqual(subtotal + 3 + 4, row["career_score"])
+
+    def test_tasting_rows_carry_their_raw_scores(self):
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})
+        row = self.c.get("/api/table/tastings").get_json()["rows"][0]
+        self.assertEqual(row["scores"]["flavor"], 12)
+        self.assertEqual(sum(row["scores"].values()), row["total"])
+
+
 class TestPageAndHealth(AppCase):
     def test_index_is_served(self):
         r = self.c.get("/")

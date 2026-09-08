@@ -506,3 +506,18 @@ input:disabled, textarea:disabled { color: var(--text); opacity: .8; cursor: def
 .pend-grid { display: flex; flex-wrap: wrap; gap: 10px 14px; }
 .pend-grid .field input { width: 150px; font-size: 15px; padding: 7px 9px; }
 .pend-actions { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
+
+/* ---------------------------------------------------------------- ranking lens */
+.lens-bar {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--line);
+}
+.lens-label { color: var(--muted); font-size: 13px; margin-right: 2px; }
+.add-pour.open { color: var(--brass-bright); border-color: var(--brass); border-style: solid; }
+.lens-picker {
+  flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
+  margin-top: 10px; padding: 12px 14px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+}
+.lens-total { margin-left: auto; color: var(--muted); font-size: 12px;
+              font-variant-numeric: tabular-nums; }

@@ -31,6 +31,7 @@ class Category:
     label: str
     max: int
     question: str = ""      # the ? tooltip on each row, from config (SPEC.md §3)
+    flavour: bool = True    # False for aesthetics and value — the bottle and the price
 
 
 @dataclass(frozen=True)
@@ -51,7 +52,8 @@ class Rubric:
         self.name = spec.get("name", "rubric")
         self.version = int(spec.get("version", 1))
         self.decimals = int(spec.get("decimals", 1))
-        self.categories = [Category(c["key"], c["label"], int(c["max"]), c.get("question", ""))
+        self.categories = [Category(c["key"], c["label"], int(c["max"]),
+                                    c.get("question", ""), bool(c.get("flavour", True)))
                            for c in spec["categories"]]
         self.bands = sorted((Band(b["name"], int(b["min"])) for b in spec["medals"]),
                             key=lambda b: b.min, reverse=True)
@@ -69,6 +71,15 @@ class Rubric:
     def max_total(self):
         return sum(c.max for c in self.categories)
 
+    @property
+    def flavour_keys(self):
+        """The categories that describe the liquid, not the bottle or the price."""
+        return [c.key for c in self.categories if c.flavour]
+
+    @property
+    def non_flavour_keys(self):
+        return [c.key for c in self.categories if not c.flavour]
+
     def category(self, key) -> Category:
         for c in self.categories:
             if c.key == key:
@@ -83,7 +94,8 @@ class Rubric:
             "version": self.version,
             "decimals": self.decimals,
             "max_total": self.max_total,
-            "categories": [{"key": c.key, "label": c.label, "max": c.max, "question": c.question}
+            "categories": [{"key": c.key, "label": c.label, "max": c.max,
+                            "question": c.question, "flavour": c.flavour}
                            for c in self.categories],
             "bands": [{"name": b.name, "min": b.min} for b in self.bands],
         }

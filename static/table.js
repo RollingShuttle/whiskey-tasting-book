@@ -13,6 +13,7 @@ const TableView = (() => {
     visible: {},                     // mode -> Set of column keys
     filters: { q: "", type: "", region: "", rarity: "", status: "", source: "all", scored: false },
     chooser: false,
+    lens: null,                      // {id, keys, custom} — set once config is loaded
   };
 
   // Collection sorts on the career score, ties broken on n, descending (SPEC.md §3.6).
@@ -34,6 +35,7 @@ const TableView = (() => {
       T.visible[T.mode] = new Set(d.columns.filter((c) => c.default).map((c) => c.key));
     }
     if (!T.sort[T.mode]) T.sort[T.mode] = { ...DEFAULT_SORT[T.mode] };
+    if (!T.lens) T.lens = { id: "flavour", keys: flavourKeys(), custom: false };
   }
 
   async function open() {
@@ -77,7 +79,9 @@ const TableView = (() => {
     const { key, dir } = T.sort[T.mode];
     const mult = dir === "asc" ? 1 : -1;
     const cmp = (a, b) => {
-      const av = a[key], bv = b[key];
+      const scoreCol = key === lensKey();
+      const av = scoreCol ? a.lens_score : a[key];
+      const bv = scoreCol ? b.lens_score : b[key];
       // Unscored rows always sink, whichever way the column is sorted.
       const an = av === null || av === undefined || av === "";
       const bn = bv === null || bv === undefined || bv === "";
@@ -97,7 +101,18 @@ const TableView = (() => {
     });
   }
 
-  const visibleRows = () => sorted(filtered());
+  /** The score column shows the lens, not the stored total: collection rows total the exact
+      career means, tasting rows total that sitting's integers. */
+  const lensKey = () => (T.mode === "collection" ? "career_score" : "total");
+  function withLens(list) {
+    return list.map((r) => ({
+      ...r,
+      lens_score: lensScore(T.mode === "collection" ? r.category_means : r.scores,
+                            T.lens.keys),
+    }));
+  }
+
+  const visibleRows = () => sorted(withLens(filtered()));
 
   // ------------------------------------------------------------- formatting
   function fmt(v, type) {
@@ -114,8 +129,14 @@ const TableView = (() => {
   }
 
   function cell(row, col) {
-    const raw = row[col.key];
+    const raw = col.key === lensKey() ? row.lens_score : row[col.key];
     const text = fmt(raw, col.type);
+    if (col.type === "medal" && !lensIsEverything(T.lens.keys)) {
+      // A medal band is calibrated to the full 100-point card. Showing one beside a 90-point
+      // flavour score would be a different claim wearing the same chip (SPEC.md §3).
+      return el("td", { class: "t-null",
+        title: "medals come from the full 100-point card; this ranking is a subset" }, "—");
+    }
     if (text === null) return el("td", { class: "t-null" }, "—");
     if (col.type === "medal") {
       return el("td", {}, el("span", { class: "medal medal-sm",
@@ -135,6 +156,42 @@ const TableView = (() => {
     const host = document.getElementById("table-view");
     const list = visibleRows();
     host.replaceChildren(toolbar(list), tableEl(list), footer(list));
+  }
+
+  // ------------------------------------------------------------- the ranking lens
+  function lensBar() {
+    const presets = lensPresets();
+    const active = presets.find((p) => sameKeys(p.keys, T.lens.keys));
+    const bar = el("div", { class: "lens-bar" },
+      el("span", { class: "lens-label" }, "Rank by"),
+      ...presets.map((p) => el("button", {
+        type: "button", class: `chip${p === active ? " active" : ""}`,
+        onclick: () => { T.lens = { id: p.id, keys: p.keys, custom: false }; render(); },
+      }, p.label)),
+      el("button", {
+        type: "button", class: `add-pour${T.lens.custom ? " open" : ""}`,
+        onclick: () => { T.lens = { ...T.lens, custom: !T.lens.custom }; render(); },
+      }, T.lens.custom ? "Custom ▴" : "Custom ▾"));
+    if (T.lens.custom) bar.append(lensPicker());
+    return bar;
+  }
+
+  function lensPicker() {
+    const keys = T.lens.keys;
+    return el("div", { class: "lens-picker" },
+      ...state.config.rubric.categories.map((c) =>
+        el("label", { class: "t-choice" },
+          el("input", { type: "checkbox", checked: keys.includes(c.key),
+            onchange: (e) => {
+              const next = new Set(T.lens.keys);
+              if (e.target.checked) next.add(c.key); else next.delete(c.key);
+              T.lens = { id: "custom", keys: [...next], custom: true };
+              render();
+            } }),
+          `${c.label} ${c.max}`)),
+      el("span", { class: "lens-total" }, keys.length
+        ? `${keys.length} selected · out of ${lensMax(keys)}`
+        : "nothing selected — pick at least one category"));
   }
 
   function toolbar(list) {
@@ -182,7 +239,7 @@ const TableView = (() => {
       controls);
 
     if (T.chooser) bar.append(chooser());
-    return bar;
+    return el("div", {}, lensBar(), bar);
   }
 
   function chooser() {
@@ -211,7 +268,8 @@ const TableView = (() => {
           else { s.key = c.key; s.dir = ["text", "name", "code", "medal"].includes(c.type) ? "asc" : "desc"; }
           render();
         },
-      }, c.label, active ? el("span", { class: "t-arrow" }, dir === "asc" ? "▲" : "▼") : null);
+      }, c.key === lensKey() ? `${c.label} / ${lensMax(T.lens.keys)}` : c.label,
+         active ? el("span", { class: "t-arrow" }, dir === "asc" ? "▲" : "▼") : null);
     }));
 
     const body = el("tbody", {}, ...list.map((r) =>
@@ -243,7 +301,10 @@ const TableView = (() => {
   function exportCSV(list) {
     const shown = cols().filter((c) => isVisible(c.key));
     const lines = [shown.map((c) => csvCell(c.label)).join(",")];
-    for (const r of list) lines.push(shown.map((c) => csvCell(r[c.key])).join(","));
+    for (const r of list) {
+      lines.push(shown.map((c) => csvCell(c.key === lensKey() ? r.lens_score : r[c.key]))
+                      .join(","));
+    }
     const stamp = new Date().toISOString().slice(0, 10);
     const blob = new Blob(["﻿" + lines.join("\r\n")],   // BOM so Excel reads UTF-8
                           { type: "text/csv;charset=utf-8" });

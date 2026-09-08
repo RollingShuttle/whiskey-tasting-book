@@ -101,13 +101,21 @@ def _group_tastings(journal):
 
 
 def _career_bits(rubric, sittings):
+    """Career figures for one spirit, plus the per-category means a ranking lens needs.
+
+    `category_means` carries the **exact** means, not the rounded display ones. A lens sums a
+    subset of them, and summing ten independently rounded figures drifts by up to 0.5 — with
+    the full set that would put the "everything" lens 0.2 away from the career score it is
+    supposed to equal (SPEC.md §3.6). Summing exact values and rounding once does not.
+    """
     if not sittings:
         return {"career_score": None, "medal": None, "n": 0, "n_total": 0,
-                "best": None, "worst": None}
+                "best": None, "worst": None, "category_means": {}}
     c = rubric.career(sittings)
     rng = c.get("range") or (None, None)
     return {"career_score": c["mean_total"], "medal": c["medal"], "n": c["n"],
-            "n_total": c["n_total"], "best": rng[1], "worst": rng[0]}
+            "n_total": c["n_total"], "best": rng[1], "worst": rng[0],
+            "category_means": {k: v["mean_exact"] for k, v in c["categories"].items()}}
 
 
 def _ratio(numerator, denominator, places=2):
@@ -501,6 +509,7 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
             sp = catalog.get(t["spirit_id"]) or {}
             rows.append({
                 "tasting_id": t["tasting_id"], "date": t.get("date"), "code": t["spirit_id"],
+                "scores": t.get("scores") or {},        # so a lens can re-total one sitting
                 "display_name": sp.get("display_name") or t["spirit_id"],
                 "type": sp.get("type"), "region": sp.get("region"),
                 "total": t["total"], "medal": t["medal"],
