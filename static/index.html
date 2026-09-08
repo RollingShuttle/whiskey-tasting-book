@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#12100E">
+  <title>Whiskey Tasting Book</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Whiskey&nbsp;Tasting&nbsp;Book</div>
+    <div class="topbar-right">
+      <button id="btn-refresh" class="ghost" type="button" title="Reread the collection from the master workbook (read-only)">Refresh</button>
+      <span id="syncpill" class="pill pill-muted" title="Journal status">…</span>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- Spirit picker -->
+    <section id="picker" class="picker card" hidden>
+      <label class="picker-label" for="picker-input">Score a spirit</label>
+      <div class="picker-controls">
+        <input id="picker-input" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Search by name, distillery or code…" aria-label="Search spirits">
+        <div class="picker-filters" role="group" aria-label="Source filter">
+          <button class="chip active" data-source="all" type="button">All</button>
+          <button class="chip" data-source="Bottle" type="button">Bottles</button>
+          <button class="chip" data-source="Miniature" type="button">Minis</button>
+          <button class="chip" data-source="Sample" type="button">Samples</button>
+        </div>
+      </div>
+      <ul id="picker-results" class="picker-results" role="listbox" aria-label="Spirits"></ul>
+    </section>
+
+    <!-- The judging sheet -->
+    <section id="sheet" class="card sheet" hidden aria-live="polite"></section>
+
+    <div id="status" class="statusline" role="status" aria-live="polite" hidden></div>
+  </main>
+
+  <template id="tpl-row">
+    <div class="cat" data-key="">
+      <div class="cat-head">
+        <span class="cat-name"></span>
+        <button class="hint" type="button" aria-label="Scoring guidance">?</button>
+        <span class="cat-max"></span>
+      </div>
+      <div class="cat-strip">
+        <div class="strip" tabindex="0" role="slider" aria-valuemin="0"></div>
+        <input class="cat-score" type="text" inputmode="numeric" aria-label="Score" value="">
+      </div>
+      <label class="cat-notes-wrap">
+        <textarea class="cat-notes" rows="1" placeholder="notes"
+                  autocapitalize="sentences" autocorrect="on" spellcheck="true"></textarea>
+      </label>
+    </div>
+  </template>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

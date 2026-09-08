@@ -1,0 +1,271 @@
+"""
+store.py — the tasting journal.
+
+An append-only folder of small immutable JSON files, living in the OneDrive app folder that the
+phone and the PC both reach. Nothing is ever edited in place, which is what makes two devices
+writing at the same moment safe: they write different filenames into one folder and OneDrive
+merges it without conflict copies.
+
+  tastings/    T-<ts>-<spirit>-<rand>-r<n>.json   one scorecard sitting, immutable
+  encounters/  E-<ts>-<rand>.json            spirits scored but never owned (bar pours)
+  pending/     P-<ts>-<rand>.json            new-bottle requests awaiting approval on the PC
+  pending/rejected/                          declined requests, kept not deleted
+  snapshot/    collection.json               written by the PC, read by the phone
+  meta/        codes.json                    X- display codes assigned by the PC
+
+Corrections are a NEW revision file, never an edit; deletions are a revision with deleted=true.
+Readers resolve the highest revision per tasting_id. See SPEC.md §1.2, §1.3, §9.1.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import secrets
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+import yaml
+
+import rubric as rubric_mod
+
+SUBDIRS = ("tastings", "encounters", "pending", "pending/rejected", "snapshot", "meta")
+TASTING_RE = re.compile(r"^(?P<id>T-\d{8}-\d{6}-[A-Za-z0-9_.-]+)-r(?P<rev>\d+)\.json$")
+
+
+def _stamp(dt=None):
+    return (dt or datetime.now(timezone.utc)).strftime("%Y%m%d-%H%M%S")
+
+
+def _now_iso():
+    """Microsecond precision, deliberately. Second-resolution timestamps tie when two records are
+    created in the same second, and ordering then falls back to a random filename suffix — which
+    made assign_encounter_codes() hand X-1 to the second encounter."""
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+
+
+def _atomic_write_json(path: Path, payload: dict):
+    """Write via a temp file in the same directory, then replace. A half-written journal file
+    would be worse than a missing one, and os.replace is atomic on Windows and POSIX alike."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False, indent=1, sort_keys=True)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    return path
+
+
+class Journal:
+    def __init__(self, root, rubric=None):
+        self.root = Path(root)
+        self.rubric = rubric or rubric_mod.load_rubric()
+
+    # -- setup ---------------------------------------------------------------
+    def ensure(self):
+        for d in SUBDIRS:
+            (self.root / d).mkdir(parents=True, exist_ok=True)
+        return self
+
+    def _dir(self, name):
+        return self.root / name
+
+    # -- writing -------------------------------------------------------------
+    def write_tasting(self, *, spirit_id, scores, notes=None, session_id=None, date=None,
+                      venue=None, pour_price=None, pour_size_oz=None, flight_pos=None,
+                      include_in_average=True, status="submitted", entered_from="pc",
+                      tasting_id=None, revision=None, tags=None, blind=False):
+        """Record one sitting. Omit tasting_id for a new card; pass it to add a revision."""
+        problems = self.rubric.validate(scores)
+        if problems:
+            raise ValueError("; ".join(problems))
+
+        if tasting_id is None:
+            # The random suffix is load-bearing, not decoration. Timestamps are second-resolution,
+            # and two cards for the same spirit in the same second would otherwise share an id —
+            # which means the same filename, which means the second write silently overwrites the
+            # first. That is the exact immutability violation this whole design exists to prevent.
+            tasting_id = f"T-{_stamp()}-{spirit_id}-{secrets.token_hex(2)}"
+            revision = 1
+        elif revision is None:
+            revision = self._highest_revision(tasting_id) + 1
+
+        rec = {
+            "tasting_id": tasting_id,
+            "revision": revision,
+            "deleted": False,
+            "spirit_id": spirit_id,
+            "session_id": session_id,
+            "date": date or datetime.now().strftime("%Y-%m-%d"),
+            "flight_pos": flight_pos,
+            "scores": {k: int(v) for k, v in scores.items()},
+            "notes": notes or {},
+            "tags": tags or [],
+            "blind": bool(blind),
+            "venue": venue,
+            "pour_price": pour_price,
+            "pour_size_oz": pour_size_oz,
+            "include_in_average": bool(include_in_average),
+            "status": status,
+            "entered_from": entered_from,
+            "rubric": self.rubric.name,
+            "rubric_version": self.rubric.version,
+            "total": self.rubric.total(scores),
+            "medal": self.rubric.medal(self.rubric.total(scores)),
+            "created_at": _now_iso(),
+        }
+        path = self._dir("tastings") / f"{tasting_id}-r{revision}.json"
+        if path.exists():
+            raise FileExistsError(
+                f"refusing to overwrite an existing revision: {path.name}. "
+                "Journal files are immutable; write a new revision instead.")
+        _atomic_write_json(path, rec)
+        return rec
+
+    def delete_tasting(self, tasting_id, reason=None):
+        """A tombstone is just another revision. Nothing is unlinked."""
+        rev = self._highest_revision(tasting_id) + 1
+        if rev == 1:
+            raise KeyError(f"no such tasting {tasting_id}")
+        rec = {"tasting_id": tasting_id, "revision": rev, "deleted": True,
+               "reason": reason, "created_at": _now_iso()}
+        _atomic_write_json(self._dir("tastings") / f"{tasting_id}-r{rev}.json", rec)
+        return rec
+
+    def write_encounter(self, *, name, distillery=None, type=None, region=None, age=None,
+                        proof=None, venue=None, notes=None, entered_from="phone"):
+        """A spirit tasted but never owned. Filename carries a random suffix so two devices
+        creating one at the same second cannot collide; the human-facing X- code is assigned
+        later on the PC by assign_encounter_codes()."""
+        uid = f"E-{_stamp()}-{secrets.token_hex(2)}"
+        rec = {"encounter_uid": uid, "code": None, "name": name, "distillery": distillery,
+               "type": type, "region": region, "age": age, "proof": proof, "venue": venue,
+               "notes": notes, "linked_bottle_code": None, "entered_from": entered_from,
+               "first_tasted": _now_iso(), "created_at": _now_iso()}
+        _atomic_write_json(self._dir("encounters") / f"{uid}.json", rec)
+        return rec
+
+    def write_pending_bottle(self, *, sheet, fields, entered_from="phone"):
+        """A new-bottle request. Never touches the master workbook — SPEC.md §8.5."""
+        if sheet not in ("Bottle", "Miniature", "Sample"):
+            raise ValueError(f"unknown sheet {sheet!r}")
+        uid = f"P-{_stamp()}-{secrets.token_hex(2)}"
+        rec = {"pending_uid": uid, "sheet": sheet, "fields": dict(fields),
+               "entered_from": entered_from, "created_at": _now_iso(), "state": "pending"}
+        _atomic_write_json(self._dir("pending") / f"{uid}.json", rec)
+        return rec
+
+    def resolve_pending(self, pending_uid, *, approved, assigned_code=None, reason=None):
+        src = self._dir("pending") / f"{pending_uid}.json"
+        if not src.exists():
+            raise KeyError(pending_uid)
+        rec = json.loads(src.read_text(encoding="utf-8"))
+        rec["state"] = "approved" if approved else "rejected"
+        rec["resolved_at"] = _now_iso()
+        rec["assigned_code"] = assigned_code
+        rec["reason"] = reason
+        if approved:
+            src.unlink()
+        else:
+            _atomic_write_json(self._dir("pending/rejected") / f"{pending_uid}.json", rec)
+            src.unlink()
+        return rec
+
+    # -- reading -------------------------------------------------------------
+    def _tasting_files(self):
+        for p in sorted(self._dir("tastings").glob("T-*.json")):
+            m = TASTING_RE.match(p.name)
+            if m:
+                yield p, m.group("id"), int(m.group("rev"))
+
+    def _highest_revision(self, tasting_id):
+        return max((rev for _, tid, rev in self._tasting_files() if tid == tasting_id), default=0)
+
+    def tastings(self, include_deleted=False):
+        """Resolved view: highest revision wins, tombstones drop the record."""
+        best = {}
+        for path, tid, rev in self._tasting_files():
+            if tid not in best or rev > best[tid][0]:
+                best[tid] = (rev, path)
+        out = []
+        for tid, (_, path) in sorted(best.items()):
+            rec = json.loads(path.read_text(encoding="utf-8"))
+            if rec.get("deleted") and not include_deleted:
+                continue
+            out.append(rec)
+        return sorted(out, key=lambda r: (r.get("date") or "", r["tasting_id"]), reverse=True)
+
+    def encounters(self):
+        return [json.loads(p.read_text(encoding="utf-8"))
+                for p in sorted(self._dir("encounters").glob("E-*.json"))]
+
+    def pending(self):
+        return [json.loads(p.read_text(encoding="utf-8"))
+                for p in sorted(self._dir("pending").glob("P-*.json"))]
+
+    # -- PC-side reconciliation ---------------------------------------------
+    def assign_encounter_codes(self):
+        """Give every encounter a stable X-n, oldest first. PC only; idempotent."""
+        meta = self._dir("meta") / "codes.json"
+        assigned = json.loads(meta.read_text(encoding="utf-8")) if meta.exists() else {}
+        nxt = max((int(c.split("-")[1]) for c in assigned.values()), default=0) + 1
+        changed = False
+        for enc in sorted(self.encounters(), key=lambda e: (e["first_tasted"], e["encounter_uid"])):
+            uid = enc["encounter_uid"]
+            if uid not in assigned:
+                assigned[uid] = f"X-{nxt}"
+                nxt += 1
+                changed = True
+            if enc.get("code") != assigned[uid]:
+                enc["code"] = assigned[uid]
+                _atomic_write_json(self._dir("encounters") / f"{uid}.json", enc)
+        if changed:
+            _atomic_write_json(meta, assigned)
+        return assigned
+
+    def career(self, spirit_id):
+        """Every counted sitting for one spirit, aggregated. See SPEC.md §3.6."""
+        sittings = [t for t in self.tastings() if t["spirit_id"] == spirit_id]
+        result = self.rubric.career(sittings)
+        result["spirit_id"] = spirit_id
+        result["sittings"] = sittings
+        return result
+
+    def careers(self):
+        return {sid: self.career(sid) for sid in {t["spirit_id"] for t in self.tastings()}}
+
+    def stats(self):
+        t = self.tastings()
+        return {"tastings": len(t), "spirits_scored": len({x["spirit_id"] for x in t}),
+                "encounters": len(self.encounters()), "pending": len(self.pending()),
+                "files": sum(1 for _ in self._dir("tastings").glob("*.json"))}
+
+
+def resolve_root(cfg, override=None) -> Path:
+    for c in (override, os.environ.get("WHISKEY_APP_FOLDER"), cfg["paths"]["app_folder"]):
+        if c:
+            return Path(c)
+    raise RuntimeError("no app folder configured")
+
+
+def open_journal(config_path="config.yaml", root=None) -> Journal:
+    with open(config_path, encoding="utf-8") as fh:
+        cfg = yaml.safe_load(fh)
+    return Journal(resolve_root(cfg, root), rubric_mod.Rubric(cfg["rubric"])).ensure()
+
+
+if __name__ == "__main__":
+    import argparse
+    ap = argparse.ArgumentParser(description="Tasting journal status")
+    ap.add_argument("--root", help="journal root (also WHISKEY_APP_FOLDER)")
+    a = ap.parse_args()
+    j = open_journal(root=a.root)
+    print(f"Journal: {j.root}")
+    for k, v in j.stats().items():
+        print(f"  {k:<16} {v}")

@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+data/
+*.xlsx
+*.xlsm
+~$*
+.venv/
+.env
+build/
+dist/
+*.spec
+
+# Local machine config — holds a username in its file paths. Copy config.example.yaml -> config.yaml.
+config.yaml
+config.local.yaml
