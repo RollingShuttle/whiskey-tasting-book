@@ -116,6 +116,19 @@ def build(journal: store_mod.Journal, target: Path, backup_dir: Path, keep=30) -
                          else (str(cats[k]["min"]) if cats else None)) for k in keys])
     _sheet(wb, "Careers", chead, crows, {"spirit_id": 12, "career_score": 13, "medal": 11})
 
+    # --- Sessions: the flights, and how many pours each one holds
+    shead = ["session_id", "date", "title", "location", "company", "blind", "pours", "notes"]
+    pour_counts = {}
+    for t in tastings:
+        if t.get("session_id"):
+            pour_counts[t["session_id"]] = pour_counts.get(t["session_id"], 0) + 1
+    srows = [[s["session_id"], s.get("date"), s.get("title"), s.get("location"),
+              s.get("company"), "yes" if s.get("blind") else "no",
+              pour_counts.get(s["session_id"], 0), s.get("notes")]
+             for s in journal.sessions()]
+    _sheet(wb, "Sessions", shead, srows,
+           {"session_id": 26, "title": 28, "location": 22, "company": 22, "notes": 46})
+
     # --- Encounters: scored but never owned
     ehead = ["code", "name", "distillery", "type", "region", "age", "proof", "venue",
              "first_tasted", "linked_bottle_code", "encounter_uid", "notes"]
@@ -157,7 +170,7 @@ def build(journal: store_mod.Journal, target: Path, backup_dir: Path, keep=30) -
         wb.close()
 
     return {"path": str(target), "tastings": len(rows), "careers": len(crows),
-            "encounters": len(erows), "pending": len(prows),
+            "sessions": len(srows), "encounters": len(erows), "pending": len(prows),
             "bytes": target.stat().st_size}
 
 

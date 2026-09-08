@@ -201,6 +201,72 @@ class TestPendingBottles(JournalCase):
         self.assertEqual(json.loads(kept[0].read_text())["reason"], "changed my mind")
 
 
+class TestSessions(JournalCase):
+    def test_a_flight_is_created_with_its_own_id(self):
+        s = self.j.write_session(title="Thursday flight", location="Home", company="two of us")
+        self.assertTrue(s["session_id"].startswith("F-"), "F- keeps it clear of Sample S- codes")
+        self.assertEqual(s["revision"], 1)
+        self.assertEqual(len(self.j.sessions()), 1)
+        self.assertEqual(self.j.sessions()[0]["title"], "Thursday flight")
+
+    def test_two_flights_in_the_same_second_do_not_collide(self):
+        """Same rule as tastings — second-resolution stamps are not unique on their own."""
+        a = self.j.write_session(title="One")
+        b = self.j.write_session(title="Two")
+        self.assertNotEqual(a["session_id"], b["session_id"])
+        self.assertEqual(len(self.j.sessions()), 2)
+
+    def test_amending_a_flight_is_a_new_revision_not_an_edit(self):
+        first = self.j.write_session(title="Untitled")
+        original = (self.tmp / "sessions" / f"{first['session_id']}-r1.json").read_text()
+
+        self.j.write_session(session_id=first["session_id"], title="Barrel picks", blind=True)
+
+        self.assertEqual((self.tmp / "sessions" / f"{first['session_id']}-r1.json").read_text(),
+                         original, "revision 1 must never be modified")
+        live = self.j.sessions()
+        self.assertEqual(len(live), 1, "only the highest revision is live")
+        self.assertEqual(live[0]["revision"], 2)
+        self.assertEqual(live[0]["title"], "Barrel picks")
+        self.assertTrue(live[0]["blind"])
+
+    def test_overwriting_a_session_revision_is_refused_loudly(self):
+        s = self.j.write_session(title="X")
+        with self.assertRaises(FileExistsError):
+            self.j.write_session(session_id=s["session_id"], revision=1, title="Y")
+
+    def test_pours_come_back_in_flight_order(self):
+        sid = self.j.write_session(title="Flight")["session_id"]
+        self.j.write_tasting(spirit_id="B-3", scores=EXAMPLE_CARD, session_id=sid, flight_pos=2)
+        self.j.write_tasting(spirit_id="B-1", scores=EXAMPLE_CARD, session_id=sid, flight_pos=1)
+        self.j.write_tasting(spirit_id="B-9", scores=EXAMPLE_CARD, session_id=sid, flight_pos=3)
+        pours = self.j.session(sid)["pours"]
+        self.assertEqual([p["spirit_id"] for p in pours], ["B-1", "B-3", "B-9"])
+        self.assertEqual([p["flight_pos"] for p in pours], [1, 2, 3])
+
+    def test_next_flight_pos_counts_up(self):
+        sid = self.j.write_session()["session_id"]
+        self.assertEqual(self.j.next_flight_pos(sid), 1)
+        self.j.write_tasting(spirit_id="B-1", scores=EXAMPLE_CARD, session_id=sid, flight_pos=1)
+        self.assertEqual(self.j.next_flight_pos(sid), 2)
+
+    def test_a_standalone_pour_belongs_to_no_flight(self):
+        sid = self.j.write_session()["session_id"]
+        self.j.write_tasting(spirit_id="B-1", scores=EXAMPLE_CARD, session_id=sid, flight_pos=1)
+        self.j.write_tasting(spirit_id="B-2", scores=EXAMPLE_CARD)          # no session
+        self.assertEqual(len(self.j.session(sid)["pours"]), 1)
+        self.assertEqual(len(self.j.tastings()), 2)
+
+    def test_unknown_session_is_none(self):
+        self.assertIsNone(self.j.session("F-20260101-000000-dead"))
+
+    def test_a_flight_survives_a_fresh_journal_object(self):
+        sid = self.j.write_session(title="Persisted")["session_id"]
+        reopened = store.Journal(self.tmp, rubric_mod.load_rubric())
+        self.assertEqual(reopened.session(sid)["title"], "Persisted")
+        self.assertEqual(reopened.stats()["sessions"], 1)
+
+
 class TestReReadingIsStable(JournalCase):
     def test_a_fresh_journal_object_sees_the_same_data(self):
         """What the PC reads must be exactly what the phone wrote — no in-memory state."""

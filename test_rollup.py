@@ -44,7 +44,8 @@ class TestStructure(RollupCase):
     def test_empty_journal_still_produces_a_valid_workbook(self):
         self.build()
         wb = self.load()
-        self.assertEqual(wb.sheetnames, ["Tastings", "Careers", "Encounters", "Pending", "About"])
+        self.assertEqual(wb.sheetnames,
+                         ["Tastings", "Careers", "Sessions", "Encounters", "Pending", "About"])
         wb.close()
 
     def test_every_rubric_category_gets_a_score_and_a_notes_column(self):
@@ -120,6 +121,36 @@ class TestContent(RollupCase):
         wb = self.load()
         self.assertEqual(wb["Encounters"]["A2"].value, "X-1")
         self.assertIn("Example Distillery", wb["Pending"]["E2"].value)
+        wb.close()
+
+
+    def test_sessions_sheet_lists_flights_with_their_pour_counts(self):
+        sid = self.j.write_session(title="Thursday flight", location="Home",
+                                   blind=True)["session_id"]
+        for pos, code in enumerate(["B-1", "B-2"], start=1):
+            self.j.write_tasting(spirit_id=code, scores=EXAMPLE_CARD,
+                                 session_id=sid, flight_pos=pos)
+        summary = self.build()
+        self.assertEqual(summary["sessions"], 1)
+
+        wb = self.load()
+        ws = wb["Sessions"]
+        row = dict(zip([c.value for c in ws[1]], [c.value for c in ws[2]]))
+        self.assertEqual(row["session_id"], sid)
+        self.assertEqual(row["title"], "Thursday flight")
+        self.assertEqual(row["blind"], "yes")
+        self.assertEqual(row["pours"], 2)
+        wb.close()
+
+    def test_a_flight_links_its_pours_by_session_id(self):
+        sid = self.j.write_session(title="Linked")["session_id"]
+        self.j.write_tasting(spirit_id="B-1", scores=EXAMPLE_CARD, session_id=sid, flight_pos=1)
+        self.build()
+        wb = self.load()
+        ws = wb["Tastings"]
+        row = dict(zip([c.value for c in ws[1]], [c.value for c in ws[2]]))
+        self.assertEqual(row["session_id"], sid)
+        self.assertEqual(row["flight_pos"], 1)
         wb.close()
 
 

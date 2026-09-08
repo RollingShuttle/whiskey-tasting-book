@@ -145,6 +145,76 @@ class TestSubmit(AppCase):
         self.assertEqual(r.get_json()["tasting"]["spirit_id"], "X-1")
 
 
+class TestSessions(AppCase):
+    def _new_session(self, **kw):
+        r = self.c.post("/api/session", json=dict({"title": "Thursday flight"}, **kw))
+        self.assertEqual(r.status_code, 201)
+        return r.get_json()["session"]
+
+    def test_a_flight_is_created_and_listed(self):
+        s = self._new_session(location="Home", blind=True)
+        self.assertTrue(s["session_id"].startswith("F-"))
+        listed = self.c.get("/api/sessions").get_json()["sessions"]
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0]["title"], "Thursday flight")
+        self.assertEqual(listed[0]["pours"], 0)
+
+    def test_an_empty_flight_starts_at_position_one(self):
+        sid = self._new_session()["session_id"]
+        d = self.c.get(f"/api/session/{sid}").get_json()
+        self.assertEqual(d["pours"], [])
+        self.assertEqual(d["next_flight_pos"], 1)
+
+    def test_pours_link_to_the_flight_and_carry_their_spirit(self):
+        sid = self._new_session()["session_id"]
+        r = self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD,
+                        "session_id": sid, "flight_pos": 1})
+        self.assertEqual(r.status_code, 201)
+
+        d = self.c.get(f"/api/session/{sid}").get_json()
+        self.assertEqual(len(d["pours"]), 1)
+        self.assertEqual(d["pours"][0]["flight_pos"], 1)
+        self.assertEqual(d["pours"][0]["spirit"]["display_name"],
+                         "Example Distillery Single Barrel")
+        self.assertEqual(d["next_flight_pos"], 2)
+        self.assertEqual(self.c.get("/api/sessions").get_json()["sessions"][0]["pours"], 1)
+
+    def test_pours_come_back_in_flight_order(self):
+        sid = self._new_session()["session_id"]
+        self._post({"spirit_id": "S-1", "scores": EXAMPLE_CARD, "session_id": sid, "flight_pos": 2})
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD, "session_id": sid, "flight_pos": 1})
+        pours = self.c.get(f"/api/session/{sid}").get_json()["pours"]
+        self.assertEqual([p["flight_pos"] for p in pours], [1, 2])
+        self.assertEqual([p["spirit_id"] for p in pours], ["B-18", "S-1"])
+
+    def test_a_string_flight_pos_is_coerced_to_an_int(self):
+        """Sorting pours would break comparing '2' against 1."""
+        sid = self._new_session()["session_id"]
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD,
+                    "session_id": sid, "flight_pos": "3"})
+        pours = self.c.get(f"/api/session/{sid}").get_json()["pours"]
+        self.assertEqual(pours[0]["flight_pos"], 3)
+
+    def test_amending_a_flight_writes_a_new_revision(self):
+        s = self._new_session()
+        r = self.c.post("/api/session", json={"session_id": s["session_id"],
+                                              "title": "Barrel picks", "blind": True})
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(r.get_json()["session"]["revision"], 2)
+        listed = self.c.get("/api/sessions").get_json()["sessions"]
+        self.assertEqual(len(listed), 1, "only the highest revision is live")
+        self.assertEqual(listed[0]["title"], "Barrel picks")
+        self.assertTrue(listed[0]["blind"])
+
+    def test_unknown_session_is_404(self):
+        self.assertEqual(self.c.get("/api/session/F-20260101-000000-dead").status_code, 404)
+
+    def test_a_standalone_pour_joins_no_flight(self):
+        sid = self._new_session()["session_id"]
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})      # no session_id
+        self.assertEqual(self.c.get(f"/api/session/{sid}").get_json()["pours"], [])
+
+
 class TestPageAndHealth(AppCase):
     def test_index_is_served(self):
         r = self.c.get("/")

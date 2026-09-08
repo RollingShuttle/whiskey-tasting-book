@@ -7,11 +7,15 @@ writing at the same moment safe: they write different filenames into one folder 
 merges it without conflict copies.
 
   tastings/    T-<ts>-<spirit>-<rand>-r<n>.json   one scorecard sitting, immutable
+  sessions/    F-<ts>-<rand>-r<n>.json       one flight/sitting that groups pours, immutable
   encounters/  E-<ts>-<rand>.json            spirits scored but never owned (bar pours)
   pending/     P-<ts>-<rand>.json            new-bottle requests awaiting approval on the PC
   pending/rejected/                          declined requests, kept not deleted
   snapshot/    collection.json               written by the PC, read by the phone
   meta/        codes.json                    X- display codes assigned by the PC
+
+Session ids use an `F-` (flight) prefix deliberately: `S-` is already a Sample bottle code, and a
+session id sitting in a `spirit_id`-shaped field would be a nasty thing to debug.
 
 Corrections are a NEW revision file, never an edit; deletions are a revision with deleted=true.
 Readers resolve the highest revision per tasting_id. See SPEC.md §1.2, §1.3, §9.1.
@@ -30,8 +34,9 @@ import yaml
 
 import rubric as rubric_mod
 
-SUBDIRS = ("tastings", "encounters", "pending", "pending/rejected", "snapshot", "meta")
+SUBDIRS = ("tastings", "sessions", "encounters", "pending", "pending/rejected", "snapshot", "meta")
 TASTING_RE = re.compile(r"^(?P<id>T-\d{8}-\d{6}-[A-Za-z0-9_.-]+)-r(?P<rev>\d+)\.json$")
+SESSION_RE = re.compile(r"^(?P<id>F-\d{8}-\d{6}-[A-Za-z0-9]+)-r(?P<rev>\d+)\.json$")
 
 
 def _stamp(dt=None):
@@ -138,6 +143,76 @@ class Journal:
         _atomic_write_json(self._dir("tastings") / f"{tasting_id}-r{rev}.json", rec)
         return rec
 
+    # -- sessions (flights) --------------------------------------------------
+    def write_session(self, *, title=None, date=None, location=None, company=None,
+                      blind=False, notes=None, session_id=None, revision=None):
+        """Start a flight, or amend one. Amending writes a new revision rather than editing the
+        file — the same rule as tastings, so two devices can never clobber each other's copy."""
+        if session_id is None:
+            session_id = f"F-{_stamp()}-{secrets.token_hex(2)}"
+            revision = 1
+        elif revision is None:
+            revision = self._highest_session_revision(session_id) + 1
+
+        rec = {
+            "session_id": session_id,
+            "revision": revision,
+            "deleted": False,
+            "date": date or datetime.now().strftime("%Y-%m-%d"),
+            "title": title,
+            "location": location,
+            "company": company,
+            "blind": bool(blind),
+            "notes": notes,
+            "created_at": _now_iso(),
+        }
+        path = self._dir("sessions") / f"{session_id}-r{revision}.json"
+        if path.exists():
+            raise FileExistsError(
+                f"refusing to overwrite an existing revision: {path.name}. "
+                "Journal files are immutable; write a new revision instead.")
+        _atomic_write_json(path, rec)
+        return rec
+
+    def _session_files(self):
+        for p in sorted(self._dir("sessions").glob("F-*.json")):
+            m = SESSION_RE.match(p.name)
+            if m:
+                yield p, m.group("id"), int(m.group("rev"))
+
+    def _highest_session_revision(self, session_id):
+        return max((rev for _, sid, rev in self._session_files() if sid == session_id), default=0)
+
+    def sessions(self):
+        """Resolved view: highest revision wins, tombstones drop the record. Newest first."""
+        best = {}
+        for path, sid, rev in self._session_files():
+            if sid not in best or rev > best[sid][0]:
+                best[sid] = (rev, path)
+        out = []
+        for sid, (_, path) in best.items():
+            rec = json.loads(path.read_text(encoding="utf-8"))
+            if rec.get("deleted"):
+                continue
+            out.append(rec)
+        return sorted(out, key=lambda r: (r.get("date") or "", r["created_at"]), reverse=True)
+
+    def session(self, session_id):
+        """One flight with its pours in flight order, or None if there is no such session."""
+        rec = next((s for s in self.sessions() if s["session_id"] == session_id), None)
+        if rec is None:
+            return None
+        pours = [t for t in self.tastings() if t.get("session_id") == session_id]
+        pours.sort(key=lambda t: (t.get("flight_pos") is None, t.get("flight_pos") or 0,
+                                  t.get("created_at") or ""))
+        return dict(rec, pours=pours)
+
+    def next_flight_pos(self, session_id):
+        """1-based position for the next pour in this flight."""
+        used = [t.get("flight_pos") or 0 for t in self.tastings()
+                if t.get("session_id") == session_id]
+        return (max(used) if used else 0) + 1
+
     def write_encounter(self, *, name, distillery=None, type=None, region=None, age=None,
                         proof=None, venue=None, notes=None, entered_from="phone"):
         """A spirit tasted but never owned. Filename carries a random suffix so two devices
@@ -243,6 +318,7 @@ class Journal:
     def stats(self):
         t = self.tastings()
         return {"tastings": len(t), "spirits_scored": len({x["spirit_id"] for x in t}),
+                "sessions": len(self.sessions()),
                 "encounters": len(self.encounters()), "pending": len(self.pending()),
                 "files": sum(1 for _ in self._dir("tastings").glob("*.json"))}
 

@@ -202,7 +202,7 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
                 venue=_clean(body.get("venue")),
                 pour_price=_as_float_or_none(body.get("pour_price")),
                 pour_size_oz=_as_float_or_none(body.get("pour_size_oz")),
-                flight_pos=body.get("flight_pos"),
+                flight_pos=_as_int_or_none(body.get("flight_pos")),
                 include_in_average=bool(body.get("include_in_average", True)),
                 status=body.get("status") or "submitted",
                 entered_from=body.get("entered_from") or "desktop",
@@ -217,6 +217,52 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
 
         return jsonify({"ok": True, "tasting": rec,
                         "next_band": rubric.points_to_next_band(rec["total"])}), 201
+
+    # -- flights / sessions --------------------------------------------------
+    @app.get("/api/sessions")
+    def api_sessions():
+        counts = {}
+        for t in journal.tastings():
+            if t.get("session_id"):
+                counts[t["session_id"]] = counts.get(t["session_id"], 0) + 1
+        return jsonify({"sessions": [dict(s, pours=counts.get(s["session_id"], 0))
+                                     for s in journal.sessions()]})
+
+    @app.post("/api/session")
+    def api_create_session():
+        """Start a flight, or amend one by passing its session_id (writes a new revision)."""
+        body = request.get_json(silent=True)
+        if body is None:
+            body = {}
+        if not isinstance(body, dict):
+            return jsonify({"error": "expected a JSON object"}), 400
+        try:
+            rec = journal.write_session(
+                title=_clean(body.get("title")),
+                date=body.get("date"),
+                location=_clean(body.get("location")),
+                company=_clean(body.get("company")),
+                blind=bool(body.get("blind", False)),
+                notes=_clean(body.get("notes")),
+                session_id=body.get("session_id"),
+            )
+        except FileExistsError as e:
+            return jsonify({"error": str(e)}), 409
+        except (ValueError, KeyError) as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"ok": True, "session": rec}), 201
+
+    @app.get("/api/session/<sid>")
+    def api_session(sid):
+        full = journal.session(sid)
+        if full is None:
+            return jsonify({"error": f"unknown session {sid}"}), 404
+        pours = [dict(p, spirit=catalog.get(p["spirit_id"])) for p in full["pours"]]
+        return jsonify({
+            "session": {k: v for k, v in full.items() if k != "pours"},
+            "pours": pours,
+            "next_flight_pos": journal.next_flight_pos(sid),
+        })
 
     # -- status pill ---------------------------------------------------------
     @app.get("/api/health")
@@ -263,6 +309,13 @@ def _as_float_or_none(v):
     if v in (None, ""):
         return None
     return float(v)
+
+
+def _as_int_or_none(v):
+    """flight_pos arrives from JSON and must not stay a string — pours are sorted on it."""
+    if v in (None, ""):
+        return None
+    return int(v)
 
 
 def _clean(v):

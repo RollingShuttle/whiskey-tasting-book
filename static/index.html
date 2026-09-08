@@ -14,15 +14,19 @@
   <header class="topbar">
     <div class="brand">Whiskey&nbsp;Tasting&nbsp;Book</div>
     <div class="topbar-right">
+      <button id="btn-flight" class="ghost" type="button" title="Score several pours in one sitting">New flight</button>
       <button id="btn-refresh" class="ghost" type="button" title="Reread the collection from the master workbook (read-only)">Refresh</button>
       <span id="syncpill" class="pill pill-muted" title="Journal status">…</span>
     </div>
   </header>
 
   <main id="main">
+    <!-- Flight header + pour switcher (session mode only) -->
+    <section id="session" class="card session-card" hidden></section>
+
     <!-- Spirit picker -->
     <section id="picker" class="picker card" hidden>
-      <label class="picker-label" for="picker-input">Score a spirit</label>
+      <label class="picker-label" id="picker-label" for="picker-input">Score a spirit</label>
       <div class="picker-controls">
         <input id="picker-input" type="text" autocomplete="off" spellcheck="false"
                placeholder="Search by name, distillery or code…" aria-label="Search spirits">
@@ -36,7 +40,7 @@
       <ul id="picker-results" class="picker-results" role="listbox" aria-label="Spirits"></ul>
     </section>
 
-    <!-- The judging sheet -->
+    <!-- The judging sheet for the active pour -->
     <section id="sheet" class="card sheet" hidden aria-live="polite"></section>
 
     <div id="status" class="statusline" role="status" aria-live="polite" hidden></div>
