@@ -125,6 +125,83 @@ def _pour_value_per_oz(sittings):
     return round(sum(p / z for p, z in priced) / len(priced), 2)
 
 
+def _csv_arg(v):
+    return [s.strip() for s in (v or "").split(",") if s.strip()]
+
+
+def _split_notes(rec):
+    """The journal keeps one notes dict; the overall note rides under a reserved key."""
+    notes = dict((rec.get("notes") or {}))
+    return notes, notes.pop("overall", None)
+
+
+def _latest_notes(sittings):
+    """Notes from the most recent counted sitting — what the compare notes pane shows."""
+    counted = [s for s in sittings if s.get("include_in_average", True)] or list(sittings)
+    if not counted:
+        return {}, None
+    latest = max(counted, key=lambda s: (s.get("date") or "", s.get("created_at") or ""))
+    return _split_notes(latest)
+
+
+def _career_item(rubric, code, sp, sittings):
+    """One compare card built from every counted sitting — the default (SPEC.md §3.6)."""
+    c = rubric.career(sittings) if sittings else None
+    notes, overall = _latest_notes(sittings)
+    scores, ranges = {}, {}
+    if c and c["n"]:
+        for k, v in c["categories"].items():
+            scores[k] = v["mean"]
+            ranges[k] = [v["min"], v["max_seen"]]
+    return {
+        "key": code, "mode": "career", "code": code,
+        "label": sp.get("display_name") or code,
+        "sublabel": sp.get("type"), "type": sp.get("type"),
+        "scores": scores, "ranges": ranges,
+        "total": (c or {}).get("mean_total"), "medal": (c or {}).get("medal"),
+        "n": (c or {}).get("n", 0),
+        "notes": notes, "overall_note": overall,
+        "date": None, "tasting_id": None,
+    }
+
+
+def _sitting_item(t, catalog):
+    """One compare card pinned to a single sitting — a head-to-head from one night."""
+    sp = catalog.get(t["spirit_id"]) or {}
+    notes, overall = _split_notes(t)
+    return {
+        "key": t["tasting_id"], "mode": "sitting", "code": t["spirit_id"],
+        "label": sp.get("display_name") or t["spirit_id"],
+        "sublabel": t.get("date"), "type": sp.get("type"),
+        "scores": dict(t["scores"]), "ranges": {},
+        "total": t["total"], "medal": t["medal"], "n": 1,
+        "notes": notes, "overall_note": overall,
+        "date": t.get("date"), "tasting_id": t["tasting_id"],
+    }
+
+
+def _encounter_stub(journal, code):
+    for e in journal.encounters():
+        if e.get("code") == code:
+            name = " ".join(p for p in (e.get("distillery"), e.get("name")) if p).strip()
+            return {"display_name": name or e.get("name"), "type": e.get("type")}
+    return None
+
+
+def _axes(rubric, items):
+    """Per-axis deltas: who leads each category and by how much. Each axis carries its own max so
+    the view can draw every bar against it — Flavor/20 reads at the same scale as Balance/10."""
+    axes = []
+    for c in rubric.categories:
+        vals = {i["key"]: i["scores"].get(c.key) for i in items}
+        present = {k: v for k, v in vals.items() if v is not None}
+        spread = round(max(present.values()) - min(present.values()), 1) if len(present) > 1 else 0
+        leader = max(present, key=lambda k: present[k]) if (present and spread > 0) else None
+        axes.append({"key": c.key, "label": c.label, "max": c.max,
+                     "values": vals, "leader": leader, "spread": spread})
+    return axes
+
+
 def _load_cfg(config_path):
     with open(config_path, encoding="utf-8") as fh:
         return yaml.safe_load(fh)
@@ -417,6 +494,45 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
                 "entered_from": t.get("entered_from"),
             })
         return jsonify({"columns": TASTING_COLUMNS, "rows": rows})
+
+    # -- compare -------------------------------------------------------------
+    @app.get("/api/compare")
+    def api_compare():
+        """2-4 things side by side (SPEC.md §4.2). Defaults to career scores; pass `session` or
+        `tastings` to pin single sittings instead, so a head-to-head from one night still works."""
+        codes = _csv_arg(request.args.get("codes"))
+        tids = _csv_arg(request.args.get("tastings"))
+        sid = (request.args.get("session") or "").strip()
+        items = []
+
+        if sid:
+            full = journal.session(sid)
+            if full is None:
+                return jsonify({"error": f"unknown session {sid}"}), 404
+            items = [_sitting_item(p, catalog) for p in full["pours"]]
+        elif tids:
+            index = {t["tasting_id"]: t for t in journal.tastings()}
+            for tid in tids:
+                if tid not in index:
+                    return jsonify({"error": f"unknown tasting {tid}"}), 404
+                items.append(_sitting_item(index[tid], catalog))
+        elif codes:
+            by_spirit = _group_tastings(journal)
+            for code in codes:
+                sp = catalog.get(code) or _encounter_stub(journal, code)
+                if sp is None:
+                    return jsonify({"error": f"unknown spirit {code}"}), 404
+                items.append(_career_item(rubric, code, sp, by_spirit.get(code, [])))
+        else:
+            return jsonify({"error": "pass codes, tastings or session"}), 400
+
+        if not items:
+            return jsonify({"error": "nothing to compare"}), 400
+        if len(items) > 4:
+            return jsonify({"error": "compare takes at most 4 cards"}), 400
+
+        return jsonify({"categories": rubric.as_config()["categories"],
+                        "items": items, "axes": _axes(rubric, items)})
 
     # -- status pill ---------------------------------------------------------
     @app.get("/api/health")

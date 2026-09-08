@@ -320,6 +320,99 @@ class TestTableView(AppCase):
         self.assertEqual(row["flight_pos"], 2)
 
 
+class TestCompare(AppCase):
+    def _cmp(self, query):
+        r = self.c.get(f"/api/compare?{query}")
+        return r.status_code, r.get_json()
+
+    def test_career_mode_is_the_default(self):
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})
+        self._post({"spirit_id": "S-1", "scores": dict(EXAMPLE_CARD, flavor=18)})
+        code, d = self._cmp("codes=B-18,S-1")
+        self.assertEqual(code, 200)
+        self.assertEqual([i["key"] for i in d["items"]], ["B-18", "S-1"])
+        self.assertTrue(all(i["mode"] == "career" for i in d["items"]))
+        by = {i["key"]: i for i in d["items"]}
+        self.assertEqual(by["B-18"]["total"], 66)
+        self.assertEqual(by["S-1"]["total"], 72)
+        self.assertEqual(by["B-18"]["label"], "Example Distillery Single Barrel")
+
+    def test_career_scores_are_means_carrying_their_range(self):
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})                    # flavor 12
+        self._post({"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD, flavor=16)})   # flavor 16
+        item = self._cmp("codes=B-18")[1]["items"][0]
+        self.assertEqual(item["n"], 2)
+        self.assertEqual(item["total"], 68.0)
+        self.assertEqual(item["scores"]["flavor"], 14.0)
+        self.assertEqual(item["ranges"]["flavor"], [12, 16])
+        self.assertEqual(item["ranges"]["aroma"], [8, 8])
+
+    def test_each_axis_carries_its_own_maximum_and_the_leader(self):
+        """Flavor/20 must read at the same visual scale as Balance/10 (SPEC.md §10)."""
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})                   # flavor 12
+        self._post({"spirit_id": "S-1", "scores": dict(EXAMPLE_CARD, flavor=18)})   # flavor 18
+        axes = {a["key"]: a for a in self._cmp("codes=B-18,S-1")[1]["axes"]}
+        self.assertEqual(axes["flavor"]["max"], 20)
+        self.assertEqual(axes["aesthetics"]["max"], 5)
+        self.assertEqual(axes["flavor"]["leader"], "S-1")
+        self.assertEqual(axes["flavor"]["spread"], 6)
+        self.assertIsNone(axes["aroma"]["leader"], "a tied axis has no leader")
+        self.assertEqual(axes["aroma"]["spread"], 0)
+
+    def test_at_most_four_cards(self):
+        self.assertEqual(self._cmp("codes=B-18,S-1,B-18,S-1,B-18")[0], 400)
+
+    def test_nothing_to_compare_is_rejected(self):
+        self.assertEqual(self._cmp("")[0], 400)
+
+    def test_unknown_code_is_404(self):
+        self.assertEqual(self._cmp("codes=B-999")[0], 404)
+
+    def test_pinning_a_flight_compares_its_pours(self):
+        sid = self.c.post("/api/session",
+                          json={"title": "Head to head"}).get_json()["session"]["session_id"]
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD,
+                    "session_id": sid, "flight_pos": 1})
+        self._post({"spirit_id": "S-1", "scores": dict(EXAMPLE_CARD, flavor=18),
+                    "session_id": sid, "flight_pos": 2})
+        code, d = self._cmp(f"session={sid}")
+        self.assertEqual(code, 200)
+        self.assertEqual(len(d["items"]), 2)
+        self.assertTrue(all(i["mode"] == "sitting" for i in d["items"]))
+        self.assertEqual([i["code"] for i in d["items"]], ["B-18", "S-1"])
+        self.assertEqual(d["items"][0]["total"], 66)
+
+    def test_unknown_session_is_404(self):
+        self.assertEqual(self._cmp("session=F-20260101-000000-dead")[0], 404)
+
+    def test_explicit_sittings_can_be_pinned(self):
+        a = self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})
+        b = self._post({"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD, flavor=16)})
+        ids = [a.get_json()["tasting"]["tasting_id"], b.get_json()["tasting"]["tasting_id"]]
+        code, d = self._cmp(f"tastings={ids[0]},{ids[1]}")
+        self.assertEqual(code, 200)
+        self.assertEqual(sorted(i["total"] for i in d["items"]), [66, 70])
+        self.assertEqual(self._cmp("tastings=T-nope")[0], 404)
+
+    def test_notes_come_from_the_latest_counted_sitting(self):
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD, "date": "2026-01-01",
+                    "notes": {"aroma": "old note"}, "overall_notes": "old overall"})
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD, "date": "2026-06-01",
+                    "notes": {"aroma": "fresh note"}, "overall_notes": "fresh overall"})
+        item = self._cmp("codes=B-18")[1]["items"][0]
+        self.assertEqual(item["notes"]["aroma"], "fresh note")
+        self.assertEqual(item["overall_note"], "fresh overall")
+        self.assertNotIn("overall", item["notes"], "the overall note is not a category")
+
+    def test_an_unscored_spirit_compares_without_crashing(self):
+        code, d = self._cmp("codes=B-18,S-1")
+        self.assertEqual(code, 200)
+        self.assertEqual(d["items"][0]["scores"], {})
+        self.assertIsNone(d["items"][0]["total"])
+        self.assertEqual(d["items"][0]["n"], 0)
+        self.assertIsNone({a["key"]: a for a in d["axes"]}["aroma"]["leader"])
+
+
 class TestPageAndHealth(AppCase):
     def test_index_is_served(self):
         r = self.c.get("/")

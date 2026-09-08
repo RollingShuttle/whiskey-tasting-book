@@ -16,6 +16,7 @@
     <nav class="nav" aria-label="Views">
       <button id="nav-score" class="navbtn active" type="button">Score</button>
       <button id="nav-table" class="navbtn" type="button">Table</button>
+      <button id="nav-compare" class="navbtn" type="button">Compare</button>
     </nav>
     <div class="topbar-right">
       <button id="btn-flight" class="ghost" type="button" title="Score several pours in one sitting">New flight</button>
@@ -50,6 +51,9 @@
     <!-- Every spirit / every tasting, sortable and filterable -->
     <section id="table-view" class="card table-view" hidden></section>
 
+    <!-- 2-4 things side by side, aligned score rows -->
+    <section id="compare-view" class="card compare-view" hidden></section>
+
     <div id="status" class="statusline" role="status" aria-live="polite" hidden></div>
   </main>
 
@@ -73,5 +77,6 @@
 
   <script src="/static/app.js"></script>
   <script src="/static/table.js"></script>
+  <script src="/static/compare.js"></script>
 </body>
 </html>

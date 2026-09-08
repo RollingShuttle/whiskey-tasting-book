@@ -358,3 +358,78 @@ input:disabled, textarea:disabled { color: var(--text); opacity: .8; cursor: def
   .session-head { flex-direction: column; gap: 10px; }
   .pour-chip { max-width: 100%; }
 }
+
+/* ---------------------------------------------------------------- compare view */
+.compare-view { padding: 16px 18px; }
+.cmp-bar { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center; }
+.cmp-picks { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: auto; }
+.cmp-pick {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px;
+  padding: 6px 8px 6px 12px; font-size: 13px; max-width: 260px;
+}
+.cmp-x {
+  background: transparent; border: none; color: var(--muted);
+  font-size: 15px; line-height: 1; padding: 0 4px;
+}
+.cmp-x:hover { color: var(--brass-bright); }
+.cmp-search {
+  flex-basis: 100%; margin-top: 12px; padding: 12px 14px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+}
+.cmp-search .picker-results { max-height: 260px; }
+
+.cmp-scroll { overflow-x: auto; margin-top: 16px; }
+.cmp-grid { display: grid; gap: 0; min-width: 520px; }
+
+.cmp-corner { border-bottom: 1px solid var(--brass); }
+.cmp-head {
+  border-top: 3px solid var(--muted); border-bottom: 1px solid var(--brass);
+  padding: 12px 12px 10px; min-width: 0;
+}
+.cmp-name {
+  font-family: var(--serif); font-size: 15px; line-height: 1.25;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cmp-sub { color: var(--muted); font-size: 11px; margin-top: 3px; }
+.cmp-total {
+  display: flex; align-items: center; gap: 8px; margin-top: 8px;
+  font-size: 22px; color: var(--brass-bright); font-variant-numeric: tabular-nums;
+}
+.cmp-delta-head { border-top-color: transparent; color: var(--muted); text-align: right; font-size: 12px; }
+
+.cmp-axis {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 11px 12px; border-bottom: 1px solid var(--line); font-size: 13px;
+}
+.cmp-max { color: var(--muted); font-size: 11px; margin-left: auto; }
+
+.cmp-cell {
+  display: flex; align-items: center; gap: 8px;
+  padding: 11px 12px; border-bottom: 1px solid var(--line); min-width: 0;
+}
+.cmp-track {
+  flex: 1 1 auto; height: 8px; min-width: 30px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line); overflow: hidden;
+}
+.cmp-fill { height: 100%; background: var(--muted); }
+.cmp-cell.lead .cmp-fill { background: var(--brass); }
+.cmp-cell.lead .cmp-val { color: var(--brass-bright); font-weight: 600; }
+.cmp-val { font-variant-numeric: tabular-nums; font-size: 13px; min-width: 26px; text-align: right; }
+.cmp-range { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.cmp-delta {
+  padding: 11px 12px; border-bottom: 1px solid var(--line);
+  color: var(--muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums;
+}
+.cmp-foot { color: var(--muted); font-size: 12px; margin-top: 12px; line-height: 1.5; }
+
+.cmp-notes { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.cmp-notes-h { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+.cmp-note { margin-bottom: 16px; }
+.cmp-note-name {
+  font-family: var(--serif); font-size: 14px; padding-left: 10px;
+  border-left: 3px solid var(--muted); margin-bottom: 6px;
+}
+.cmp-note-overall { font-size: 14px; margin: 0 0 8px 13px; }
+.cmp-note-row { display: flex; gap: 10px; font-size: 13px; margin-left: 13px; padding: 2px 0; }
+.cmp-note-cat { color: var(--muted); min-width: 92px; flex-shrink: 0; }

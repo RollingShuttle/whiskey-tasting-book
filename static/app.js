@@ -19,7 +19,7 @@ const state = {
   medalColors: {},
   spirits: [],
   filter: "all",
-  view: "score",        // "score" | "table"
+  view: "score",        // "score" | "table" | "compare"
   mode: "single",       // "single" — one standalone pour | "session" — a flight of pours
   session: null,        // the flight record from the server
   pours: [],            // [{spirit, scores, notes, overall, context, submitted, tasting}]
@@ -83,6 +83,7 @@ async function boot() {
   });
   document.getElementById("nav-score").addEventListener("click", () => showView("score"));
   document.getElementById("nav-table").addEventListener("click", () => showView("table"));
+  document.getElementById("nav-compare").addEventListener("click", () => showView("compare"));
   try {
     state.config = await api("/api/config");
     state.medalColors = state.config.medal_colors || {};
@@ -124,7 +125,7 @@ async function refresh() {
   btn.disabled = true; btn.textContent = "Refreshing…";
   try {
     const r = await api("/api/refresh", { method: "POST" });
-    TableView.invalidate();
+    TableView.invalidate(); CompareView.invalidate();
     await loadSpirits(); await loadHealth();
     showStatus("ok", `Collection reread from the master (read-only): ${r.count} spirits.`);
   } catch (e) {
@@ -137,18 +138,20 @@ async function refresh() {
 // ---------------------------------------------------------------- views
 function showView(v) {
   state.view = v;
-  document.getElementById("nav-score").classList.toggle("active", v === "score");
-  document.getElementById("nav-table").classList.toggle("active", v === "table");
-  const tableEl = document.getElementById("table-view");
+  for (const [id, name] of [["nav-score", "score"], ["nav-table", "table"],
+                            ["nav-compare", "compare"]]) {
+    document.getElementById(id).classList.toggle("active", v === name);
+  }
+  document.getElementById("table-view").hidden = true;
+  document.getElementById("compare-view").hidden = true;
 
-  if (v === "table") {
+  if (v !== "score") {
     document.getElementById("session").hidden = true;
     document.getElementById("picker").hidden = true;
     document.getElementById("sheet").hidden = true;
-    TableView.open();
+    if (v === "table") TableView.open(); else CompareView.open();
     return;
   }
-  tableEl.hidden = true;
   if (state.mode === "session" && state.session) renderSession();
   if (activePour()) {
     document.getElementById("picker").hidden = true;
@@ -328,6 +331,10 @@ function renderSession() {
         el("label", { class: "blindtoggle" },
           el("input", { type: "checkbox", checked: !!s.blind,
                         onchange: (e) => setFlightBlind(e.target.checked) }), "Blind"),
+        state.pours.filter((p) => p.submitted).length >= 2
+          ? el("button", { class: "ghost", type: "button",
+                           onclick: () => CompareView.fromSession(s.session_id) }, "Compare pours")
+          : null,
         el("button", { class: "ghost", type: "button", onclick: endFlight }, "End flight"))),
     switcher);
 }
@@ -687,6 +694,7 @@ async function submitCard() {
     p.submitted = true;
     p.tasting = r.tasting;
     TableView.invalidate();            // the table must not show a stale career score
+    CompareView.invalidate();
     await loadHealth();
 
     const name = p.spirit.name || p.spirit.display_name;
