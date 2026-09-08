@@ -489,3 +489,20 @@ input:disabled, textarea:disabled { color: var(--text); opacity: .8; cursor: def
   .an-head { flex-direction: column; gap: 10px; }
   .an-axes { margin-left: 0; }
 }
+
+/* ---------------------------------------------------------------- pending bottles */
+.pending-card { border-left: 3px solid var(--ok); }
+.pend-row {
+  margin-top: 14px; padding: 14px 16px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+}
+.pend-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+.pend-sheet {
+  font-size: 12px; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--brass); color: var(--brass-bright);
+}
+.pend-meta { color: var(--muted); font-size: 12px; }
+.pend-meta:last-of-type { margin-left: auto; }
+.pend-grid { display: flex; flex-wrap: wrap; gap: 10px 14px; }
+.pend-grid .field input { width: 150px; font-size: 15px; padding: 7px 9px; }
+.pend-actions { display: flex; gap: 10px; align-items: center; margin-top: 14px; }

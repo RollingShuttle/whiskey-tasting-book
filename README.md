@@ -31,10 +31,11 @@ total, and a medal band: Diamond 90+, Gold 80+, Silver 70+, Bronze 60+.
 | `store.py` | the tasting journal — tastings, flights, encounters, pending bottles | `test_store.py` |
 | `rollup.py` | regenerates `Whiskey Tastings.xlsx` from the journal | `test_rollup.py` |
 | `quickentry.py` | drains the Quick Entry sheet into draft tastings | `test_quickentry.py` |
+| `master_write.py` | the only code that adds a row to the master workbook | `test_master_write.py` |
 | `app.py` | local server + JSON API at `127.0.0.1:8765` | `test_app.py` |
 | `static/` | the front end — `app.js` (sheet + flights), `table.js`, `compare.js`, `analysis.js` | — |
 
-161 tests, all passing.
+190 tests, all passing. `python verify_gate.py` runs the SPEC §7 shipping gate.
 
 ## Views
 
@@ -58,6 +59,11 @@ Built:
 
 In-progress scorecards survive a reload — they are mirrored to the browser and restored, with a
 Discard control.
+
+- **New bottles** — a bottle added away from the computer queues as a request and is written
+  to the collection workbook only after you approve it on the PC, with the parsed values
+  editable first. The row fills a slot that already exists inside the Excel table, every
+  photo and rich value is copied byte-for-byte, and a backup is taken before each write.
 
 Not yet built: the phone client.
 

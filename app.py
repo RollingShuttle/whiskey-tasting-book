@@ -644,6 +644,85 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
             "counts": {"scored": len(points), "sittings": sum(p["n"] for p in points)},
         })
 
+    # -- pending bottles: the approval gate ---------------------------------
+    @app.post("/api/pending")
+    def api_pending_create():
+        """Queue a new-bottle request. Nothing reaches the master from here (SPEC.md §8.5)."""
+        body = request.get_json(silent=True) or {}
+        try:
+            rec = journal.write_pending_bottle(
+                sheet=body.get("sheet") or "Bottle",
+                fields=body.get("fields") or {},
+                entered_from=body.get("entered_from") or "desktop")
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"ok": True, "pending": rec}), 201
+
+    @app.get("/api/pending")
+    def api_pending_list():
+        import collection as collection_mod
+        master = collection_mod.resolve_master(cfg, app.config["_master"])
+        return jsonify({
+            "pending": journal.pending(),
+            "master": {"path": str(master), "exists": master.exists(),
+                       "locked": master.with_name(f"~${master.name}").exists()},
+            "next_code": catalog.next_code,
+            "first_empty_row": catalog.first_empty_row,
+        })
+
+    @app.post("/api/pending/<uid>/approve")
+    def api_pending_approve(uid):
+        """Approve one row and write it to the master by the surgical append in SPEC.md §8.3.
+
+        The Bottle Code is assigned here, on the PC, at approval time — never on the phone, so
+        two queued requests can never claim the same code (§8.5).
+        """
+        import collection as collection_mod
+        import master_write
+
+        rec = next((p for p in journal.pending() if p["pending_uid"] == uid), None)
+        if rec is None:
+            return jsonify({"error": f"unknown pending request {uid}"}), 404
+
+        body = request.get_json(silent=True) or {}
+        fields = dict(rec.get("fields") or {})
+        fields.update(body.get("fields") or {})        # the review panel may correct the parse
+        sheet = body.get("sheet") or rec.get("sheet") or "Bottle"
+
+        try:
+            coll = collection_mod.load(config_path, master=app.config["_master"])
+            result = master_write.append_row(
+                collection_mod.resolve_master(cfg, app.config["_master"]),
+                sheet, fields, backup_dir=backup_dir, keep=10,
+                config_path=config_path, coll=coll)
+        except master_write.MasterWriteError as e:
+            return jsonify({"ok": False, "error": str(e)}), 409
+        except Exception as e:                         # noqa: BLE001 — surface the real reason
+            return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+
+        journal.resolve_pending(uid, approved=True, assigned_code=result["code"])
+
+        # The collection changed under us; refresh the snapshot so every view sees the new bottle.
+        try:
+            fresh = collection_mod.load(config_path, master=app.config["_master"])
+            snap.parent.mkdir(parents=True, exist_ok=True)
+            snap.write_text(json.dumps(fresh.snapshot(), ensure_ascii=False), encoding="utf-8")
+            catalog.load()
+        except Exception:                              # noqa: BLE001
+            pass                                       # the row is written; Refresh fixes the view
+        return jsonify({"ok": True, **result})
+
+    @app.post("/api/pending/<uid>/reject")
+    def api_pending_reject(uid):
+        """Rejected requests move to pending/rejected/ rather than vanishing (SPEC.md §8.5)."""
+        body = request.get_json(silent=True) or {}
+        try:
+            rec = journal.resolve_pending(uid, approved=False,
+                                          reason=_clean(body.get("reason")))
+        except KeyError:
+            return jsonify({"error": f"unknown pending request {uid}"}), 404
+        return jsonify({"ok": True, "pending": rec})
+
     # -- status pill ---------------------------------------------------------
     @app.get("/api/health")
     def api_health():

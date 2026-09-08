@@ -577,6 +577,101 @@ class TestAnalysis(AppCase):
         self.assertEqual(self._get()["points"], [])
 
 
+class TestPendingApproval(AppCase):
+    """The approval gate (SPEC.md §8.5). Runs against a fixture master, never the real one."""
+
+    def setUp(self):
+        super().setUp()
+        from test_master_write import build_fixture
+        self.master = self.tmp / "Whiskey Collection.xlsx"
+        build_fixture(self.master)
+        self.app = app_mod.create_app(
+            "config.yaml",
+            app_folder=str(self.tmp / "journal"),
+            snapshot_path=str(self.snap),
+            master=str(self.master),
+            rollup=str(self.tmp / "Whiskey Tastings.xlsx"),
+            backups=str(self.tmp / "backups"),
+        )
+        self.c = self.app.test_client()
+
+    def queue(self, **fields):
+        r = self.c.post("/api/pending", json={"sheet": "Bottle", "fields": fields,
+                                              "entered_from": "phone"})
+        self.assertEqual(r.status_code, 201)
+        return r.get_json()["pending"]["pending_uid"]
+
+    def codes(self):
+        import collection as collection_mod
+        return {r["code"] for r in collection_mod.Collection(self.master).load().rows["Bottle"]}
+
+    def test_a_queued_request_is_listed_and_touches_nothing(self):
+        self.queue(Distillery="Gamma Co", Name="Three")
+        d = self.c.get("/api/pending").get_json()
+        self.assertEqual(len(d["pending"]), 1)
+        self.assertEqual(d["pending"][0]["fields"]["Distillery"], "Gamma Co")
+        self.assertFalse(d["master"]["locked"])
+        self.assertEqual(self.codes(), {"B-1", "B-2"}, "queuing must not write to the master")
+
+    def test_approving_writes_the_row_and_clears_the_queue(self):
+        uid = self.queue(Distillery="Gamma Co", Name="Three", Proof=101.4)
+        r = self.c.post(f"/api/pending/{uid}/approve")
+        self.assertEqual(r.status_code, 200, r.get_json())
+        body = r.get_json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["code"], "B-3")
+        self.assertEqual(self.codes(), {"B-1", "B-2", "B-3"})
+        self.assertEqual(self.c.get("/api/pending").get_json()["pending"], [])
+
+    def test_the_review_panel_can_correct_the_parse_before_writing(self):
+        uid = self.queue(Distillery="Typo Co", Name="Three")
+        self.c.post(f"/api/pending/{uid}/approve",
+                    json={"fields": {"Distillery": "Corrected Co"}})
+        import collection as collection_mod
+        rows = {r["code"]: r for r in
+                collection_mod.Collection(self.master).load().rows["Bottle"]}
+        self.assertEqual(rows["B-3"]["distillery"], "Corrected Co")
+
+    def test_an_encounter_code_is_refused_at_the_gate(self):
+        uid = self.queue(**{"Bottle Code": "X-4", "Name": "Bar pour"})
+        r = self.c.post(f"/api/pending/{uid}/approve")
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("X-", r.get_json()["error"])
+        self.assertEqual(self.codes(), {"B-1", "B-2"})
+        self.assertEqual(len(self.c.get("/api/pending").get_json()["pending"]), 1,
+                         "a refused request stays in the queue")
+
+    def test_approving_is_refused_while_excel_holds_the_master(self):
+        uid = self.queue(Distillery="Gamma Co", Name="Three")
+        self.master.with_name(f"~${self.master.name}").write_bytes(b"")
+        r = self.c.post(f"/api/pending/{uid}/approve")
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("open in Excel", r.get_json()["error"])
+        self.assertEqual(self.codes(), {"B-1", "B-2"})
+
+    def test_rejecting_keeps_the_record_out_of_the_master(self):
+        uid = self.queue(Distillery="Gamma Co", Name="Three")
+        r = self.c.post(f"/api/pending/{uid}/reject", json={"reason": "duplicate"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(self.c.get("/api/pending").get_json()["pending"], [])
+        self.assertEqual(self.codes(), {"B-1", "B-2"})
+        kept = list((self.tmp / "journal" / "pending" / "rejected").glob("P-*.json"))
+        self.assertEqual(len(kept), 1, "a rejection is kept, not dropped")
+
+    def test_unknown_request_is_404(self):
+        self.assertEqual(self.c.post("/api/pending/P-nope/approve").status_code, 404)
+        self.assertEqual(self.c.post("/api/pending/P-nope/reject").status_code, 404)
+
+    def test_two_queued_requests_take_consecutive_codes(self):
+        """Codes are assigned at approval time, so a long-queued request cannot claim a stale one."""
+        a = self.queue(Distillery="Gamma Co", Name="Three")
+        b = self.queue(Distillery="Delta Co", Name="Four")
+        first = self.c.post(f"/api/pending/{a}/approve").get_json()["code"]
+        second = self.c.post(f"/api/pending/{b}/approve").get_json()["code"]
+        self.assertEqual((first, second), ("B-3", "B-4"))
+        self.assertEqual(self.codes(), {"B-1", "B-2", "B-3", "B-4"})
+
+
 class TestPageAndHealth(AppCase):
     def test_index_is_served(self):
         r = self.c.get("/")

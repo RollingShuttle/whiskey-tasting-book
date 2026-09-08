@@ -21,6 +21,7 @@ const state = {
   filter: "all",
   view: "score",        // "score" | "table" | "compare" | "analysis"
   quick: null,          // Quick Entry rows waiting on the workbook
+  pending: null,        // new-bottle requests waiting for approval
   mode: "single",       // "single" — one standalone pour | "session" — a flight of pours
   session: null,        // the flight record from the server
   pours: [],            // [{spirit, scores, notes, overall, context, submitted, tasting}]
@@ -96,6 +97,7 @@ async function boot() {
   await loadSpirits();
   await loadHealth();
   await loadQuick();
+  await loadPending();
   buildPicker();
   if (!(await restoreDraft())) showPicker();
 }
@@ -130,12 +132,115 @@ async function refresh() {
   try {
     const r = await api("/api/refresh", { method: "POST" });
     TableView.invalidate(); CompareView.invalidate(); AnalysisView.invalidate();
-    await loadSpirits(); await loadHealth(); await loadQuick();
+    await loadSpirits(); await loadHealth(); await loadQuick(); await loadPending();
     showStatus("ok", `Collection reread from the master (read-only): ${r.count} spirits.`);
   } catch (e) {
     showStatus("err", `Refresh failed: ${e.body?.errors ? e.body.errors.join("; ") : e.message}`);
   } finally {
     btn.disabled = false; btn.textContent = "Refresh";
+  }
+}
+
+// ---------------------------------------------------------------- pending bottles
+/* The approval gate (SPEC.md §8.5). A bottle added away from the computer queues here; nothing
+   reaches the 147 MB master until it is approved on the PC, one row at a time, with the parsed
+   values editable first — a typo made one-handed in a liquor store should not land silently in a
+   144-row inventory. The Bottle Code is assigned by the server at approval time. */
+const PENDING_FIELDS = ["Distillery", "Name", "Type", "Region", "Age", "Proof", "Size (ml)",
+                        "Paid"];
+const PENDING_NUMERIC = new Set(["Age", "Proof", "Size (ml)", "Paid", "Release Year"]);
+
+async function loadPending() {
+  try { state.pending = await api("/api/pending"); } catch { state.pending = null; }
+  renderPending();
+}
+
+function renderPending() {
+  const card = document.getElementById("pending");
+  const p = state.pending;
+  if (!p || !p.pending || !p.pending.length || state.view !== "score") {
+    card.hidden = true; return;
+  }
+  card.hidden = false;
+  const n = p.pending.length;
+  const locked = !!p.master?.locked;
+
+  card.replaceChildren(
+    el("div", { class: "quick-head" },
+      el("div", { class: "quick-title-wrap" },
+        el("div", { class: "quick-title" },
+          `${n} new bottle${n === 1 ? "" : "s"} waiting for approval`),
+        el("div", { class: "quick-sub" },
+          "Added away from the computer. Check the values, then approve — that writes the row "
+          + "into the collection workbook and assigns its Bottle Code. Nothing is written until "
+          + "you say so.")),
+      locked ? el("span", { class: "pill pill-warn" }, "Workbook open in Excel") : null),
+    ...p.pending.map((rec) => pendingRow(rec, p, locked)));
+}
+
+function pendingRow(rec, info, locked) {
+  const fields = { ...(rec.fields || {}) };
+  const inputs = {};
+  const grid = el("div", { class: "pend-grid" },
+    ...PENDING_FIELDS.map((name) => {
+      const input = el("input", { type: "text", value: fields[name] ?? "",
+                                  inputmode: PENDING_NUMERIC.has(name) ? "decimal" : null });
+      inputs[name] = input;
+      return el("label", { class: "field" }, el("span", {}, name), input);
+    }));
+
+  const next = (info.next_code || {})[rec.sheet];
+  const row = (info.first_empty_row || {})[rec.sheet];
+
+  return el("div", { class: "pend-row" },
+    el("div", { class: "pend-head" },
+      el("span", { class: "pend-sheet" }, rec.sheet),
+      el("span", { class: "pend-meta" },
+        next ? `will become ${next}${row ? ` in row ${row}` : ""}` : "code assigned on approval"),
+      el("span", { class: "pend-meta" }, `from ${rec.entered_from || "?"}`)),
+    grid,
+    el("div", { class: "pend-actions" },
+      el("button", { class: "submit", type: "button", disabled: locked,
+        onclick: (e) => approvePending(rec.pending_uid, inputs, e.currentTarget) },
+        locked ? "Workbook open" : "Approve & write"),
+      el("button", { class: "ghost", type: "button",
+        onclick: () => rejectPending(rec.pending_uid) }, "Reject")));
+}
+
+function collectPending(inputs) {
+  const out = {};
+  for (const [name, input] of Object.entries(inputs)) {
+    const raw = input.value.trim();
+    if (!raw) continue;
+    out[name] = (PENDING_NUMERIC.has(name) && !Number.isNaN(Number(raw))) ? Number(raw) : raw;
+  }
+  return out;
+}
+
+async function approvePending(uid, inputs, btn) {
+  btn.disabled = true; btn.textContent = "Writing…";
+  try {
+    const r = await postJSON(`/api/pending/${encodeURIComponent(uid)}/approve`,
+                             { fields: collectPending(inputs) });
+    TableView.invalidate(); CompareView.invalidate(); AnalysisView.invalidate();
+    await loadPending(); await loadSpirits(); await loadHealth();
+    showStatus("ok", `Written to the collection as ${r.code}, row ${r.row}. `
+      + "A backup of the workbook was taken first.");
+  } catch (e) {
+    showStatus("err", `Not written: ${e.body?.error || e.message}`, true);
+    btn.disabled = false; btn.textContent = "Approve & write";
+    await loadPending();
+  }
+}
+
+async function rejectPending(uid) {
+  try {
+    await postJSON(`/api/pending/${encodeURIComponent(uid)}/reject`,
+                   { reason: "rejected on the PC" });
+    await loadPending();
+    showStatus("ok", "Rejected. The request is kept in pending/rejected/, not deleted.");
+  } catch (e) {
+    showStatus("err", `Could not reject: ${e.body?.error || e.message}`);
   }
 }
 
@@ -292,12 +397,14 @@ function showView(v) {
   document.getElementById("compare-view").hidden = true;
   document.getElementById("analysis-view").hidden = true;
   renderQuick();
+  renderPending();
 
   if (v !== "score") {
     document.getElementById("session").hidden = true;
     document.getElementById("picker").hidden = true;
     document.getElementById("sheet").hidden = true;
     document.getElementById("quick").hidden = true;
+    document.getElementById("pending").hidden = true;
     if (v === "table") TableView.open();
     else if (v === "compare") CompareView.open();
     else AnalysisView.open();

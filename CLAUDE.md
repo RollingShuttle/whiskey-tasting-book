@@ -28,7 +28,8 @@ a matching `test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -p "test_*.py"     # 161 tests, all passing
+python -m unittest discover -p "test_*.py"     # 190 tests, all passing
+python verify_gate.py                          # SPEC §7 shipping gate (reads the master)
 python collection.py                           # health report, writes nothing
 ```
 
@@ -43,7 +44,7 @@ Done and tested — `collection.py` (loader), `rubric.py` (scoring), `store.py` 
 Web front end — **in progress.** `app.py` (Flask server at `127.0.0.1:8765`), the judging sheet,
 the flight/session view, the table view and compare (`static/index.html`, `app.js`, `table.js`,
 `compare.js`, `style.css`) are done and tested — SPEC.md build order steps 3, 4, 5 and 6.
-Covered by `test_app.py` (161 tests total). `GET /api/compare` takes `codes` (career scores,
+Covered by `test_app.py` (190 tests total). `GET /api/compare` takes `codes` (career scores,
 the default), or `session` / `tastings` to pin single sittings; it returns per-axis leaders and
 spreads, and every axis carries its own max so the view draws each bar against it.
 
@@ -83,8 +84,22 @@ it keeps working offline and adds nothing to the bundle the phone will load. The
 `have` count so a scatter over three points cannot pose as a finding, and the medal thresholds
 are drawn on every score axis.
 
-Still to build — the iPhone static client and the §8 pending bottle approval UI. That is the
-whole of SPEC.md §7; the PC app is feature-complete against the build order.
+The §8 write path is done: `master_write.py` + `test_master_write.py`, plus the approval gate
+(`POST /api/pending/<uid>/approve|reject`) and its review panel. **Read `master_write.py`'s
+docstring before touching it.** It never opens the master for writing — it rebuilds the zip
+copying every entry byte-for-byte except the one worksheet part, and edits that part as *text*
+rather than through ElementTree, because the worksheet root carries
+`mc:Ignorable="x14ac xr xr2 xr3"` and re-serialising renames those prefixes into an Ignorable
+list that no longer resolves — which is what makes Excel offer to "repair" a file. Every write
+takes a backup first and runs the §8.4 verification after; a failed assertion restores the
+backup. Codes are assigned at approval time on the PC, never on the phone.
+
+`verify_gate.py` is the SPEC §7 shipping gate: a full round trip against the real master, then
+a SHA-256 comparison. It passed on 8 Sep 2026 — 198 photos and 5 richData parts intact.
+Re-run it after anything that touches collection.py or master_write.py.
+
+Still to build — **the iPhone static client only** (SPEC.md §9, §9.2). Everything else in the
+build order is done.
 
 The front end serves two clients from one codebase: the PC app at `127.0.0.1:8765`, and a
 static build in `docs/` deployed to GitHub Pages for the iPhone. Design is settled: see SPEC.md §5
