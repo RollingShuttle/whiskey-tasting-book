@@ -30,10 +30,11 @@ total, and a medal band: Diamond 90+, Gold 80+, Silver 70+, Bronze 60+.
 | `rubric.py` | scoring, medals, career aggregation | `test_rubric.py` |
 | `store.py` | the tasting journal — tastings, flights, encounters, pending bottles | `test_store.py` |
 | `rollup.py` | regenerates `Whiskey Tastings.xlsx` from the journal | `test_rollup.py` |
+| `quickentry.py` | drains the Quick Entry sheet into draft tastings | `test_quickentry.py` |
 | `app.py` | local server + JSON API at `127.0.0.1:8765` | `test_app.py` |
-| `static/` | the front end — `app.js` (sheet + flights), `table.js` (table view) | — |
+| `static/` | the front end — `app.js` (sheet + flights), `table.js`, `compare.js` | — |
 
-110 tests, all passing.
+152 tests, all passing.
 
 ## Views
 
@@ -45,8 +46,17 @@ Built:
   full sheet below. Blind mode hides each spirit's identity until its own card is submitted.
 - **Table** — every spirit or every tasting, sortable and filterable on every field, with a column
   chooser and CSV export. Carries `$ / oz` and `score / $`, which the spreadsheet cannot.
+- **Compare** — two to four things side by side, score rows aligned, each bar drawn against its
+  own maximum, per-axis deltas and a shared notes pane. Defaults to career scores; a single
+  flight can be pinned for a head-to-head from one night.
+- **Quick Entry** — rows typed on the phone are drained into unscored drafts against their
+  bottle. A name that is not unique is refused rather than guessed at, and refused rows stay
+  on the sheet with the reason.
 
-Not yet built: compare, Quick Entry drain, analysis charts, and the phone client.
+In-progress scorecards survive a reload — they are mirrored to the browser and restored, with a
+Discard control.
+
+Not yet built: analysis charts and the phone client.
 
 ## Run
 

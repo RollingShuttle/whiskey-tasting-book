@@ -82,14 +82,24 @@ class Journal:
         return self.root / name
 
     # -- writing -------------------------------------------------------------
-    def write_tasting(self, *, spirit_id, scores, notes=None, session_id=None, date=None,
+    def write_tasting(self, *, spirit_id, scores=None, notes=None, session_id=None, date=None,
                       venue=None, pour_price=None, pour_size_oz=None, flight_pos=None,
                       include_in_average=True, status="submitted", entered_from="pc",
-                      tasting_id=None, revision=None, tags=None, blind=False):
-        """Record one sitting. Omit tasting_id for a new card; pass it to add a revision."""
-        problems = self.rubric.validate(scores)
-        if problems:
-            raise ValueError("; ".join(problems))
+                      tasting_id=None, revision=None, tags=None, blind=False, barrel_id=None):
+        """Record one sitting. Omit tasting_id for a new card; pass it to add a revision.
+
+        A card may be unscored only when it is a draft — that is the Quick Entry lane, where a
+        row is typed one-handed with notes and scored later (SPEC.md §1.2). An unscored card can
+        never be counted towards a career score, whatever the caller asks for: rubric.career()
+        would fail on empty scores, and a card with no numbers is not an opinion yet.
+        """
+        draft = str(status).lower() == "draft"
+        if scores:
+            problems = self.rubric.validate(scores)
+            if problems:
+                raise ValueError("; ".join(problems))
+        elif not draft:
+            raise ValueError("a submitted card needs scores; only a draft may be unscored")
 
         if tasting_id is None:
             # The random suffix is load-bearing, not decoration. Timestamps are second-resolution,
@@ -109,20 +119,21 @@ class Journal:
             "session_id": session_id,
             "date": date or datetime.now().strftime("%Y-%m-%d"),
             "flight_pos": flight_pos,
-            "scores": {k: int(v) for k, v in scores.items()},
+            "scores": {k: int(v) for k, v in (scores or {}).items()},
+            "barrel_id": barrel_id,
             "notes": notes or {},
             "tags": tags or [],
             "blind": bool(blind),
             "venue": venue,
             "pour_price": pour_price,
             "pour_size_oz": pour_size_oz,
-            "include_in_average": bool(include_in_average),
+            "include_in_average": bool(include_in_average) and bool(scores),
             "status": status,
             "entered_from": entered_from,
             "rubric": self.rubric.name,
             "rubric_version": self.rubric.version,
-            "total": self.rubric.total(scores),
-            "medal": self.rubric.medal(self.rubric.total(scores)),
+            "total": self.rubric.total(scores) if scores else None,
+            "medal": self.rubric.medal(self.rubric.total(scores)) if scores else None,
             "created_at": _now_iso(),
         }
         path = self._dir("tastings") / f"{tasting_id}-r{revision}.json"

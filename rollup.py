@@ -32,6 +32,13 @@ def _lock_path(target: Path) -> Path:
     return target.with_name(f"~${target.name}")
 
 
+def is_locked(target) -> bool:
+    """True when Excel has the workbook open. Check this before draining Quick Entry: the
+    drain writes journal records, and it must not run if the regenerate that clears the
+    sheet afterwards is going to fail."""
+    return _lock_path(Path(target)).exists()
+
+
 def _backup(target: Path, backup_dir: Path, keep: int):
     if not target.exists():
         return None
@@ -65,8 +72,12 @@ def _sheet(wb, title, headers, rows, widths=None):
     return ws
 
 
-def build(journal: store_mod.Journal, target: Path, backup_dir: Path, keep=30) -> dict:
-    """Regenerate the workbook. Returns a summary dict."""
+def build(journal: store_mod.Journal, target: Path, backup_dir: Path, keep=30,
+          quick_rows=None) -> dict:
+    """Regenerate the workbook. Returns a summary dict.
+
+    `quick_rows` are Quick Entry rows that could not be matched to a bottle: they are written
+    back onto the sheet with their reason, rather than dropped (SPEC.md §1.2)."""
     target = Path(target)
     if _lock_path(target).exists():
         raise RuntimeError(
@@ -82,7 +93,7 @@ def build(journal: store_mod.Journal, target: Path, backup_dir: Path, keep=30) -
     wb = Workbook()
 
     # --- Tastings: one row per sitting, newest first
-    head = (["tasting_id", "revision", "date", "spirit_id", "session_id", "flight_pos"]
+    head = (["tasting_id", "revision", "date", "spirit_id", "session_id", "flight_pos", "barrel_id"]
             + [rb.category(k).label for k in keys]
             + ["total", "medal", "counted", "venue", "pour_price", "pour_size_oz",
                "blind", "status", "entered_from", "rubric_version", "created_at"]
@@ -90,7 +101,7 @@ def build(journal: store_mod.Journal, target: Path, backup_dir: Path, keep=30) -
     rows = []
     for t in tastings:
         rows.append([t["tasting_id"], t["revision"], t["date"], t["spirit_id"],
-                     t.get("session_id"), t.get("flight_pos")]
+                     t.get("session_id"), t.get("flight_pos"), t.get("barrel_id")]
                     + [t["scores"].get(k) for k in keys]
                     + [t["total"], t["medal"], "yes" if t["include_in_average"] else "no",
                        t.get("venue"), t.get("pour_price"), t.get("pour_size_oz"),
@@ -100,6 +111,17 @@ def build(journal: store_mod.Journal, target: Path, backup_dir: Path, keep=30) -
     _sheet(wb, "Tastings", head, rows,
            {"tasting_id": 34, "spirit_id": 12, "medal": 11, "venue": 24, "created_at": 28,
             **{f"{rb.category(k).label} notes": 46 for k in keys}})
+
+    # --- Quick Entry: the phone lane. Drained into the journal and cleared on the next PC
+    # run; anything that could not be matched comes back with a reason (SPEC.md §1.2).
+    qhead = ["date", "display_name", "barrel_id", "nose", "palate", "finish", "notes",
+             "problem"]
+    qrows = [[q.get("date"), q.get("display_name"), q.get("barrel_id"), q.get("nose"),
+              q.get("palate"), q.get("finish"), q.get("notes"), q.get("problem")]
+             for q in (quick_rows or [])]
+    _sheet(wb, "Quick Entry", qhead, qrows,
+           {"display_name": 34, "nose": 26, "palate": 26, "finish": 26, "notes": 40,
+            "problem": 52})
 
     # --- Careers: the number shown everywhere else
     chead = ["spirit_id", "career_score", "medal", "sittings_counted", "sittings_total",
@@ -171,6 +193,7 @@ def build(journal: store_mod.Journal, target: Path, backup_dir: Path, keep=30) -
 
     return {"path": str(target), "tastings": len(rows), "careers": len(crows),
             "sessions": len(srows), "encounters": len(erows), "pending": len(prows),
+            "quick_entry": len(qrows),
             "bytes": target.stat().st_size}
 
 

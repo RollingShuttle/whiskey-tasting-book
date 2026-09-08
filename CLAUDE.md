@@ -28,7 +28,7 @@ a matching `test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -p "test_*.py"     # 121 tests, all passing
+python -m unittest discover -p "test_*.py"     # 152 tests, all passing
 python collection.py                           # health report, writes nothing
 ```
 
@@ -43,7 +43,7 @@ Done and tested — `collection.py` (loader), `rubric.py` (scoring), `store.py` 
 Web front end — **in progress.** `app.py` (Flask server at `127.0.0.1:8765`), the judging sheet,
 the flight/session view, the table view and compare (`static/index.html`, `app.js`, `table.js`,
 `compare.js`, `style.css`) are done and tested — SPEC.md build order steps 3, 4, 5 and 6.
-Covered by `test_app.py` (121 tests total). `GET /api/compare` takes `codes` (career scores,
+Covered by `test_app.py` (152 tests total). `GET /api/compare` takes `codes` (career scores,
 the default), or `session` / `tastings` to pin single sittings; it returns per-axis leaders and
 spreads, and every axis carries its own max so the view draws each bar against it.
 
@@ -62,10 +62,21 @@ The rubric now carries per-category `question` text (config.yaml) for the `?` to
 overall note is stored under `notes["overall"]` so `store.py` keeps its single notes dict. Flask
 is the chosen framework (SPEC.md §6 sanctioned FastAPI or Flask); added to requirements.txt.
 
-Still to build — Quick Entry drain, analysis charts (SPEC.md §7 steps 7–8), then the iPhone
-static client and the §8 pending bottle approval UI.
-Known gap: unsubmitted pours live only in the browser, so reloading mid-flight loses the drafts —
-the flight and every submitted pour are safe on the server. A local draft cache is the fix.
+Quick Entry (SPEC.md §7 step 7) is done: `quickentry.py` + `test_quickentry.py`. The phone types
+into the `Quick Entry` sheet of the rollup workbook; `POST /api/quickentry/drain` files each
+matchable row as an **unscored draft** and rewrites the workbook so the sheet is clear.
+Two rules hold it together — a name that is not unique is refused rather than guessed at
+(§2), and refused rows stay on the sheet with a `problem` reason rather than being dropped
+(§1.2). `store.write_tasting` now accepts an unscored card **only** when `status="draft"`,
+and forces `include_in_average` false for one, because `rubric.career()` would choke on empty
+scores. `barrel_id` is stored and rolled up.
+
+The draft cache closes the old gap: in-progress pours are mirrored to `localStorage` and
+restored on load, with a Discard control. Submitted pours and the flight were always safe on
+the server; this covers the unsubmitted ones.
+
+Still to build — analysis charts (SPEC.md §7 step 8), then the iPhone static client and the
+§8 pending bottle approval UI.
 
 The front end serves two clients from one codebase: the PC app at `127.0.0.1:8765`, and a
 static build in `docs/` deployed to GitHub Pages for the iPhone. Design is settled: see SPEC.md §5

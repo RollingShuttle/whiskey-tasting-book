@@ -433,3 +433,20 @@ input:disabled, textarea:disabled { color: var(--text); opacity: .8; cursor: def
 .cmp-note-overall { font-size: 14px; margin: 0 0 8px 13px; }
 .cmp-note-row { display: flex; gap: 10px; font-size: 13px; margin-left: 13px; padding: 2px 0; }
 .cmp-note-cat { color: var(--muted); min-width: 92px; flex-shrink: 0; }
+
+/* ---------------------------------------------------------------- quick entry */
+.quick-card { border-left: 3px solid var(--brass-bright); }
+.quick-head { display: flex; align-items: flex-start; gap: 16px; }
+.quick-title-wrap { flex: 1 1 auto; min-width: 0; }
+.quick-title { font-family: var(--serif); font-size: 18px; }
+.quick-sub { color: var(--muted); font-size: 13px; margin-top: 4px; max-width: 62ch; line-height: 1.5; }
+.quick-list { list-style: none; margin: 14px 0 0; padding: 0; }
+.quick-list li {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px;
+  padding: 9px 12px; border-radius: 8px; background: var(--surface-2);
+  border-left: 3px solid var(--line); margin-bottom: 6px;
+}
+.quick-list li.flagged { border-left-color: #E8896A; }
+.quick-name { font-family: var(--serif); font-size: 15px; }
+.quick-bits { color: var(--muted); font-size: 12px; }
+.quick-problem { color: #E8896A; font-size: 12px; margin-left: auto; text-align: right; }

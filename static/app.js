@@ -20,6 +20,7 @@ const state = {
   spirits: [],
   filter: "all",
   view: "score",        // "score" | "table" | "compare"
+  quick: null,          // Quick Entry rows waiting on the workbook
   mode: "single",       // "single" — one standalone pour | "session" — a flight of pours
   session: null,        // the flight record from the server
   pours: [],            // [{spirit, scores, notes, overall, context, submitted, tasting}]
@@ -92,8 +93,9 @@ async function boot() {
   }
   await loadSpirits();
   await loadHealth();
+  await loadQuick();
   buildPicker();
-  showPicker();
+  if (!(await restoreDraft())) showPicker();
 }
 
 async function loadSpirits() {
@@ -126,13 +128,155 @@ async function refresh() {
   try {
     const r = await api("/api/refresh", { method: "POST" });
     TableView.invalidate(); CompareView.invalidate();
-    await loadSpirits(); await loadHealth();
+    await loadSpirits(); await loadHealth(); await loadQuick();
     showStatus("ok", `Collection reread from the master (read-only): ${r.count} spirits.`);
   } catch (e) {
     showStatus("err", `Refresh failed: ${e.body?.errors ? e.body.errors.join("; ") : e.message}`);
   } finally {
     btn.disabled = false; btn.textContent = "Refresh";
   }
+}
+
+// ---------------------------------------------------------------- quick entry
+/* The phone lane (SPEC.md §1.2). Rows typed into the Quick Entry sheet of the tastings workbook
+   are filed as unscored drafts against their bottle; anything that cannot be matched stays on the
+   sheet with a reason, because guessing would put a score on the wrong bottle. */
+async function loadQuick() {
+  try { state.quick = await api("/api/quickentry"); } catch { state.quick = null; }
+  renderQuick();
+}
+
+function renderQuick() {
+  const card = document.getElementById("quick");
+  const q = state.quick;
+  if (!q || !q.rows || !q.rows.length || state.view !== "score") { card.hidden = true; return; }
+  card.hidden = false;
+  const n = q.rows.length;
+  card.replaceChildren(
+    el("div", { class: "quick-head" },
+      el("div", { class: "quick-title-wrap" },
+        el("div", { class: "quick-title" },
+          `${n} Quick Entry row${n === 1 ? "" : "s"} waiting`),
+        el("div", { class: "quick-sub" },
+          "Typed on the phone into the tastings workbook. Draining files each one as an "
+          + "unscored draft against its bottle, ready to score properly.")),
+      el("button", { class: "submit", id: "quick-drain", type: "button", onclick: drainQuick,
+                     disabled: !!q.locked },
+        q.locked ? "Workbook open in Excel" : "Drain")),
+    el("ul", { class: "quick-list" }, ...q.rows.map((r) =>
+      el("li", { class: r.problem ? "flagged" : "" },
+        el("span", { class: "quick-name" }, r.display_name || "(no name typed)"),
+        el("span", { class: "quick-bits" },
+          [r.date, r.nose, r.palate, r.finish].filter(Boolean).join(" · ")),
+        r.problem ? el("span", { class: "quick-problem" }, r.problem) : null))));
+}
+
+async function drainQuick() {
+  const btn = document.getElementById("quick-drain");
+  btn.disabled = true; btn.textContent = "Draining…";
+  try {
+    const r = await api("/api/quickentry/drain", { method: "POST" });
+    TableView.invalidate(); CompareView.invalidate();
+    await loadQuick();
+    await loadHealth();
+    const c = r.counts;
+    showStatus(c.unmatched ? "err" : "ok",
+      `Drained ${c.drained} row${c.drained === 1 ? "" : "s"} as unscored draft`
+      + `${c.drained === 1 ? "" : "s"}.`
+      + (c.unmatched ? ` ${c.unmatched} left on the sheet — see the reason on each.` : ""),
+      !!c.unmatched);
+  } catch (e) {
+    showStatus("err", `Drain failed: ${e.body?.error || e.message}`);
+    btn.disabled = false; btn.textContent = "Drain";
+  }
+}
+
+// ---------------------------------------------------------------- draft cache
+/* Unsubmitted pours live only in the browser, so a reload used to lose a half-scored flight.
+   Everything in progress is mirrored into localStorage and restored on the next load. Submitted
+   pours and the flight itself are already safe on the server; this only covers the drafts. */
+const DRAFT_KEY = "whiskey.draft.v1";
+let draftTimer = null;
+
+function draftPayload() {
+  return {
+    v: 1,
+    saved_at: new Date().toISOString(),
+    mode: state.mode,
+    session: state.session,
+    active: state.active,
+    pours: state.pours.map((p) => ({
+      spirit: p.spirit, flight_pos: p.flight_pos, scores: p.scores, notes: p.notes,
+      overall: p.overall, context: p.context, blind: p.blind,
+      submitted: p.submitted, tasting: p.tasting,
+    })),
+  };
+}
+
+function hasUnsavedWork() {
+  return state.pours.some((p) => !p.submitted && (
+    Object.values(p.scores).some((v) => v !== null)
+    || Object.values(p.notes).some((v) => v && String(v).trim())
+    || (p.overall && p.overall.trim())));
+}
+
+function saveDraft() {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => {
+    try {
+      const worth = state.pours.length && (hasUnsavedWork() || state.mode === "session");
+      if (worth) localStorage.setItem(DRAFT_KEY, JSON.stringify(draftPayload()));
+      else localStorage.removeItem(DRAFT_KEY);
+    } catch { /* private mode or quota — a lost draft must not break the app */ }
+  }, 350);
+}
+
+function clearDraft() {
+  clearTimeout(draftTimer);
+  try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+}
+
+function readDraft() {
+  try {
+    const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
+    return (d && d.v === 1 && Array.isArray(d.pours) && d.pours.length) ? d : null;
+  } catch { return null; }
+}
+
+async function restoreDraft() {
+  const d = readDraft();
+  if (!d) return false;
+  // A flight the server has never heard of is not worth restoring.
+  if (d.mode === "session" && d.session?.session_id) {
+    try {
+      await api(`/api/session/${encodeURIComponent(d.session.session_id)}`);
+    } catch {
+      clearDraft();
+      return false;
+    }
+  }
+  state.mode = d.mode === "session" ? "session" : "single";
+  state.session = d.session || null;
+  state.pours = d.pours.map((p) => ({ ...newPour(p.spirit, p.flight_pos), ...p }));
+  state.active = Math.max(0, Math.min(d.active || 0, state.pours.length - 1));
+  if (state.mode === "session") renderSession();
+  document.getElementById("picker").hidden = true;
+  renderSheet();
+  const when = new Date(d.saved_at);
+  const unsent = state.pours.filter((x) => !x.submitted).length;
+  showStatus("ok", el("span", {},
+    `Restored ${unsent} unsubmitted pour${unsent === 1 ? "" : "s"} from `,
+    Number.isNaN(when.getTime()) ? "an earlier session" : when.toLocaleTimeString(), ". ",
+    el("button", { class: "link", type: "button", onclick: discardDraft }, "Discard")), true);
+  return true;
+}
+
+function discardDraft() {
+  clearDraft();
+  state.mode = "single"; state.session = null; state.pours = []; state.active = 0;
+  document.getElementById("session").hidden = true;
+  hideStatus();
+  showPicker();
 }
 
 // ---------------------------------------------------------------- views
@@ -144,11 +288,13 @@ function showView(v) {
   }
   document.getElementById("table-view").hidden = true;
   document.getElementById("compare-view").hidden = true;
+  renderQuick();
 
   if (v !== "score") {
     document.getElementById("session").hidden = true;
     document.getElementById("picker").hidden = true;
     document.getElementById("sheet").hidden = true;
+    document.getElementById("quick").hidden = true;
     if (v === "table") TableView.open(); else CompareView.open();
     return;
   }
@@ -266,6 +412,7 @@ async function createFlight(f) {
     state.session = r.session;
     state.pours = [];
     state.active = 0;
+    saveDraft();
     renderSession();
     showPicker();
   } catch (e) {
@@ -279,6 +426,7 @@ async function setFlightBlind(on) {
       title: state.session.title, date: state.session.date,
       location: state.session.location, company: state.session.company });
     state.session = r.session;             // a new revision, never an edit
+    saveDraft();
     renderSession();
     if (!document.getElementById("sheet").hidden) renderSheet();
   } catch (e) {
@@ -287,6 +435,7 @@ async function setFlightBlind(on) {
 }
 
 function endFlight() {
+  clearDraft();
   state.mode = "single"; state.session = null; state.pours = []; state.active = 0;
   document.getElementById("session").hidden = true;
   hideStatus();
@@ -354,6 +503,7 @@ function addPour(code) {
   }
   document.getElementById("picker").hidden = true;
   renderSheet();
+  saveDraft();
 }
 
 function backToPicker() {
@@ -434,7 +584,7 @@ function renderSheet() {
   const overall = el("textarea", {
     rows: "2", placeholder: "Overall impression, separate from the ten rows above",
     autocapitalize: "sentences", autocorrect: "on", spellcheck: "true", disabled: p.submitted,
-    oninput: (e) => { p.overall = e.target.value; autoGrow(e.target); },
+    oninput: (e) => { p.overall = e.target.value; autoGrow(e.target); saveDraft(); },
   });
   overall.value = p.overall;
   sheet.append(el("div", { class: "overall" }, el("label", {}, "Overall notes"), overall));
@@ -456,7 +606,9 @@ function buildRow(cat, p) {
   const notes = row.querySelector(".cat-notes");
   notes.value = p.notes[cat.key] || "";
   notes.disabled = p.submitted;
-  notes.addEventListener("input", (e) => { p.notes[cat.key] = e.target.value; autoGrow(e.target); });
+  notes.addEventListener("input", (e) => {
+    p.notes[cat.key] = e.target.value; autoGrow(e.target); saveDraft();
+  });
 
   if (cat.key === "value") row.append(el("div", { class: "value-hint", id: "value-hint" }, ""));
   return row;
@@ -617,6 +769,7 @@ function onScoreChange() {
   if (submit) submit.disabled = !complete;
 
   updateValueHint(p);
+  saveDraft();
 }
 
 function updateValueHint(p) {
@@ -695,6 +848,7 @@ async function submitCard() {
     p.tasting = r.tasting;
     TableView.invalidate();            // the table must not show a stale career score
     CompareView.invalidate();
+    saveDraft();
     await loadHealth();
 
     const name = p.spirit.name || p.spirit.display_name;
@@ -711,7 +865,7 @@ async function submitCard() {
         `Saved ${r.tasting.tasting_id} — ${name} scored `,
         el("strong", {}, `${r.tasting.total}`), ", ", el("strong", {}, r.tasting.medal), ". ",
         el("button", { class: "link", type: "button", onclick: () => {
-          state.pours = []; state.active = 0; showPicker();
+          state.pours = []; state.active = 0; clearDraft(); showPicker();
         } }, "Score another")));
     }
   } catch (e) {

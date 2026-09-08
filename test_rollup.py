@@ -45,7 +45,8 @@ class TestStructure(RollupCase):
         self.build()
         wb = self.load()
         self.assertEqual(wb.sheetnames,
-                         ["Tastings", "Careers", "Sessions", "Encounters", "Pending", "About"])
+                         ["Tastings", "Quick Entry", "Careers", "Sessions", "Encounters",
+                          "Pending", "About"])
         wb.close()
 
     def test_every_rubric_category_gets_a_score_and_a_notes_column(self):
@@ -151,6 +152,46 @@ class TestContent(RollupCase):
         row = dict(zip([c.value for c in ws[1]], [c.value for c in ws[2]]))
         self.assertEqual(row["session_id"], sid)
         self.assertEqual(row["flight_pos"], 1)
+        wb.close()
+
+
+    def test_quick_entry_starts_empty_and_ready_to_type_into(self):
+        summary = self.build()
+        self.assertEqual(summary["quick_entry"], 0)
+        wb = self.load()
+        ws = wb["Quick Entry"]
+        self.assertEqual([c.value for c in ws[1]][:4],
+                         ["date", "display_name", "barrel_id", "nose"])
+        self.assertEqual(ws.max_row, 1, "headers only until something is flagged")
+        wb.close()
+
+    def test_unmatched_quick_entry_rows_come_back_onto_the_sheet(self):
+        """Rows that fail to match are left in place and flagged, never dropped (SPEC.md §1.2)."""
+        rollup.build(self.j, self.out, self.backups, quick_rows=[
+            {"date": "2026-09-08", "display_name": "Mystery pour", "nose": "smoke",
+             "problem": "no match in the collection"}])
+        wb = self.load()
+        ws = wb["Quick Entry"]
+        row = dict(zip([c.value for c in ws[1]], [c.value for c in ws[2]]))
+        self.assertEqual(row["display_name"], "Mystery pour")
+        self.assertEqual(row["nose"], "smoke")
+        self.assertEqual(row["problem"], "no match in the collection")
+        wb.close()
+
+    def test_a_draft_lands_unscored_and_uncounted(self):
+        """A drained Quick Entry row has notes but no numbers; it must not disturb any career."""
+        self.j.write_tasting(spirit_id="B-1", status="draft", entered_from="quick-entry",
+                             notes={"aroma": "smoke"}, barrel_id="F664")
+        self.build()
+        wb = self.load()
+        ws = wb["Tastings"]
+        row = dict(zip([c.value for c in ws[1]], [c.value for c in ws[2]]))
+        self.assertIsNone(row["total"])
+        self.assertIsNone(row["Aroma"])
+        self.assertEqual(row["counted"], "no")
+        self.assertEqual(row["status"], "draft")
+        self.assertEqual(row["Aroma notes"], "smoke")
+        self.assertEqual(row["barrel_id"], "F664")
         wb.close()
 
 

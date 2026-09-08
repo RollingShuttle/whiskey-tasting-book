@@ -265,7 +265,8 @@ class SpiritCatalog:
         return len(self._order)
 
 
-def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None, master=None):
+def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None, master=None,
+               rollup=None, backups=None):
     cfg = _load_cfg(config_path)
 
     rubric = rubric_mod.Rubric(cfg["rubric"])
@@ -280,6 +281,10 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
     except FileNotFoundError:
         catalog_error = (f"No collection snapshot at {snap}. Run `python collection.py "
                          f"--snapshot {snap}` (reads the master read-only) or POST /api/refresh.")
+
+    rollup_path = Path(rollup or os.environ.get("WHISKEY_ROLLUP")
+                       or cfg["paths"]["rollup_workbook"])
+    backup_dir = Path(backups or cfg["paths"]["backups"])
 
     app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="/static")
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0        # dev: always serve fresh static files
@@ -533,6 +538,48 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
 
         return jsonify({"categories": rubric.as_config()["categories"],
                         "items": items, "axes": _axes(rubric, items)})
+
+    # -- quick entry: the phone lane --------------------------------------
+    @app.get("/api/quickentry")
+    def api_quick_rows():
+        import quickentry as qe
+        import rollup as rollup_mod
+        return jsonify({
+            "workbook": str(rollup_path),
+            "exists": rollup_path.exists(),
+            "locked": rollup_mod.is_locked(rollup_path),
+            "rows": qe.read_rows(rollup_path),
+        })
+
+    @app.post("/api/quickentry/drain")
+    def api_quick_drain():
+        """Turn typed rows into draft tastings, then rewrite the workbook so the sheet is clear
+        and only the flagged rows remain (SPEC.md §1.2)."""
+        import quickentry as qe
+        import rollup as rollup_mod
+
+        # Refuse before writing anything: the drain is only safe if the rewrite that clears the
+        # sheet can follow it, otherwise the same rows would be drained twice on the next run.
+        if rollup_mod.is_locked(rollup_path):
+            return jsonify({"ok": False, "error": (
+                f"{rollup_path.name} is open in Excel. Close it and try again — draining writes "
+                "journal records and then rewrites the workbook to clear the sheet.")}), 409
+
+        try:
+            summary = qe.drain(rollup_path, journal, catalog.all())
+        except Exception as e:                     # noqa: BLE001 — surface the real reason
+            return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+
+        try:
+            rollup_mod.build(journal, rollup_path, backup_dir,
+                             int(cfg["paths"].get("backup_keep", 30)),
+                             quick_rows=summary["unmatched"])
+        except Exception as e:                     # noqa: BLE001
+            return jsonify({"ok": False, **summary, "error": (
+                f"rows were drained into the journal, but the workbook could not be "
+                f"rewritten: {e}")}), 500
+
+        return jsonify({"ok": True, **summary})
 
     # -- status pill ---------------------------------------------------------
     @app.get("/api/health")

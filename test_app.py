@@ -48,7 +48,10 @@ class AppCase(unittest.TestCase):
             app_folder=str(self.tmp / "journal"),
             snapshot_path=str(self.snap),
             master="Z:/nonexistent/Whiskey Collection.xlsx",   # must never be opened on hot paths
+            rollup=str(self.tmp / "Whiskey Tastings.xlsx"),
+            backups=str(self.tmp / "backups"),
         )
+        self.book = self.tmp / "Whiskey Tastings.xlsx"
         self.c = self.app.test_client()
 
     def tearDown(self):
@@ -411,6 +414,86 @@ class TestCompare(AppCase):
         self.assertIsNone(d["items"][0]["total"])
         self.assertEqual(d["items"][0]["n"], 0)
         self.assertIsNone({a["key"]: a for a in d["axes"]}["aroma"]["leader"])
+
+
+class TestQuickEntry(AppCase):
+    """The phone lane, end to end through the server (SPEC.md §1.2)."""
+
+    def write_quick(self, rows):
+        from openpyxl import Workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Quick Entry"
+        head = ["date", "display_name", "barrel_id", "nose", "palate", "finish", "notes"]
+        ws.append(head)
+        for r in rows:
+            ws.append([r.get(h) for h in head])
+        wb.save(self.book)
+        wb.close()
+
+    def test_typed_rows_are_listed_before_draining(self):
+        self.write_quick([{"display_name": "B-18", "nose": "caramel"}])
+        d = self.c.get("/api/quickentry").get_json()
+        self.assertTrue(d["exists"])
+        self.assertFalse(d["locked"])
+        self.assertEqual(len(d["rows"]), 1)
+        self.assertEqual(d["rows"][0]["nose"], "caramel")
+
+    def test_no_workbook_yet_is_not_an_error(self):
+        d = self.c.get("/api/quickentry").get_json()
+        self.assertFalse(d["exists"])
+        self.assertEqual(d["rows"], [])
+
+    def test_draining_creates_drafts_and_clears_the_sheet(self):
+        self.write_quick([{"date": "2026-09-08", "display_name": "B-18", "barrel_id": "F664",
+                           "nose": "orange peel", "palate": "toffee", "finish": "long",
+                           "notes": "revisit"}])
+        r = self.c.post("/api/quickentry/drain")
+        self.assertEqual(r.status_code, 200)
+        body = r.get_json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["counts"], {"read": 1, "drained": 1, "unmatched": 0})
+
+        rows = self.c.get("/api/table/tastings").get_json()["rows"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["code"], "B-18")
+        self.assertIsNone(rows[0]["total"], "a drained row has notes but no score yet")
+
+        # the sheet was rewritten, so the same row cannot be drained twice
+        self.assertEqual(self.c.get("/api/quickentry").get_json()["rows"], [])
+        again = self.c.post("/api/quickentry/drain").get_json()
+        self.assertEqual(again["counts"]["drained"], 0)
+
+    def test_an_unmatched_row_stays_on_the_sheet_with_its_reason(self):
+        self.write_quick([{"display_name": "Something Nobody Owns", "nose": "peat"},
+                          {"display_name": "B-18", "nose": "caramel"}])
+        body = self.c.post("/api/quickentry/drain").get_json()
+        self.assertEqual(body["counts"], {"read": 2, "drained": 1, "unmatched": 1})
+
+        left = self.c.get("/api/quickentry").get_json()["rows"]
+        self.assertEqual(len(left), 1)
+        self.assertEqual(left[0]["display_name"], "Something Nobody Owns")
+        self.assertEqual(left[0]["nose"], "peat", "the typing is not lost")
+
+    def test_a_draft_does_not_move_the_career_score(self):
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})
+        self.write_quick([{"display_name": "B-18", "nose": "caramel"}])
+        self.c.post("/api/quickentry/drain")
+        row = {r["code"]: r for r in
+               self.c.get("/api/table/collection").get_json()["rows"]}["B-18"]
+        self.assertEqual(row["career_score"], 66)
+        self.assertEqual(row["n"], 1)
+        self.assertEqual(row["n_total"], 2, "the draft is visible but not counted")
+
+    def test_draining_is_refused_while_excel_holds_the_workbook(self):
+        self.write_quick([{"display_name": "B-18", "nose": "caramel"}])
+        lock = self.book.with_name(f"~${self.book.name}")
+        lock.write_bytes(b"")
+        r = self.c.post("/api/quickentry/drain")
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("open in Excel", r.get_json()["error"])
+        self.assertEqual(self.c.get("/api/table/tastings").get_json()["rows"], [],
+                         "nothing may be drained when the rewrite cannot follow")
 
 
 class TestPageAndHealth(AppCase):
