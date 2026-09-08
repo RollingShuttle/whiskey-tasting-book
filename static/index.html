@@ -13,6 +13,10 @@
 <body>
   <header class="topbar">
     <div class="brand">Whiskey&nbsp;Tasting&nbsp;Book</div>
+    <nav class="nav" aria-label="Views">
+      <button id="nav-score" class="navbtn active" type="button">Score</button>
+      <button id="nav-table" class="navbtn" type="button">Table</button>
+    </nav>
     <div class="topbar-right">
       <button id="btn-flight" class="ghost" type="button" title="Score several pours in one sitting">New flight</button>
       <button id="btn-refresh" class="ghost" type="button" title="Reread the collection from the master workbook (read-only)">Refresh</button>
@@ -43,6 +47,9 @@
     <!-- The judging sheet for the active pour -->
     <section id="sheet" class="card sheet" hidden aria-live="polite"></section>
 
+    <!-- Every spirit / every tasting, sortable and filterable -->
+    <section id="table-view" class="card table-view" hidden></section>
+
     <div id="status" class="statusline" role="status" aria-live="polite" hidden></div>
   </main>
 
@@ -65,5 +72,6 @@
   </template>
 
   <script src="/static/app.js"></script>
+  <script src="/static/table.js"></script>
 </body>
 </html>

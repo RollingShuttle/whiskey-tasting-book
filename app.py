@@ -43,6 +43,88 @@ MEDAL_COLORS = {
 }
 
 
+# Column contracts for the table view (SPEC.md §4.3). The front end builds its column chooser and
+# its CSV straight from these, so adding a column is a one-line change here.
+COLLECTION_COLUMNS = [
+    {"key": "code",             "label": "Code",     "type": "code",  "default": True},
+    {"key": "display_name",     "label": "Name",     "type": "name",  "default": True},
+    {"key": "type",             "label": "Type",     "type": "text",  "default": True},
+    {"key": "region",           "label": "Region",   "type": "text",  "default": True},
+    {"key": "rarity",           "label": "Rarity",   "type": "text",  "default": False},
+    {"key": "status",           "label": "Status",   "type": "text",  "default": False},
+    {"key": "source",           "label": "Source",   "type": "text",  "default": False},
+    {"key": "age",              "label": "Age",      "type": "num",   "default": False},
+    {"key": "proof",            "label": "Proof",    "type": "num",   "default": False},
+    {"key": "abv",              "label": "ABV",      "type": "num",   "default": False},
+    {"key": "paid",             "label": "Paid",     "type": "money", "default": True},
+    {"key": "size_oz",          "label": "Size oz",  "type": "num",   "default": False},
+    {"key": "value_per_oz",     "label": "$ / oz",   "type": "money", "default": True},
+    {"key": "career_score",     "label": "Score",    "type": "score1", "default": True},
+    {"key": "medal",            "label": "Medal",    "type": "medal", "default": True},
+    {"key": "n",                "label": "n",        "type": "int",   "default": True},
+    {"key": "best",             "label": "Best",     "type": "int",   "default": False},
+    {"key": "worst",            "label": "Worst",    "type": "int",   "default": False},
+    {"key": "score_per_dollar", "label": "Score / $", "type": "num3", "default": False},
+]
+
+TASTING_COLUMNS = [
+    {"key": "date",             "label": "Date",     "type": "text",  "default": True},
+    {"key": "code",             "label": "Code",     "type": "code",  "default": True},
+    {"key": "display_name",     "label": "Name",     "type": "name",  "default": True},
+    {"key": "type",             "label": "Type",     "type": "text",  "default": True},
+    {"key": "region",           "label": "Region",   "type": "text",  "default": False},
+    {"key": "total",            "label": "Score",    "type": "score", "default": True},
+    {"key": "medal",            "label": "Medal",    "type": "medal", "default": True},
+    {"key": "counted",          "label": "Counted",  "type": "text",  "default": True},
+    {"key": "venue",            "label": "Venue",    "type": "text",  "default": True},
+    {"key": "pour_price",       "label": "Pour $",   "type": "money", "default": False},
+    {"key": "pour_size_oz",     "label": "Pour oz",  "type": "num",   "default": False},
+    {"key": "value_per_oz",     "label": "$ / oz",   "type": "money", "default": True},
+    {"key": "score_per_dollar", "label": "Score / $", "type": "num3", "default": False},
+    {"key": "blind",            "label": "Blind",    "type": "text",  "default": False},
+    {"key": "flight_pos",       "label": "Pour #",   "type": "int",   "default": False},
+    {"key": "entered_from",     "label": "Entered",  "type": "text",  "default": False},
+    {"key": "tasting_id",       "label": "Tasting id", "type": "text", "default": False},
+]
+
+
+def _group_tastings(journal):
+    """One pass over the journal, grouped by spirit.
+
+    journal.careers() re-reads every tasting file once per scored spirit, which is fine for a
+    handful and quadratic for a few hundred. The table touches every spirit, so it reads once.
+    """
+    by = {}
+    for t in journal.tastings():
+        by.setdefault(t["spirit_id"], []).append(t)
+    return by
+
+
+def _career_bits(rubric, sittings):
+    if not sittings:
+        return {"career_score": None, "medal": None, "n": 0, "n_total": 0,
+                "best": None, "worst": None}
+    c = rubric.career(sittings)
+    rng = c.get("range") or (None, None)
+    return {"career_score": c["mean_total"], "medal": c["medal"], "n": c["n"],
+            "n_total": c["n_total"], "best": rng[1], "worst": rng[0]}
+
+
+def _ratio(numerator, denominator, places=2):
+    if not numerator or not denominator:
+        return None
+    return round(numerator / denominator, places)
+
+
+def _pour_value_per_oz(sittings):
+    """$/oz for something not owned: what the pours actually cost."""
+    priced = [(s["pour_price"], s["pour_size_oz"]) for s in sittings
+              if s.get("pour_price") and s.get("pour_size_oz")]
+    if not priced:
+        return None
+    return round(sum(p / z for p, z in priced) / len(priced), 2)
+
+
 def _load_cfg(config_path):
     with open(config_path, encoding="utf-8") as fh:
         return yaml.safe_load(fh)
@@ -263,6 +345,78 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
             "pours": pours,
             "next_flight_pos": journal.next_flight_pos(sid),
         })
+
+    # -- the table view ------------------------------------------------------
+    @app.get("/api/table/collection")
+    def api_table_collection():
+        """One row per spirit: the master's fields joined to the career score. Encounters are in
+        here too, so "have I had this?" is answerable next to "do I own this?" (SPEC.md §2.1)."""
+        by_spirit = _group_tastings(journal)
+        journal.assign_encounter_codes()          # PC-side, idempotent, writes only on a change
+        rows = []
+
+        for sp in catalog.all():
+            sits = by_spirit.get(sp["code"], [])
+            bits = _career_bits(rubric, sits)
+            rows.append({
+                "code": sp["code"], "display_name": sp["display_name"],
+                "distillery": sp.get("distillery"), "name": sp.get("name"),
+                "source": sp.get("_sheet"), "owned": True,
+                "type": sp.get("type"), "region": sp.get("region"),
+                "rarity": sp.get("rarity"), "status": sp.get("status"),
+                "age": sp.get("age"), "age_label": sp.get("age_label"),
+                "proof": sp.get("proof"), "abv": sp.get("abv"),
+                "paid": sp.get("paid"), "size_oz": sp.get("size_oz"),
+                "value_per_oz": sp.get("value_per_oz"),
+                "score_per_dollar": _ratio(bits["career_score"], sp.get("paid"), 3),
+                **bits,
+            })
+
+        for enc in journal.encounters():
+            if enc.get("linked_bottle_code"):
+                continue      # folded into the bottle it became — not a separate row (§2.1)
+            code = enc.get("code")
+            sits = by_spirit.get(code, []) if code else []
+            bits = _career_bits(rubric, sits)
+            name = " ".join(p for p in (enc.get("distillery"), enc.get("name")) if p).strip()
+            rows.append({
+                "code": code, "display_name": name or enc.get("name"),
+                "distillery": enc.get("distillery"), "name": enc.get("name"),
+                "source": "Encounter", "owned": False,
+                "type": enc.get("type"), "region": enc.get("region"),
+                "rarity": None, "status": None,
+                "age": enc.get("age"), "age_label": None,
+                "proof": enc.get("proof"), "abv": None,
+                "paid": None, "size_oz": None,
+                "value_per_oz": _pour_value_per_oz(sits),
+                "score_per_dollar": None,
+                **bits,
+            })
+
+        return jsonify({"columns": COLLECTION_COLUMNS, "rows": rows})
+
+    @app.get("/api/table/tastings")
+    def api_table_tastings():
+        """One row per sitting — every tasting, sortable and filterable on every field."""
+        rows = []
+        for t in journal.tastings():
+            sp = catalog.get(t["spirit_id"]) or {}
+            rows.append({
+                "tasting_id": t["tasting_id"], "date": t.get("date"), "code": t["spirit_id"],
+                "display_name": sp.get("display_name") or t["spirit_id"],
+                "type": sp.get("type"), "region": sp.get("region"),
+                "total": t["total"], "medal": t["medal"],
+                "counted": "yes" if t.get("include_in_average", True) else "no",
+                "venue": t.get("venue"),
+                "pour_price": t.get("pour_price"), "pour_size_oz": t.get("pour_size_oz"),
+                "value_per_oz": (_ratio(t.get("pour_price"), t.get("pour_size_oz"))
+                                 or sp.get("value_per_oz")),
+                "score_per_dollar": _ratio(t["total"], t.get("pour_price") or sp.get("paid"), 3),
+                "blind": "yes" if t.get("blind") else "no",
+                "flight_pos": t.get("flight_pos"), "session_id": t.get("session_id"),
+                "entered_from": t.get("entered_from"),
+            })
+        return jsonify({"columns": TASTING_COLUMNS, "rows": rows})
 
     # -- status pill ---------------------------------------------------------
     @app.get("/api/health")

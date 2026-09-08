@@ -40,9 +40,13 @@ fails, stop everything.
 Done and tested — `collection.py` (loader), `rubric.py` (scoring), `store.py` (journal),
 `rollup.py` (generates `Whiskey Tastings.xlsx`).
 
-Web front end — **in progress.** `app.py` (Flask server at `127.0.0.1:8765`), the judging sheet
-and the flight/session view (`static/index.html`, `app.js`, `style.css`) are done and tested —
-SPEC.md build order steps 3 and 4. Covered by `test_app.py` (100 tests total). Sessions are a
+Web front end — **in progress.** `app.py` (Flask server at `127.0.0.1:8765`), the judging sheet,
+the flight/session view and the table view (`static/index.html`, `app.js`, `table.js`, `style.css`)
+are done and tested — SPEC.md build order steps 3, 4 and 5. Covered by `test_app.py` (110 tests
+total). The table serves two modes from `/api/table/collection` (one row per spirit, master fields
+joined to the career score, encounters included as not-owned) and `/api/table/tastings` (one row
+per sitting); columns are declared once in `app.py` as `COLLECTION_COLUMNS` / `TASTING_COLUMNS`
+and the column chooser and CSV are generated from that contract. Sessions are a
 first-class journal record: `store.write_session/sessions/session/next_flight_pos`, immutable with
 revisions like tastings, filed under `sessions/` with an **`F-`** prefix (not `S-`, which is
 already a Sample code). `rollup.py` grew a `Sessions` sheet. A standalone pour and a flight are the
@@ -54,8 +58,8 @@ The rubric now carries per-category `question` text (config.yaml) for the `?` to
 overall note is stored under `notes["overall"]` so `store.py` keeps its single notes dict. Flask
 is the chosen framework (SPEC.md §6 sanctioned FastAPI or Flask); added to requirements.txt.
 
-Still to build — table view (sort/filter + `$ per oz`), compare, Quick Entry drain, analysis charts
-(SPEC.md §7 steps 5–8), then the iPhone static client and the §8 pending bottle approval UI.
+Still to build — compare, Quick Entry drain, analysis charts (SPEC.md §7 steps 6–8), then the
+iPhone static client and the §8 pending bottle approval UI.
 Known gap: unsubmitted pours live only in the browser, so reloading mid-flight loses the drafts —
 the flight and every submitted pour are safe on the server. A local draft cache is the fix. It serves two clients from one codebase: the PC app at `127.0.0.1:8765`, and a
 static build in `docs/` deployed to GitHub Pages for the iPhone. Design is settled: see SPEC.md §5

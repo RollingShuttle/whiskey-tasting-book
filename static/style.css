@@ -287,6 +287,64 @@ button.ghost:hover { color: var(--text); border-color: var(--brass); }
 }
 .add-pour:hover { color: var(--brass-bright); border-color: var(--brass); }
 
+/* ---------------------------------------------------------------- top nav */
+.nav { display: flex; gap: 4px; margin-left: 26px; flex: 1 1 auto; }
+.navbtn {
+  background: transparent; border: none; color: var(--muted);
+  padding: 7px 14px; border-radius: 8px; font-size: 14px;
+}
+.navbtn:hover { color: var(--text); }
+.navbtn.active { color: var(--brass-bright); background: var(--surface-2); font-weight: 500; }
+
+/* ---------------------------------------------------------------- table view */
+.table-view { padding: 16px 18px; }
+.table-loading { color: var(--muted); padding: 20px 4px; }
+
+.t-toolbar { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center; }
+.t-modes { display: flex; gap: 6px; }
+.t-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: auto; }
+.t-search {
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px;
+  color: var(--text); font-size: 16px; padding: 7px 11px; width: 190px;
+}
+.t-search:focus { outline: 2px solid var(--brass-bright); border-color: transparent; }
+.t-select {
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px;
+  color: var(--text); font-size: 13px; padding: 7px 9px; font-family: inherit;
+}
+
+.t-chooser {
+  flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px 18px;
+  margin-top: 12px; padding: 12px 14px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+}
+.t-choice { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.t-choice input { accent-color: var(--brass); }
+
+.t-scroll { overflow-x: auto; margin-top: 14px; }
+.t-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.t-table th, .t-table td {
+  text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.t-table th {
+  position: sticky; top: 0; z-index: 1; cursor: pointer; user-select: none;
+  color: var(--muted); font-weight: 500; font-size: 12px;
+  background: var(--surface); border-bottom-color: var(--brass);
+}
+.t-table th:hover { color: var(--text); }
+.t-table th.sorted { color: var(--brass-bright); }
+.t-arrow { margin-left: 5px; font-size: 9px; }
+.t-table tbody tr:hover { background: var(--surface-2); }
+.t-num { text-align: right; font-variant-numeric: tabular-nums; }
+.t-score { text-align: right; font-variant-numeric: tabular-nums; color: var(--brass-bright); font-weight: 500; }
+.t-code { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+.t-name { font-family: var(--serif); font-size: 14px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+.t-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+.t-null { color: var(--muted); opacity: .6; }
+.medal-sm { font-size: 11px; padding: 2px 9px; }
+.t-footer { color: var(--muted); font-size: 12px; margin-top: 12px; }
+
 /* a submitted card is a record, not a form */
 .sheet.readonly .strip { opacity: .75; }
 .sheet.readonly .cat-notes, .sheet.readonly .overall textarea { opacity: .85; }

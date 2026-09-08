@@ -15,6 +15,8 @@ import unittest
 from pathlib import Path
 
 import app as app_mod
+import rubric as rubric_mod
+import store as store_mod
 from test_rubric import EXAMPLE_CARD
 
 # Synthetic fixtures — invented bottles, not the real collection. The server logic under test does
@@ -213,6 +215,109 @@ class TestSessions(AppCase):
         sid = self._new_session()["session_id"]
         self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})      # no session_id
         self.assertEqual(self.c.get(f"/api/session/{sid}").get_json()["pours"], [])
+
+
+class TestTableView(AppCase):
+    def _journal(self):
+        return store_mod.Journal(self.tmp / "journal", rubric_mod.load_rubric()).ensure()
+
+    def _collection(self):
+        r = self.c.get("/api/table/collection")
+        self.assertEqual(r.status_code, 200)
+        return r.get_json()
+
+    def _by_code(self):
+        return {r["code"]: r for r in self._collection()["rows"]}
+
+    def test_collection_table_has_a_row_per_spirit_and_a_column_contract(self):
+        d = self._collection()
+        self.assertEqual({r["code"] for r in d["rows"]}, {"B-18", "S-1"})
+        for c in d["columns"]:
+            self.assertTrue(c["key"] and c["label"] and c["type"])
+            self.assertIn("default", c)
+
+    def test_an_unscored_spirit_has_no_career(self):
+        row = self._by_code()["B-18"]
+        self.assertIsNone(row["career_score"])
+        self.assertIsNone(row["medal"])
+        self.assertEqual(row["n"], 0)
+
+    def test_scoring_fills_in_the_career_columns(self):
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})
+        row = self._by_code()["B-18"]
+        self.assertEqual(row["career_score"], 66)
+        self.assertEqual(row["medal"], "Bronze")
+        self.assertEqual(row["n"], 1)
+        self.assertEqual((row["worst"], row["best"]), (66, 66))
+
+    def test_the_two_columns_the_spreadsheet_cannot_do(self):
+        """$ / oz and score / $ — SPEC.md §4.3, §10."""
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})
+        row = self._by_code()["B-18"]
+        self.assertAlmostEqual(row["value_per_oz"],
+                               round(100.0 / (750 / app_mod.ML_PER_OZ), 2), places=2)
+        self.assertAlmostEqual(row["score_per_dollar"], round(66 / 100.0, 3), places=3)
+        self.assertIsNone(self._by_code()["S-1"]["value_per_oz"])     # no paid on a sample
+
+    def test_career_is_the_mean_of_sittings_not_the_last_one(self):
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})                     # 66
+        self._post({"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD, flavor=16)})    # 70
+        row = self._by_code()["B-18"]
+        self.assertEqual(row["n"], 2)
+        self.assertEqual(row["career_score"], 68.0)
+        self.assertEqual((row["worst"], row["best"]), (66, 70))
+
+    def test_an_excluded_sitting_is_listed_but_does_not_count(self):
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})
+        self._post({"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD, flavor=20),
+                    "include_in_average": False})
+        rows = self.c.get("/api/table/tastings").get_json()["rows"]
+        self.assertEqual(sorted(r["counted"] for r in rows), ["no", "yes"])
+        row = self._by_code()["B-18"]
+        self.assertEqual((row["n"], row["n_total"]), (1, 2))
+        self.assertEqual(row["career_score"], 66)
+
+    def test_encounters_sit_alongside_owned_bottles(self):
+        j = self._journal()
+        j.write_encounter(name="Bar Pour", distillery="Somewhere")
+        j.assign_encounter_codes()
+        by = self._by_code()
+        self.assertIn("X-1", by)
+        self.assertFalse(by["X-1"]["owned"])
+        self.assertTrue(by["B-18"]["owned"])
+        self.assertEqual(by["X-1"]["display_name"], "Somewhere Bar Pour")
+        self.assertEqual(by["X-1"]["source"], "Encounter")
+
+    def test_a_linked_encounter_stops_being_its_own_row(self):
+        j = self._journal()
+        e = j.write_encounter(name="Later Bought", distillery="Somewhere")
+        j.assign_encounter_codes()
+        path = self.tmp / "journal" / "encounters" / f"{e['encounter_uid']}.json"
+        rec = json.loads(path.read_text(encoding="utf-8"))
+        rec["linked_bottle_code"] = "B-18"
+        path.write_text(json.dumps(rec), encoding="utf-8")
+        self.assertNotIn(rec["code"], {r["code"] for r in self._collection()["rows"]})
+
+    def test_tastings_table_has_a_row_per_sitting_with_pour_economics(self):
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD,
+                    "venue": "Bar", "pour_price": 30, "pour_size_oz": 1.5})
+        d = self.c.get("/api/table/tastings").get_json()
+        self.assertEqual(len(d["rows"]), 1)
+        row = d["rows"][0]
+        self.assertEqual(row["total"], 66)
+        self.assertEqual(row["medal"], "Bronze")
+        self.assertEqual(row["venue"], "Bar")
+        self.assertEqual(row["value_per_oz"], 20.0)              # 30 / 1.5
+        self.assertEqual(row["display_name"], "Example Distillery Single Barrel")
+        self.assertEqual(row["counted"], "yes")
+
+    def test_a_flight_pour_carries_its_session_and_position(self):
+        sid = self.c.post("/api/session", json={"title": "F"}).get_json()["session"]["session_id"]
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD,
+                    "session_id": sid, "flight_pos": 2})
+        row = self.c.get("/api/table/tastings").get_json()["rows"][0]
+        self.assertEqual(row["session_id"], sid)
+        self.assertEqual(row["flight_pos"], 2)
 
 
 class TestPageAndHealth(AppCase):
