@@ -28,8 +28,25 @@ total, and a medal band: Diamond 90+, Gold 80+, Silver 70+, Bronze 60+.
 |---|---|---|
 | `collection.py` | read-only loader for the master workbook | `test_collection.py` |
 | `rubric.py` | scoring, medals, career aggregation | `test_rubric.py` |
-| `store.py` | the tasting journal | `test_store.py` |
+| `store.py` | the tasting journal — tastings, flights, encounters, pending bottles | `test_store.py` |
 | `rollup.py` | regenerates `Whiskey Tastings.xlsx` from the journal | `test_rollup.py` |
+| `app.py` | local server + JSON API at `127.0.0.1:8765` | `test_app.py` |
+| `static/` | the front end — `app.js` (sheet + flights), `table.js` (table view) | — |
+
+110 tests, all passing.
+
+## Views
+
+Built:
+
+- **Judging sheet** — one spirit, ten categories, segmented score strips, live total with a
+  threshold bar at 60/70/80/90, medal, and distance to the next band.
+- **Flight / session** — several pours in one sitting, a pour switcher across the top and a single
+  full sheet below. Blind mode hides each spirit's identity until its own card is submitted.
+- **Table** — every spirit or every tasting, sortable and filterable on every field, with a column
+  chooser and CSV export. Carries `$ / oz` and `score / $`, which the spreadsheet cannot.
+
+Not yet built: compare, Quick Entry drain, analysis charts, and the phone client.
 
 ## Run
 
