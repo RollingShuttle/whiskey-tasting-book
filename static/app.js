@@ -19,7 +19,7 @@ const state = {
   medalColors: {},
   spirits: [],
   filter: "all",
-  view: "score",        // "score" | "table" | "compare"
+  view: "score",        // "score" | "table" | "compare" | "analysis"
   quick: null,          // Quick Entry rows waiting on the workbook
   mode: "single",       // "single" — one standalone pour | "session" — a flight of pours
   session: null,        // the flight record from the server
@@ -85,6 +85,8 @@ async function boot() {
   document.getElementById("nav-score").addEventListener("click", () => showView("score"));
   document.getElementById("nav-table").addEventListener("click", () => showView("table"));
   document.getElementById("nav-compare").addEventListener("click", () => showView("compare"));
+  document.getElementById("nav-analysis")
+    .addEventListener("click", () => showView("analysis"));
   try {
     state.config = await api("/api/config");
     state.medalColors = state.config.medal_colors || {};
@@ -127,7 +129,7 @@ async function refresh() {
   btn.disabled = true; btn.textContent = "Refreshing…";
   try {
     const r = await api("/api/refresh", { method: "POST" });
-    TableView.invalidate(); CompareView.invalidate();
+    TableView.invalidate(); CompareView.invalidate(); AnalysisView.invalidate();
     await loadSpirits(); await loadHealth(); await loadQuick();
     showStatus("ok", `Collection reread from the master (read-only): ${r.count} spirits.`);
   } catch (e) {
@@ -176,7 +178,7 @@ async function drainQuick() {
   btn.disabled = true; btn.textContent = "Draining…";
   try {
     const r = await api("/api/quickentry/drain", { method: "POST" });
-    TableView.invalidate(); CompareView.invalidate();
+    TableView.invalidate(); CompareView.invalidate(); AnalysisView.invalidate();
     await loadQuick();
     await loadHealth();
     const c = r.counts;
@@ -283,11 +285,12 @@ function discardDraft() {
 function showView(v) {
   state.view = v;
   for (const [id, name] of [["nav-score", "score"], ["nav-table", "table"],
-                            ["nav-compare", "compare"]]) {
+                            ["nav-compare", "compare"], ["nav-analysis", "analysis"]]) {
     document.getElementById(id).classList.toggle("active", v === name);
   }
   document.getElementById("table-view").hidden = true;
   document.getElementById("compare-view").hidden = true;
+  document.getElementById("analysis-view").hidden = true;
   renderQuick();
 
   if (v !== "score") {
@@ -295,7 +298,9 @@ function showView(v) {
     document.getElementById("picker").hidden = true;
     document.getElementById("sheet").hidden = true;
     document.getElementById("quick").hidden = true;
-    if (v === "table") TableView.open(); else CompareView.open();
+    if (v === "table") TableView.open();
+    else if (v === "compare") CompareView.open();
+    else AnalysisView.open();
     return;
   }
   if (state.mode === "session" && state.session) renderSession();
@@ -848,6 +853,7 @@ async function submitCard() {
     p.tasting = r.tasting;
     TableView.invalidate();            // the table must not show a stale career score
     CompareView.invalidate();
+    AnalysisView.invalidate();
     saveDraft();
     await loadHealth();
 

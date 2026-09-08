@@ -202,6 +202,22 @@ def _axes(rubric, items):
     return axes
 
 
+def _group_scores(points, key):
+    """Mean career score per Type or per Region, best first, with the spread behind it."""
+    groups = {}
+    for p in points:
+        k = p.get(key)
+        if k:
+            groups.setdefault(k, []).append(p)
+    out = []
+    for k, ps in groups.items():
+        scores = [p["score"] for p in ps]
+        out.append({"key": k, "spirits": len(ps), "sittings": sum(p["n"] for p in ps),
+                    "mean": round(sum(scores) / len(scores), 1),
+                    "min": min(scores), "max": max(scores)})
+    return sorted(out, key=lambda g: (-g["mean"], -g["spirits"]))
+
+
 def _load_cfg(config_path):
     with open(config_path, encoding="utf-8") as fh:
         return yaml.safe_load(fh)
@@ -580,6 +596,53 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
                 f"rewritten: {e}")}), 500
 
         return jsonify({"ok": True, **summary})
+
+    # -- analysis ------------------------------------------------------------
+    @app.get("/api/analysis")
+    def api_analysis():
+        """The questions the spreadsheet cannot answer (SPEC.md §4.5).
+
+        Scatters and group means use **career scores**, one point per spirit (§3.6). The
+        calibration series is different in kind: it is one mean per month over every counted
+        sitting, because the thing being measured there is the scorer, not the spirit.
+        """
+        by_spirit = _group_tastings(journal)
+        points, months = [], {}
+
+        for code, sits in by_spirit.items():
+            counted = [t for t in sits if t.get("include_in_average", True)]
+            if not counted:
+                continue                       # drafts and excluded-only spirits have no score
+            c = rubric.career(sits)
+            sp = catalog.get(code) or _encounter_stub(journal, code) or {}
+            points.append({
+                "code": code, "name": sp.get("display_name") or code,
+                "type": sp.get("type"), "region": sp.get("region"),
+                "score": c["mean_total"], "medal": c["medal"], "n": c["n"],
+                "age": sp.get("age"), "conc_ratio": sp.get("conc_ratio"),
+                "paid": sp.get("paid"), "proof": sp.get("proof"),
+            })
+            for t in counted:
+                month = (t.get("date") or "")[:7]
+                if len(month) == 7 and t.get("total") is not None:
+                    months.setdefault(month, []).append(t["total"])
+
+        calibration = [{"month": m, "mean": round(sum(v) / len(v), 1), "n": len(v)}
+                       for m, v in sorted(months.items())]
+
+        return jsonify({
+            "points": points,
+            "by_type": _group_scores(points, "type"),
+            "by_region": _group_scores(points, "region"),
+            "calibration": calibration,
+            # What can be plotted against score. `have` lets the view say how thin an axis is
+            # before it draws a shape that implies more data than there is.
+            "axes": [{"key": k, "label": lab,
+                      "have": sum(1 for p in points if p.get(k) is not None)}
+                     for k, lab in (("age", "Age (years)"), ("conc_ratio", "Conc. Ratio"),
+                                    ("paid", "Paid ($)"), ("proof", "Proof"))],
+            "counts": {"scored": len(points), "sittings": sum(p["n"] for p in points)},
+        })
 
     # -- status pill ---------------------------------------------------------
     @app.get("/api/health")

@@ -450,3 +450,42 @@ input:disabled, textarea:disabled { color: var(--text); opacity: .8; cursor: def
 .quick-name { font-family: var(--serif); font-size: 15px; }
 .quick-bits { color: var(--muted); font-size: 12px; }
 .quick-problem { color: #E8896A; font-size: 12px; margin-left: auto; text-align: right; }
+
+/* ---------------------------------------------------------------- analysis */
+.analysis-view { display: flex; flex-direction: column; gap: 18px; }
+.an-summary { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.an-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px 20px;
+}
+.an-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 14px; }
+.an-title { font-family: var(--serif); font-size: 18px; }
+.an-sub { color: var(--muted); font-size: 12px; margin-top: 4px; max-width: 64ch; line-height: 1.5; }
+.an-axes { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.an-axes .chip:disabled { opacity: .4; cursor: not-allowed; }
+.an-empty { color: var(--muted); font-size: 13px; padding: 18px 2px; }
+.an-note { display: block; color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.5; }
+
+.an-svg { width: 100%; height: auto; display: block; overflow: visible; }
+.an-axis { stroke: var(--line); stroke-width: 1; }
+.an-band { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4; }
+.an-bandlabel { fill: var(--muted); font-size: 10px; opacity: .8;
+                font-family: var(--sans); font-variant-numeric: tabular-nums; }
+.an-tick { fill: var(--muted); font-size: 11px; font-family: var(--sans);
+           font-variant-numeric: tabular-nums; }
+.an-rowlabel { fill: var(--text); font-size: 12px; font-family: var(--sans); }
+.an-value { fill: var(--brass-bright); font-size: 12px; font-family: var(--sans);
+            font-variant-numeric: tabular-nums; font-weight: 500; }
+.an-dot { stroke: var(--bg); stroke-width: 1.5; }
+.an-dot:hover { stroke: var(--brass-bright); stroke-width: 2; }
+.an-trend { stroke: var(--brass); stroke-width: 1.5; stroke-dasharray: 5 4; opacity: .8; }
+.an-spread { stroke: var(--muted); stroke-width: 2; opacity: .35; }
+.an-bar { opacity: .9; }
+.an-line { fill: none; stroke: var(--brass); stroke-width: 2; }
+.an-caldot { fill: var(--brass-bright); }
+.an-mean { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; opacity: .7; }
+
+@media (max-width: 720px) {
+  .an-head { flex-direction: column; gap: 10px; }
+  .an-axes { margin-left: 0; }
+}

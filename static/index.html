@@ -17,6 +17,7 @@
       <button id="nav-score" class="navbtn active" type="button">Score</button>
       <button id="nav-table" class="navbtn" type="button">Table</button>
       <button id="nav-compare" class="navbtn" type="button">Compare</button>
+      <button id="nav-analysis" class="navbtn" type="button">Analysis</button>
     </nav>
     <div class="topbar-right">
       <button id="btn-flight" class="ghost" type="button" title="Score several pours in one sitting">New flight</button>
@@ -57,6 +58,9 @@
     <!-- 2-4 things side by side, aligned score rows -->
     <section id="compare-view" class="card compare-view" hidden></section>
 
+    <!-- Score against age / price / conc. ratio, by type and region, and grade drift -->
+    <section id="analysis-view" class="analysis-view" hidden></section>
+
     <div id="status" class="statusline" role="status" aria-live="polite" hidden></div>
   </main>
 
@@ -81,5 +85,6 @@
   <script src="/static/app.js"></script>
   <script src="/static/table.js"></script>
   <script src="/static/compare.js"></script>
+  <script src="/static/analysis.js"></script>
 </body>
 </html>

@@ -32,9 +32,9 @@ total, and a medal band: Diamond 90+, Gold 80+, Silver 70+, Bronze 60+.
 | `rollup.py` | regenerates `Whiskey Tastings.xlsx` from the journal | `test_rollup.py` |
 | `quickentry.py` | drains the Quick Entry sheet into draft tastings | `test_quickentry.py` |
 | `app.py` | local server + JSON API at `127.0.0.1:8765` | `test_app.py` |
-| `static/` | the front end — `app.js` (sheet + flights), `table.js`, `compare.js` | — |
+| `static/` | the front end — `app.js` (sheet + flights), `table.js`, `compare.js`, `analysis.js` | — |
 
-152 tests, all passing.
+161 tests, all passing.
 
 ## Views
 
@@ -52,11 +52,14 @@ Built:
 - **Quick Entry** — rows typed on the phone are drained into unscored drafts against their
   bottle. A name that is not unique is refused rather than guessed at, and refused rows stay
   on the sheet with the reason.
+- **Analysis** — score against Conc. Ratio, Age, Paid or Proof; mean score by Type and by
+  Region; and a calibration series of your own monthly mean, which is how grade drift shows
+  up. Hand-drawn inline SVG, no chart library.
 
 In-progress scorecards survive a reload — they are mirrored to the browser and restored, with a
 Discard control.
 
-Not yet built: analysis charts and the phone client.
+Not yet built: the phone client.
 
 ## Run
 

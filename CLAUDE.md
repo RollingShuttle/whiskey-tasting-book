@@ -28,7 +28,7 @@ a matching `test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -p "test_*.py"     # 152 tests, all passing
+python -m unittest discover -p "test_*.py"     # 161 tests, all passing
 python collection.py                           # health report, writes nothing
 ```
 
@@ -43,7 +43,7 @@ Done and tested — `collection.py` (loader), `rubric.py` (scoring), `store.py` 
 Web front end — **in progress.** `app.py` (Flask server at `127.0.0.1:8765`), the judging sheet,
 the flight/session view, the table view and compare (`static/index.html`, `app.js`, `table.js`,
 `compare.js`, `style.css`) are done and tested — SPEC.md build order steps 3, 4, 5 and 6.
-Covered by `test_app.py` (152 tests total). `GET /api/compare` takes `codes` (career scores,
+Covered by `test_app.py` (161 tests total). `GET /api/compare` takes `codes` (career scores,
 the default), or `session` / `tastings` to pin single sittings; it returns per-axis leaders and
 spreads, and every axis carries its own max so the view draws each bar against it.
 
@@ -75,8 +75,16 @@ The draft cache closes the old gap: in-progress pours are mirrored to `localStor
 restored on load, with a Discard control. Submitted pours and the flight were always safe on
 the server; this covers the unsubmitted ones.
 
-Still to build — analysis charts (SPEC.md §7 step 8), then the iPhone static client and the
-§8 pending bottle approval UI.
+Analysis (SPEC.md §7 step 8) is done. `GET /api/analysis` returns one point per scored spirit
+(career scores, §3.6), group means by Type and Region, and a calibration series of the monthly
+mean over sittings — that last one measures the scorer, not the spirit, which is how grade
+drift shows up. `static/analysis.js` draws it as hand-written inline SVG: no chart library, so
+it keeps working offline and adds nothing to the bundle the phone will load. The axes carry a
+`have` count so a scatter over three points cannot pose as a finding, and the medal thresholds
+are drawn on every score axis.
+
+Still to build — the iPhone static client and the §8 pending bottle approval UI. That is the
+whole of SPEC.md §7; the PC app is feature-complete against the build order.
 
 The front end serves two clients from one codebase: the PC app at `127.0.0.1:8765`, and a
 static build in `docs/` deployed to GitHub Pages for the iPhone. Design is settled: see SPEC.md §5

@@ -30,10 +30,10 @@ FIXTURE_SNAPSHOT = {
         {"_sheet": "Bottle", "_row": 26, "code": "B-18", "distillery": "Example Distillery",
          "name": "Single Barrel", "type": "Bourbon", "region": "America", "age": None,
          "age_label": "NAS", "proof": 100.0, "abv": 50.0, "size_ml": 750.0, "paid": 100.0,
-         "status": "Opened", "rarity": "Uncommon"},
+         "conc_ratio": 1.15, "status": "Opened", "rarity": "Uncommon"},
         {"_sheet": "Sample", "_row": 9, "code": "S-1", "distillery": "Sample Co",
-         "name": "Test Rye", "type": "Rye", "region": "America", "proof": 120.0,
-         "abv": 60.0, "sizeoz": 1.0},
+         "name": "Test Rye", "type": "Rye", "region": "Scotland", "proof": 120.0,
+         "abv": 60.0, "sizeoz": 1.0, "age": 8.0, "conc_ratio": 0.95},
     ],
 }
 
@@ -494,6 +494,87 @@ class TestQuickEntry(AppCase):
         self.assertIn("open in Excel", r.get_json()["error"])
         self.assertEqual(self.c.get("/api/table/tastings").get_json()["rows"], [],
                          "nothing may be drained when the rewrite cannot follow")
+
+
+class TestAnalysis(AppCase):
+    """The questions the spreadsheet cannot answer (SPEC.md §4.5)."""
+
+    def _get(self):
+        r = self.c.get("/api/analysis")
+        self.assertEqual(r.status_code, 200)
+        return r.get_json()
+
+    def test_an_empty_journal_analyses_to_nothing(self):
+        d = self._get()
+        self.assertEqual(d["points"], [])
+        self.assertEqual(d["calibration"], [])
+        self.assertEqual(d["counts"], {"scored": 0, "sittings": 0})
+
+    def test_one_point_per_spirit_carrying_the_master_fields(self):
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})
+        d = self._get()
+        self.assertEqual(len(d["points"]), 1)
+        p = d["points"][0]
+        self.assertEqual(p["code"], "B-18")
+        self.assertEqual(p["score"], 66)
+        self.assertEqual(p["medal"], "Bronze")
+        self.assertEqual(p["n"], 1)
+        self.assertEqual((p["type"], p["region"]), ("Bourbon", "America"))
+        self.assertEqual((p["paid"], p["proof"], p["conc_ratio"]), (100.0, 100.0, 1.15))
+        self.assertIsNone(p["age"], "the fixture bottle is NAS")
+
+    def test_points_use_the_career_score_not_the_last_sitting(self):
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})                    # 66
+        self._post({"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD, flavor=16)})   # 70
+        p = self._get()["points"][0]
+        self.assertEqual((p["score"], p["n"]), (68.0, 2))
+
+    def test_group_means_are_sorted_best_first(self):
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})                    # Bourbon 66
+        self._post({"spirit_id": "S-1", "scores": dict(EXAMPLE_CARD, flavor=18)})    # Rye 72
+        d = self._get()
+        self.assertEqual([g["key"] for g in d["by_type"]], ["Rye", "Bourbon"])
+        self.assertEqual([g["key"] for g in d["by_region"]], ["Scotland", "America"])
+        rye = {g["key"]: g for g in d["by_type"]}["Rye"]
+        self.assertEqual((rye["mean"], rye["spirits"], rye["sittings"]), (72, 1, 1))
+
+    def test_calibration_is_one_mean_per_month_over_sittings(self):
+        """This series measures the scorer, not the spirit — it is how grade drift shows up."""
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD, "date": "2026-01-15"})
+        self._post({"spirit_id": "S-1", "scores": dict(EXAMPLE_CARD, flavor=16),
+                    "date": "2026-01-20"})
+        self._post({"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD, flavor=18),
+                    "date": "2026-02-03"})
+        cal = self._get()["calibration"]
+        self.assertEqual(cal, [{"month": "2026-01", "mean": 68.0, "n": 2},
+                               {"month": "2026-02", "mean": 72.0, "n": 1}])
+
+    def test_an_excluded_sitting_stays_out_of_the_calibration(self):
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD, "date": "2026-01-15"})
+        self._post({"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD, flavor=20),
+                    "date": "2026-01-16", "include_in_average": False})
+        self.assertEqual(self._get()["calibration"],
+                         [{"month": "2026-01", "mean": 66.0, "n": 1}])
+
+    def test_axes_say_how_much_data_each_one_has(self):
+        """A scatter drawn over two points should not look like a finding."""
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})
+        axes = {a["key"]: a for a in self._get()["axes"]}
+        self.assertEqual(axes["paid"]["have"], 1)
+        self.assertEqual(axes["conc_ratio"]["have"], 1)
+        self.assertEqual(axes["age"]["have"], 0, "the only scored bottle is NAS")
+        self.assertEqual(axes["conc_ratio"]["label"], "Conc. Ratio")
+
+    def test_a_spirit_with_only_a_draft_produces_no_point(self):
+        j = store_mod.Journal(self.tmp / "journal", rubric_mod.load_rubric()).ensure()
+        j.write_tasting(spirit_id="B-18", status="draft", notes={"aroma": "x"})
+        d = self._get()
+        self.assertEqual(d["points"], [])
+        self.assertEqual(d["calibration"], [])
+
+    def test_a_spirit_with_only_excluded_sittings_produces_no_point(self):
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD, "include_in_average": False})
+        self.assertEqual(self._get()["points"], [])
 
 
 class TestPageAndHealth(AppCase):
