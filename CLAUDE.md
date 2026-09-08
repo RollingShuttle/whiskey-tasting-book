@@ -28,7 +28,7 @@ a matching `test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -p "test_*.py"     # 190 tests, all passing
+python -m unittest discover -p "test_*.py"     # 221 tests, all passing
 python verify_gate.py                          # SPEC §7 shipping gate (reads the master)
 python collection.py                           # health report, writes nothing
 ```
@@ -44,7 +44,7 @@ Done and tested — `collection.py` (loader), `rubric.py` (scoring), `store.py` 
 Web front end — **in progress.** `app.py` (Flask server at `127.0.0.1:8765`), the judging sheet,
 the flight/session view, the table view and compare (`static/index.html`, `app.js`, `table.js`,
 `compare.js`, `style.css`) are done and tested — SPEC.md build order steps 3, 4, 5 and 6.
-Covered by `test_app.py` (190 tests total). `GET /api/compare` takes `codes` (career scores,
+Covered by `test_app.py` (221 tests total). `GET /api/compare` takes `codes` (career scores,
 the default), or `session` / `tastings` to pin single sittings; it returns per-axis leaders and
 spreads, and every axis carries its own max so the view draws each bar against it.
 
@@ -98,8 +98,28 @@ backup. Codes are assigned at approval time on the PC, never on the phone.
 a SHA-256 comparison. It passed on 8 Sep 2026 — 198 photos and 5 richData parts intact.
 Re-run it after anything that touches collection.py or master_write.py.
 
-Still to build — **the iPhone static client only** (SPEC.md §9, §9.2). Everything else in the
-build order is done.
+The iPhone client is built: `docs/` is the static bundle for GitHub Pages —
+`index.html`, `style.css`, `app.js` (five screens), `store.js` (local cache + upload queue),
+`graph.js` (MSAL + Graph), `sw.js`, `manifest.webmanifest`, `rubric.json`, `icon-180.png`.
+Guarded by `test_phone.py`, which checks the §9.2 rules that only fail on a phone: safe-area
+insets on every edge, 100dvh not 100vh, 16 px inputs, a 44 px score strip with
+`touch-action: none`, the tab bar hiding for the keyboard, and every precached file existing.
+
+The phone scores offline by design: a card is written to localStorage **and then** queued, so
+losing signal changes nothing. `docs/rubric.json` is a copy of `rubric.as_config()` because
+the phone computes its own totals and medals — `test_phone.py` fails if it drifts from
+config.yaml, so **regenerate it whenever the rubric changes**. The PC publishes what the
+phone reads into `snapshot/` in the app folder (collection, rubric, careers) on
+`POST /api/refresh`; careers are published rather than derived so the phone never downloads
+the journal over bar wifi.
+
+**Not deployed yet — three steps, all yours:** put the Application (client) ID in
+`docs/config.js` (blank on purpose; a test enforces that, so relax it when you fill it in),
+add the Pages URL as a Single-page application redirect URI on the Entra registration, and
+turn on GitHub Pages for the `docs/` folder on `main`. Until then the app runs and scores;
+only uploading waits.
+
+That is the whole of SPEC.md. Nothing in the build order is outstanding.
 
 The front end serves two clients from one codebase: the PC app at `127.0.0.1:8765`, and a
 static build in `docs/` deployed to GitHub Pages for the iPhone. Design is settled: see SPEC.md §5

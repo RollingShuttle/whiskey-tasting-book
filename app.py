@@ -315,6 +315,30 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
     app.config["JSON_SORT_KEYS"] = False
     app.config["_master"] = master
 
+    def _publish_for_phone(coll):
+        """Write what the phone reads into the OneDrive app folder (SPEC.md §9.1).
+
+        The phone has no access to the master workbook and no server to ask, so the PC is the
+        single writer of all three: the bottle list, the rubric it scores against, and the career
+        figures it shows beside each bottle. Careers are published rather than derived on the
+        phone because deriving them would mean downloading the whole journal over bar wifi.
+        """
+        out = journal.root / "snapshot"
+        out.mkdir(parents=True, exist_ok=True)
+        out.joinpath("collection.json").write_text(
+            json.dumps(coll.snapshot(), ensure_ascii=False), encoding="utf-8")
+        out.joinpath("rubric.json").write_text(
+            json.dumps(rubric.as_config(), ensure_ascii=False), encoding="utf-8")
+        careers = {}
+        for code, sits in _group_tastings(journal).items():
+            bits = _career_bits(rubric, sits)
+            if bits["n"]:
+                careers[code] = {"score": bits["career_score"], "medal": bits["medal"],
+                                 "n": bits["n"]}
+        out.joinpath("careers.json").write_text(
+            json.dumps({"careers": careers}, ensure_ascii=False), encoding="utf-8")
+        return {"spirits": len(coll.rows and coll.snapshot()["spirits"]), "careers": len(careers)}
+
     # -- the page ------------------------------------------------------------
     @app.get("/")
     def index():
@@ -756,8 +780,10 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
                             "errors": [f"[{i.sheet}] {i.message}" for i in coll.errors]}), 409
         snap.parent.mkdir(parents=True, exist_ok=True)
         snap.write_text(json.dumps(coll.snapshot(), ensure_ascii=False), encoding="utf-8")
+        published = _publish_for_phone(coll)
         catalog.load()
-        return jsonify({"ok": True, "count": len(catalog), "snapshot": str(snap)})
+        return jsonify({"ok": True, "count": len(catalog), "snapshot": str(snap),
+                        "published": published})
 
     return app
 

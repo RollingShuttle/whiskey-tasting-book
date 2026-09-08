@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- viewport-fit=cover is what lets the safe-area insets below mean anything (SPEC.md §9.2) -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#12100E">
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Tasting Book">
+  <title>Whiskey Tasting Book</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Installed there is no browser chrome and no edge-swipe back, so every pushed screen
+       carries its own chevron (SPEC.md §9.2). -->
+  <header class="bar" id="bar">
+    <button class="back" id="back" type="button" aria-label="Back" hidden>
+      <span aria-hidden="true">&#8249;</span>
+    </button>
+    <h1 id="title">Collection</h1>
+    <span class="net" id="net" aria-live="polite"></span>
+  </header>
+
+  <main id="main">
+    <section class="screen" id="screen-collection"></section>
+    <section class="screen" id="screen-detail" hidden></section>
+    <section class="screen" id="screen-score" hidden></section>
+    <section class="screen" id="screen-add" hidden></section>
+    <section class="screen" id="screen-sync" hidden></section>
+  </main>
+
+  <!-- Hidden while the keyboard is up so Submit stays reachable (SPEC.md §9.2). -->
+  <nav class="tabs" id="tabs" aria-label="Sections">
+    <button class="tab active" data-tab="collection" type="button">
+      <span class="glyph" aria-hidden="true">&#9776;</span>Collection
+    </button>
+    <button class="tab" data-tab="add" type="button">
+      <span class="glyph" aria-hidden="true">+</span>Add bottle
+    </button>
+    <button class="tab" data-tab="sync" type="button">
+      <span class="glyph" aria-hidden="true">&#8645;</span>Sync
+      <span class="badge" id="tab-badge" hidden></span>
+    </button>
+  </nav>
+
+  <script src="config.js"></script>
+  <script src="store.js"></script>
+  <script src="graph.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+{
+ "name": "Curiosity Public Ultimate Spirits",
+ "version": 1,
+ "decimals": 1,
+ "max_total": 100,
+ "categories": [
+  {
+   "key": "aroma",
+   "label": "Aroma",
+   "max": 10,
+   "question": "The experience starts with your nose. What scents do you recognize? Fruits? Spices? Sugars? 5 points is one, maybe two weak flavors; 10 is a rich mélange.",
+   "flavour": true
+  },
+  {
+   "key": "flavor",
+   "label": "Flavor",
+   "max": 20,
+   "question": "Taste the spirit. What type of flavors do you experience? How deep are the flavors you notice? 10 points means a couple of light notes, 20 is a rich cornucopia.",
+   "flavour": true
+  },
+  {
+   "key": "body",
+   "label": "Body",
+   "max": 10,
+   "question": "Mouthfeel. How does it coat your tongue and mouth? Is it oily? Thick or thin? 5 points means it is on the thin side, 10 is a nice perfectly even coating.",
+   "flavour": true
+  },
+  {
+   "key": "complexity",
+   "label": "Complexity",
+   "max": 10,
+   "question": "How many different flavor notes do you experience? Do they blend well or stay separated? A 5 means simple and easy; 10 is a beautiful mind-dram.",
+   "flavour": true
+  },
+  {
+   "key": "balance",
+   "label": "Balance",
+   "max": 10,
+   "question": "Are the flavors in equilibrium? Is one too loud or too weak? 5 points means something is out of whack; 10 is perfect in every way.",
+   "flavour": true
+  },
+  {
+   "key": "finish",
+   "label": "Finish",
+   "max": 10,
+   "question": "What's the ending like? How long does it linger in your mouth and throat? Short, medium, long? 5 is short and poor; 10 is lovely, no burns, and great taste.",
+   "flavour": true
+  },
+  {
+   "key": "uniqueness",
+   "label": "Uniqueness",
+   "max": 10,
+   "question": "How special or unusual was the drinking experience? Can include a point or two for presentation. 10 is a unicorn, so don't waste it.",
+   "flavour": true
+  },
+  {
+   "key": "drinkability",
+   "label": "Drinkability",
+   "max": 10,
+   "question": "How much does it make you want to drink more? 5 means you are not excited for your next sip; 10 is a dram you want to jump back into.",
+   "flavour": true
+  },
+  {
+   "key": "aesthetics",
+   "label": "Aesthetics",
+   "max": 5,
+   "question": "Don't forget the vessel that contained the spirit. Iconic shape? Unique labeling? Packaging? What's in the boat?",
+   "flavour": false
+  },
+  {
+   "key": "value",
+   "label": "Value",
+   "max": 5,
+   "question": "Price and availability. How much did this cost? Is it worth it? How hard is it to find? 5 means the price and availability are right.",
+   "flavour": false
+  }
+ ],
+ "bands": [
+  {
+   "name": "Diamond",
+   "min": 90
+  },
+  {
+   "name": "Gold",
+   "min": 80
+  },
+  {
+   "name": "Silver",
+   "min": 70
+  },
+  {
+   "name": "Bronze",
+   "min": 60
+  },
+  {
+   "name": "No Medal",
+   "min": 0
+  }
+ ]
+}

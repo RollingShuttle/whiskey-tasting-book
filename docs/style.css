@@ -1,0 +1,235 @@
+/* Whiskey Tasting Book — iPhone client (SPEC.md §5 tokens, §9.2 iOS rules).
+
+   The desktop palette, retuned for a phone: 44 pt touch targets, safe-area insets on every edge,
+   16 px inputs so Safari never zooms on focus, and 100dvh rather than 100vh because vh is wrong
+   while the URL bar is visible. */
+
+:root {
+  --bg:            #12100E;
+  --surface:       #1B1815;
+  --surface-2:     #241F1A;
+  --line:          #332C22;
+  --text:          #F2EDE4;
+  --muted:         #9A9086;
+  --brass:         #C8952F;
+  --brass-bright:  #E8B44A;
+  --ok:            #6FBF73;
+  --warn:          #E8896A;
+
+  /* UI text is the system stack so it renders as SF and matches the rest of the phone.
+     Playfair is kept for spirit names only — the one deliberate departure (§9.2). */
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI",
+          "Microsoft YaHei", sans-serif;
+  --serif: "Playfair Display", Georgia, "Microsoft YaHei", serif;
+
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --bar-h: 52px;
+  --tabs-h: 56px;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html { color-scheme: dark; }
+
+body {
+  margin: 0;
+  min-height: 100dvh;                     /* never 100vh on iOS Safari (§9.2) */
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 1rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: contain;
+}
+
+button { font-family: inherit; color: inherit; cursor: pointer; }
+
+/* ---------------------------------------------------------------- top bar */
+.bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+  display: flex; align-items: center; gap: 4px;
+  height: calc(var(--bar-h) + var(--safe-t));
+  padding: var(--safe-t) calc(12px + var(--safe-r)) 0 calc(12px + var(--safe-l));
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+/* The Dynamic Island eats the top centre — the title sits left of it, not under it. */
+.bar h1 {
+  font-family: var(--serif); font-size: 1.15rem; font-weight: 500; margin: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.back {
+  width: 44px; height: 44px; margin-left: -10px; flex-shrink: 0;
+  background: none; border: none; color: var(--brass-bright); font-size: 30px; line-height: 1;
+}
+.net { margin-left: auto; font-size: 0.75rem; color: var(--muted); flex-shrink: 0; }
+.net.off { color: var(--warn); }
+
+/* ---------------------------------------------------------------- layout */
+#main {
+  padding: calc(var(--bar-h) + var(--safe-t) + 8px) calc(14px + var(--safe-r))
+           calc(var(--tabs-h) + var(--safe-b) + 20px) calc(14px + var(--safe-l));
+}
+body.keyboard #main { padding-bottom: 20px; }
+
+.card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 14px; padding: 14px 16px; margin-bottom: 12px;
+}
+.muted { color: var(--muted); font-size: 0.82rem; }
+.empty { color: var(--muted); padding: 28px 4px; text-align: center; }
+
+/* ---------------------------------------------------------------- tab bar */
+.tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+  display: flex;
+  height: calc(var(--tabs-h) + var(--safe-b));
+  padding: 0 var(--safe-r) var(--safe-b) var(--safe-l);
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line);
+}
+/* The bottom inset is the home indicator: a tab bar without it sits under the swipe strip. */
+body.keyboard .tabs { display: none; }
+.tab {
+  flex: 1; min-height: 44px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  background: none; border: none; color: var(--muted); font-size: 0.68rem; position: relative;
+}
+.tab .glyph { font-size: 1.15rem; line-height: 1; }
+.tab.active { color: var(--brass-bright); }
+.badge {
+  position: absolute; top: 4px; right: 22%;
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: var(--brass); color: var(--bg);
+  font-size: 0.66rem; line-height: 18px; text-align: center; font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- lists */
+.search {
+  width: 100%; font-size: 16px;              /* 16px or Safari zooms and never zooms back */
+  padding: 11px 13px; margin-bottom: 10px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+  color: var(--text);
+}
+.search:focus { outline: 2px solid var(--brass-bright); border-color: transparent; }
+
+.chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 10px; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  min-height: 34px; padding: 6px 14px; flex-shrink: 0;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--muted);
+  border-radius: 999px; font-size: 0.82rem;
+}
+.chip.active { background: var(--brass); border-color: var(--brass); color: var(--bg); font-weight: 600; }
+
+.rows { list-style: none; margin: 0; padding: 0; }
+.row {
+  display: flex; align-items: center; gap: 10px;
+  min-height: 56px; padding: 10px 12px; margin-bottom: 8px;
+  background: var(--surface); border: 1px solid var(--line);
+  border-left: 3px solid var(--muted); border-radius: 12px;
+}
+.row-main { flex: 1; min-width: 0; }
+.row-name { font-family: var(--serif); font-size: 1rem; line-height: 1.2;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-sub { color: var(--muted); font-size: 0.74rem; margin-top: 2px;
+           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-score { text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.row-score b { font-family: var(--serif); font-size: 1.1rem; color: var(--brass-bright);
+               font-weight: 500; }
+
+.medal {
+  display: inline-block; font-size: 0.64rem; font-weight: 600; padding: 2px 8px;
+  border-radius: 999px; border: 1px solid var(--m, var(--muted)); color: var(--m, var(--muted));
+  background: color-mix(in srgb, var(--m, var(--muted)) 15%, transparent);
+}
+
+/* ---------------------------------------------------------------- scorecard */
+.spirit-name { font-family: var(--serif); font-size: 1.35rem; line-height: 1.15; }
+.spirit-meta { color: var(--muted); font-size: 0.8rem; margin-top: 4px; }
+
+.cat { padding: 12px 0; border-top: 1px solid var(--line); }
+.cat:first-child { border-top: none; }
+.cat-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.cat-name { font-weight: 500; font-size: 0.95rem; }
+.cat-max { color: var(--muted); font-size: 0.74rem; }
+.cat-val { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 1.05rem;
+           color: var(--brass-bright); min-width: 2ch; text-align: right; }
+.cat-val.unset { color: var(--muted); }
+
+/* 44 px tall, not the 26 px used on desktop. Ten segments across a 390 pt screen is ~33 pt
+   each — under the guideline horizontally — so tap is backed by drag (§9.2). */
+.strip {
+  display: grid; gap: 3px; height: 44px; padding: 3px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.seg { border-radius: 5px; background: transparent; position: relative; }
+.seg.filled { background: var(--brass); }
+.seg.sel { box-shadow: inset 0 0 0 2px var(--brass-bright); }
+.seg.tick::after {
+  content: attr(data-label); position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.68rem; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.seg.filled.tick::after, .seg.sel.tick::after { color: var(--bg); font-weight: 600; }
+
+textarea, input[type="text"], input[type="number"], input[type="date"] {
+  width: 100%; font-family: inherit; font-size: 16px; line-height: 1.5;
+  padding: 10px 12px; margin-top: 8px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+  color: var(--text);
+}
+textarea { resize: none; overflow: hidden; min-height: 44px; }
+textarea:focus, input:focus { outline: 2px solid var(--brass-bright); border-color: transparent; }
+
+label.field { display: block; margin-bottom: 12px; }
+label.field > span { color: var(--muted); font-size: 0.78rem; }
+
+.total-bar {
+  position: sticky; bottom: 0; margin: 16px -16px -14px;
+  padding: 12px 16px calc(12px + var(--safe-b));
+  background: var(--surface); border-top: 1px solid var(--line);
+  display: flex; align-items: center; gap: 12px;
+}
+.total-num { font-family: var(--serif); font-size: 1.9rem; color: var(--brass-bright);
+             font-variant-numeric: tabular-nums; line-height: 1; }
+.total-num.incomplete { color: var(--muted); }
+.total-of { color: var(--muted); font-size: 0.8rem; }
+
+.btn {
+  min-height: 44px; padding: 12px 20px; border-radius: 12px; border: none;
+  background: var(--brass); color: var(--bg); font-size: 1rem; font-weight: 600;
+}
+.btn:disabled { background: var(--surface-2); color: var(--muted); }
+.btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--muted);
+             font-weight: 400; }
+.btn.wide { width: 100%; }
+.actions { display: flex; gap: 10px; margin-top: 14px; }
+
+/* ---------------------------------------------------------------- sync */
+.state { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.dot.on { background: var(--ok); }
+.dot.off { background: var(--warn); }
+.qrow {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; margin-bottom: 6px;
+  background: var(--surface-2); border-radius: 10px; font-size: 0.85rem;
+}
+.qrow .kind { color: var(--muted); font-size: 0.7rem; text-transform: uppercase;
+              letter-spacing: .04em; flex-shrink: 0; }
+.qrow .when { margin-left: auto; color: var(--muted); font-size: 0.72rem; flex-shrink: 0; }
+
+.notice {
+  padding: 12px 14px; border-radius: 12px; margin-bottom: 12px; font-size: 0.86rem;
+  border: 1px solid var(--line); background: var(--surface);
+}
+.notice.warn { color: var(--warn); border-color: #6a3a2a; }
+.notice.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); }

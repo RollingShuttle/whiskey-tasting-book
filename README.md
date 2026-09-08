@@ -33,9 +33,10 @@ total, and a medal band: Diamond 90+, Gold 80+, Silver 70+, Bronze 60+.
 | `quickentry.py` | drains the Quick Entry sheet into draft tastings | `test_quickentry.py` |
 | `master_write.py` | the only code that adds a row to the master workbook | `test_master_write.py` |
 | `app.py` | local server + JSON API at `127.0.0.1:8765` | `test_app.py` |
-| `static/` | the front end — `app.js` (sheet + flights), `table.js`, `compare.js`, `analysis.js` | — |
+| `static/` | the PC front end — `app.js` (sheet + flights), `table.js`, `compare.js`, `analysis.js` | — |
+| `docs/` | the iPhone client — offline-first, syncs through OneDrive | `test_phone.py` |
 
-190 tests, all passing. `python verify_gate.py` runs the SPEC §7 shipping gate.
+221 tests, all passing. `python verify_gate.py` runs the SPEC §7 shipping gate.
 
 ## Views
 
@@ -65,7 +66,11 @@ Discard control.
   editable first. The row fills a slot that already exists inside the Excel table, every
   photo and rich value is copied byte-for-byte, and a backup is taken before each write.
 
-Not yet built: the phone client.
+The **iPhone client** in `docs/` is a static app for GitHub Pages: browse the collection,
+score a pour, queue a new bottle for approval. It scores with no signal — every card is
+written to the phone first and queued — and syncs through the OneDrive app folder, which its
+OAuth scope limits it to. To deploy: add your client ID to `docs/config.js`, register the
+Pages URL as an SPA redirect URI, and enable Pages on the `docs/` folder.
 
 ## Run
 
