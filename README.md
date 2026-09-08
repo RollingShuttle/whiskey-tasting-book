@@ -82,5 +82,6 @@ python -m unittest discover -p "test_*.py"
 python app.py                 # the local app at http://127.0.0.1:8765
 ```
 
-`config.yaml` is gitignored (its file paths contain a local username); `config.example.yaml` is the
-template. `SPEC.md` is the build spec. `SETUP.md` is the one-time Microsoft and iPhone setup.
+**`RUNNING.md` is the step-by-step guide to installing and starting both halves** — start there.
+`config.yaml` is gitignored (its file paths contain a local username); `config.example.yaml` is
+the template. `SPEC.md` is the build spec. `SETUP.md` is the one-time Microsoft account setup.

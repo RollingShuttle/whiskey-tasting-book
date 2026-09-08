@@ -123,11 +123,25 @@ class TestIosRules(unittest.TestCase):
 
 
 class TestSafety(unittest.TestCase):
-    def test_no_client_id_is_committed(self):
-        """It is public by design once deployed, but it is not ours to publish unasked."""
+    def test_no_client_secret_is_committed(self):
+        """A single-page app must not have a secret — adding one would actually break the PKCE
+        flow this uses. The client ID is a different thing: it is public by design once the app
+        is deployed, so filling it in is expected and must not fail the suite."""
+        cfg = text("config.js")
+        for bad in ("client_secret", "clientSecret", "CLIENT_SECRET", "password"):
+            self.assertNotIn(bad, cfg)
+
+    def test_the_client_id_is_blank_or_a_real_one(self):
+        """Blank until you deploy. Once filled in it has to be an actual Application (client) ID
+        rather than a leftover placeholder, which would fail at sign-in with a confusing error."""
         m = re.search(r'CLIENT_ID:\s*"([^"]*)"', text("config.js"))
-        self.assertIsNotNone(m)
-        self.assertEqual(m.group(1), "", "fill this in when you deploy, not in the repo")
+        self.assertIsNotNone(m, "config.js lost its CLIENT_ID line")
+        value = m.group(1).strip()
+        if value:
+            self.assertRegex(
+                value.lower(),
+                r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                "that does not look like an Application (client) ID from the Entra portal")
 
     def test_the_only_scope_requested_is_the_app_folder(self):
         """This scope is what makes the collection workbook invisible to the phone (§9.1)."""

@@ -1,0 +1,270 @@
+# Running it — the PC app and the phone app
+
+Written for someone who does not want to think about the technical details. `SETUP.md` covers the
+one-time Microsoft account work; this covers everything else, in order.
+
+---
+
+## The idea in one picture
+
+There are two halves and they never talk to each other directly.
+
+```
+   YOUR PC                          ONEDRIVE                        YOUR IPHONE
+   ───────                          ────────                        ───────────
+   the app you run                  a shared folder                 a web app you
+   on your own machine        <──>  both halves can          <──>   install to the
+                                    reach                           home screen
+
+   reads your collection            small files, a few KB           never sees your
+   workbook, writes the             each — no spreadsheet           collection workbook
+   readable one                     is ever synced                  at all
+```
+
+The PC does the heavy work: it reads the 147 MB collection workbook, writes the readable
+`Whiskey Tastings.xlsx`, and publishes a small summary for the phone. The phone only ever reads
+that summary and writes small scorecard files back. They meet in one OneDrive folder and OneDrive
+does the syncing, which is why neither has to be switched on at the same time.
+
+---
+
+## Part 1 — The PC app
+
+### What it actually is
+
+It is a small program that runs on your computer and shows its pages in your normal web browser.
+Nothing is on the internet. The address `http://127.0.0.1:8765` means "this computer, on door
+number 8765" — no one else can reach it, even on your own wifi.
+
+### One-time, on this machine — already done
+
+For reference, or if you ever move to a new computer:
+
+1. **Python** — the language the app is written in. Already installed here.
+2. **The libraries** — three small add-ons the app needs. Install them by opening a terminal in the
+   project folder and running:
+
+   ```
+   pip install -r requirements.txt
+   ```
+
+3. **The settings file** — `config.yaml`, which tells the app where your files live. It already
+   exists on this machine. It is deliberately not in the public repository, because it contains the
+   path to your own home folder. If you ever need to recreate it, copy `config.example.yaml` to
+   `config.yaml` and fill in the three paths near the top.
+
+### Starting it, every time
+
+Double-click **`run.bat`** in the project folder.
+
+A black console window opens and prints something like:
+
+```
+Whiskey Tasting Book  →  http://127.0.0.1:8765
+  journal : C:\Users\<you>\OneDrive\Apps\Whiskey Tasting Book
+```
+
+Then open **http://127.0.0.1:8765** in your browser.
+
+Two things to know about that console window:
+
+- **Leave it open.** It *is* the app. Closing it stops the app, and the browser page will stop
+  working.
+- Nothing useful appears in it. It is just where the program lives.
+
+To stop the app: close the console window, or click in it and press `Ctrl+C`.
+
+### The very first time you start it
+
+Click **Refresh** in the top right once, while you have an internet connection.
+
+That one button does three jobs:
+
+1. Rereads your collection workbook (read-only — it is never written to) so the app knows about
+   any bottles you have added in Excel.
+2. Updates its own quick list, so it does not have to open a 147 MB file every time.
+3. **Publishes the summary the phone reads.** Until you press Refresh at least once, the phone has
+   nothing to show.
+
+It takes a few seconds because the workbook is large. You only need to press it when you have
+changed something in Excel, or when you want the phone to see new bottles.
+
+### What the screens do
+
+| Screen | What it is for |
+|---|---|
+| **Score** | The judging sheet. Pick a spirit, score the ten categories, submit. |
+| **New flight** | Several pours in one sitting, with a switcher along the top. Blind mode hides each bottle until its card is submitted. |
+| **Table** | Every spirit or every tasting, sortable and filterable. This is the "easy sorting" the whole project was for. |
+| **Compare** | Two to four things side by side. |
+| **Analysis** | Score against age, price, proof; by type and region; and whether your own scoring is drifting over time. |
+
+### Where your data goes
+
+- **Scores** → one small file per tasting in
+  `C:\Users\<you>\OneDrive\Apps\Whiskey Tasting Book\tastings\`.
+  They are never edited, only added to — a correction is a new file, so nothing can be lost.
+- **The readable spreadsheet** → `Whiskey Tastings.xlsx`, rebuilt from those files. You can open it
+  in Excel any time. Do not type into it: it is regenerated and your typing would be lost. The one
+  exception is the `Quick Entry` sheet, which is designed to be typed into.
+- **Your collection workbook** → only ever read, never written, except when you explicitly approve
+  a new bottle. A backup is taken before that happens.
+
+### Proving nothing was damaged
+
+If you ever want reassurance that the app has not touched your collection workbook:
+
+```
+python verify_gate.py
+```
+
+It does a complete round trip and then compares the workbook against itself, byte for byte. It
+should end with `PASS`, confirming all 198 photos are intact.
+
+---
+
+## Part 2 — The phone app
+
+This one needs three things set up once. After that it is just an icon on your home screen.
+
+### Why it needs setting up at all
+
+The phone app is a web page, so it has to live at a web address — that is step A. And it needs
+permission to reach your OneDrive folder — that is steps B and C. Nothing runs on a server; the
+page is just files, and your phone talks to OneDrive directly.
+
+### Step A — put the app on the web (5 minutes)
+
+1. Go to **https://github.com/RollingShuttle/whiskey-tasting-book**
+2. Click **Settings** (the tab along the top of the repository).
+3. In the left-hand menu, click **Pages**.
+4. Under "Build and deployment", set **Source** to *Deploy from a branch*.
+5. Set **Branch** to `main`, and set the folder dropdown next to it to **`/docs`**.
+6. Click **Save**.
+
+Wait a minute or two, then reload that Settings → Pages page. It will show the address, which will
+be:
+
+```
+https://rollingshuttle.github.io/whiskey-tasting-book/
+```
+
+Open it on your computer first to check it loads. It will say there is no collection yet — that is
+correct, it has not been given permission to fetch one.
+
+### Step B — tell the app who it is (5 minutes)
+
+Your Microsoft app registration from `SETUP.md` Part 3 has an identifier. The app needs it.
+
+1. Go to **https://entra.microsoft.com** and sign in with your **personal** Microsoft account —
+   the one that has the whiskey files. Check the avatar in the top right before going further.
+2. Left menu → **Applications** → **App registrations** → click **Whiskey Tasting Book**.
+3. On the Overview page, copy the **Application (client) ID**. It looks like
+   `3f9a2c14-7b21-4c8e-9a55-1d2e3f4a5b6c`.
+4. In the project folder, open `docs/config.js` in any text editor. Find this line near the top:
+
+   ```
+   CLIENT_ID: "",
+   ```
+
+   Paste your ID between the quotes so it reads:
+
+   ```
+   CLIENT_ID: "3f9a2c14-7b21-4c8e-9a55-1d2e3f4a5b6c",
+   ```
+
+5. Save the file, then commit and push it so the deployed page picks it up:
+
+   ```
+   git add docs/config.js && git commit -m "Add the client ID" && git push
+   ```
+
+This identifier is **not a password**. Any app of this kind has to include it in plain view, and it
+is useless on its own — it only works from your registered web address, only for personal Microsoft
+accounts, and only for the one folder. There is no secret anywhere in this project, and there
+should never be.
+
+### Step C — let the app sign you in (3 minutes)
+
+Still in the Entra portal, on the same app registration:
+
+1. Left menu → **Authentication**.
+2. If there is already a **Single-page application** section, click **Add URI** under it. If not,
+   click **Add a platform** → **Single-page application**.
+3. Enter exactly:
+
+   ```
+   https://rollingshuttle.github.io/whiskey-tasting-book/
+   ```
+
+   The trailing slash matters.
+4. Click **Save** (or **Configure**).
+
+This is Microsoft's way of making sure sign-ins can only be sent back to a page you control.
+
+### Step D — install it on the iPhone (2 minutes)
+
+1. Open **Safari** on the iPhone. It has to be Safari — installing from Chrome does not give you a
+   proper app.
+2. Go to `https://rollingshuttle.github.io/whiskey-tasting-book/`
+3. Tap the **Share** button (the square with an arrow, at the bottom).
+4. Scroll down and tap **Add to Home Screen**, then **Add**.
+
+You now have an icon. Opening it from the icon runs it full screen with no browser bars.
+
+### Step E — first run on the phone
+
+1. Make sure the PC app has been started and **Refresh** pressed at least once, and give OneDrive a
+   minute to sync.
+2. Open the app from the home screen.
+3. Tap **Sync** at the bottom.
+4. Tap **Sign in**. Sign in with your **personal** Microsoft account.
+5. Back on the Sync screen, tap **Refresh**.
+
+Your collection appears under the Collection tab. You are done.
+
+---
+
+## Part 3 — Living with it
+
+### The daily rhythm
+
+- **On the phone, anywhere:** tap a bottle, tap *Score a pour*, drag along each row, submit. It
+  works with no signal at all — the card is saved to the phone first and uploaded later. The number
+  on the Sync tab tells you how many are waiting.
+- **On the PC, when you are at the computer:** start the app. It picks up whatever the phone sent.
+  Press **Refresh** when you want the phone to see newly added bottles.
+- **New bottles:** add them on the phone under *Add bottle*. They do not go straight into your
+  collection — they wait, and the PC app shows them at the top of the Score screen for you to check
+  and approve. Only then is the row written, and only after a backup.
+
+### Things that are normal, not faults
+
+- **The phone asks you to sign in about once a day.** Microsoft limits how long a browser app can
+  stay signed in, and it is not adjustable. It never stops you scoring — only uploading.
+- **Scores you entered on the PC do not instantly appear on the phone.** The phone sees them after
+  you press Refresh on the PC and OneDrive has synced.
+- **The Sync screen says "offline".** That is just the phone reporting honestly. Keep scoring.
+
+### If something looks wrong
+
+| What you see | What to do |
+|---|---|
+| Browser says the page cannot be reached | The console window is closed. Double-click `run.bat` again. |
+| "No collection yet" on the phone | Start the PC app and press Refresh, then Refresh on the phone. |
+| "Workbook open in Excel" | Close `Whiskey Tastings.xlsx` (or the collection workbook) in Excel and try again. This is deliberate — writing while Excel has it open would create a conflicting copy. |
+| Sign-in fails on the phone | Check you used the personal Microsoft account, and that the address in Step C matches exactly, trailing slash included. |
+| You want to be sure nothing broke | Run `python verify_gate.py`. |
+
+---
+
+## A simpler option, at home only
+
+If you are on the same wifi as the PC, you can skip the phone app entirely and use the PC app from
+the phone's browser.
+
+In `config.yaml`, change `bind_lan: false` to `bind_lan: true`, restart the app, and visit
+`http://<your PC's address>:8765` on the phone. You get the full desktop app on the phone screen.
+
+It only works at home, and it needs the PC switched on — which is exactly why the separate phone
+app exists for everywhere else.
