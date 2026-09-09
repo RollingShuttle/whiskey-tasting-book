@@ -2,7 +2,8 @@
 
 Read `SPEC.md` before changing anything. It is the build spec and it is current.
 `SETUP.md` covers the one-time Microsoft account setup. `RUNNING.md` is the plain-language
-guide to installing and starting both halves (the PC app opens via `launch.py`, not `app.py`) — keep it accurate when behaviour changes.
+guide to installing and starting both halves (the PC app opens via `launch.py`, not `app.py`, and
+ships as a console-free exe built by `build_exe.bat`) — keep it accurate when behaviour changes.
 
 ## Non-negotiable
 

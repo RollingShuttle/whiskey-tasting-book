@@ -9,6 +9,8 @@ data/
 build/
 dist/
 *.spec
+*.exe
+error.log
 
 # Local machine config — holds a username in its file paths. Copy config.example.yaml -> config.yaml.
 config.yaml

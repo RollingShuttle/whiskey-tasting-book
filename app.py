@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 
 import yaml
@@ -28,7 +29,14 @@ from flask import Flask, jsonify, request, send_from_directory
 import rubric as rubric_mod
 import store as store_mod
 
-STATIC_DIR = Path(__file__).resolve().parent / "static"
+def _resource_dir():
+    """Where the bundled read-only files live. Packaged, PyInstaller unpacks them to a temp
+    folder and points sys._MEIPASS at it; from source they sit beside this file."""
+    base = getattr(sys, "_MEIPASS", None)
+    return Path(base) if base else Path(__file__).resolve().parent
+
+
+STATIC_DIR = _resource_dir() / "static"
 ML_PER_OZ = 29.5735
 
 # Medal band -> chip palette, keyed by band name (SPEC.md §10: Diamond pale blue, Gold brass,

@@ -52,26 +52,32 @@ For reference, or if you ever move to a new computer:
    exists on this machine. It is deliberately not in the public repository, because it contains the
    path to your own home folder. If you ever need to recreate it, copy `config.example.yaml` to
    `config.yaml` and fill in the three paths near the top.
+4. **The app itself** — `Whiskey Tasting Book.exe`, built once by double-clicking `build_exe.bat`.
+   It bundles Python and the pages into a single file so there is no console window. It is not in
+   the repository (27 MB of build output does not belong there), so on a new machine, or after the
+   code changes, run `build_exe.bat` again and then `python make_shortcut.py`.
 
 ### Starting it, every time
 
 **Double-click the "Whiskey Tasting Book" icon** on your Desktop, or find it in the Start menu.
 
-The app opens in its own window - no address bar, no tabs, no bookmarks bar. It looks and behaves
-like an ordinary program. There is nothing to type.
+That is the whole thing. It opens in its own window — no address bar, no tabs, no bookmarks bar,
+and no black console window behind it. It looks and behaves like an ordinary program.
 
-**To stop it, close that window.** The app shuts down with it. There is nothing else to quit.
+- **Resize it** by dragging any edge or corner, or maximise it with the button in the title bar.
+- **Minimise it** and it keeps running in the background. Click it in the taskbar to come back;
+  nothing is lost and nothing needs restarting.
+- **To stop it, close the window.** The app shuts down with it. There is nothing else to quit and
+  nothing left running afterwards.
 
-Two small things you may notice:
+The first time you open it, the window may take a second or two to appear. It is waiting until the
+app is genuinely ready, rather than showing you an error page.
 
-- A console window appears **minimised** in the taskbar while the app is open. Ignore it; it closes
-  by itself when you close the app window. It only exists so that if something ever goes wrong, the
-  reason is visible instead of the app silently failing to appear.
-- The first time, the window may take a second or two to appear. It is waiting until the app is
-  genuinely ready rather than showing you an error page.
+If it ever fails to start, it will tell you: a message box appears saying what went wrong, and the
+same text is written to `error.log` in the project folder. It will not fail silently.
 
-If you ever want the old behaviour - a plain console and an address you open yourself - run
-`python launch.py --no-window`, or `python app.py`.
+If you ever want a plain console and an address you open yourself, run `python launch.py
+--no-window`, or `python app.py`.
 
 If the shortcuts are ever lost, recreate them with:
 
@@ -258,7 +264,7 @@ Your collection appears under the Collection tab. You are done.
 
 | What you see | What to do |
 |---|---|
-| The window closes at once, or never appears | Open a terminal in the project folder and run `python launch.py` - the reason will be printed. |
+| The window closes at once, or never appears | Read `error.log` in the project folder — the reason is written there. |
 | You closed the app but want it back | Double-click the icon again. |
 | "No collection yet" on the phone | Start the PC app and press Refresh, then Refresh on the phone. |
 | "Workbook open in Excel" | Close `Whiskey Tastings.xlsx` (or the collection workbook) in Excel and try again. This is deliberate — writing while Excel has it open would create a conflicting copy. |

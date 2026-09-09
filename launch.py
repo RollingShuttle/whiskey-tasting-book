@@ -47,6 +47,34 @@ BROWSERS = [
 ]
 
 
+def app_dir():
+    """Where the app's own files live: beside the executable when packaged, beside this file
+    otherwise. config.yaml, data/ and the backups belong to the user, so they stay out here
+    rather than inside the bundle, which is temporary and read-only."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+def report_problem(message):
+    """Packaged there is no console, so a failure has to be written down and shown rather than
+    vanishing into a window that never appears."""
+    try:
+        (app_dir() / "error.log").write_text(message, encoding="utf-8")
+    except OSError:
+        pass
+    if os.name == "nt" and getattr(sys, "frozen", False):
+        try:
+            import ctypes
+            hint = "\n\nThe full text is in error.log next to the app."
+            ctypes.windll.user32.MessageBoxW(
+                None, message[-1500:] + hint, "Whiskey Tasting Book", 0x10)
+        except Exception:
+            pass
+    else:
+        print(message, file=sys.stderr)
+
+
 def find_browser(candidates=None):
     """The first Chromium-based browser we can find, or None to fall back to the default one."""
     for path in candidates if candidates is not None else BROWSERS:
@@ -158,13 +186,23 @@ def wait_until_closed(state, grace=15.0, idle=3600.0):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Start the Whiskey Tasting Book and open its window")
-    ap.add_argument("--config", default="config.yaml")
+    ap.add_argument("--config", default=None)
     ap.add_argument("--port", type=int)
     ap.add_argument("--no-window", action="store_true",
                     help="start the server and print the address instead of opening a window")
     a = ap.parse_args(argv)
 
-    cfg = yaml.safe_load(open(a.config, encoding="utf-8"))
+    # Relative paths in config.yaml (./data, ./data/backups) are meant to be relative
+    # to the app, not to wherever a shortcut happened to start us.
+    os.chdir(app_dir())
+    config = a.config or str(app_dir() / "config.yaml")
+    if not Path(config).exists():
+        report_problem(f"No settings file found at {config}.\n\n"
+                       "Copy config.example.yaml to config.yaml and fill in the "
+                       "three paths near the top.")
+        return 1
+
+    cfg = yaml.safe_load(open(config, encoding="utf-8"))
     srv = cfg.get("server", {})
     host = "0.0.0.0" if srv.get("bind_lan") else srv.get("host", "127.0.0.1")
     port = a.port or int(srv.get("port", 8765))
@@ -177,11 +215,11 @@ def main(argv=None):
         return 0
 
     state = {"last": time.monotonic(), "closing": None}
-    application = app_mod.create_app(a.config)
+    application = app_mod.create_app(config)
     attach_lifecycle(application, state)
     threading.Thread(target=serve, args=(application, host, port), daemon=True).start()
     if not wait_for_port(host, port):
-        print("The app did not start. Run `python app.py` to see why.", file=sys.stderr)
+        report_problem("The app did not start listening in time.")
         return 1
     print(f"Whiskey Tasting Book  →  {url}")
 
@@ -198,4 +236,11 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except BaseException:                      # noqa: BLE001 — a windowless app must not fail silently
+        import traceback
+        report_problem(traceback.format_exc())
+        raise SystemExit(1)
