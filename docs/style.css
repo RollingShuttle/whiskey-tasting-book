@@ -327,3 +327,11 @@ label.field > span { color: var(--muted); font-size: 0.78rem; }
   min-height: 44px; padding: 0 4px; text-decoration: underline;
 }
 .linkish.danger { color: #C97A6A; }
+
+/* The sort row: every field the desktop sorts on, without hunting for a header off-screen. */
+.sortbar { align-items: center; padding-bottom: 8px; }
+.sortlabel {
+  color: var(--muted); font-size: 0.72rem; padding-right: 2px; flex-shrink: 0;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.sortbar .chip { font-size: 0.78rem; padding: 5px 11px; }

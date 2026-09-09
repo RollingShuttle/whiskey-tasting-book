@@ -416,6 +416,9 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
             if bits["n"]:
                 careers[code] = {
                     "score": bits["career_score"], "medal": bits["medal"], "n": bits["n"],
+                    # Best and worst sitting, so the phone can sort on them like the desktop can.
+                    # It holds its own cards, not the journal, so it cannot work these out.
+                    "best": bits["best"], "worst": bits["worst"],
                     # Per-category means, so the phone can compare two whiskies axis by axis
                     # rather than only by their totals. Ten small numbers per scored spirit.
                     "categories": {k: round(v, 2) for k, v in bits["category_means"].items()},

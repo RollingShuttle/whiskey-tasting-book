@@ -221,11 +221,57 @@ class TestPhoneTable(unittest.TestCase):
 
     def test_unscored_rows_sort_to_the_bottom_either_way(self):
         """An unscored bottle is not a low score. Floating them to the top of an ascending sort
-        would bury everything that has one."""
+        would bury everything that has one, so the null test must come before the direction is
+        applied rather than being folded into it."""
         src = code("table.js")
-        block = src[src.index("function compare("):src.index("function shown(")]
-        self.assertIn("if (x === null) return 1;", block)
-        self.assertIn("if (y === null) return -1;", block)
+        block = src[src.index("function compare("):src.index("function tieBreak(")]
+        missing = block.index("x === null")
+        self.assertLess(missing, block.index("desc ?"),
+                        "nulls are ordered by the sort direction instead of always sinking")
+        self.assertIn("return 1;", block)
+        self.assertIn("return -1;", block)
+
+    def test_it_sorts_on_every_field_the_desktop_does(self):
+        """The point of the tab. The desktop sorts on all of these; a phone that only sorts on
+        what happens to be on screen is a different, smaller thing."""
+        src = code("table.js")
+        for key in ("score", "name", "code", "type", "proof", "year", "n", "region", "age",
+                    "paid", "value_per_oz", "score_per_dollar", "medal", "best", "worst",
+                    "rarity", "status"):
+            self.assertIn('key: "%s"' % key, src, "cannot sort by %s" % key)
+
+    def test_the_sorted_field_is_always_shown(self):
+        """Sorting by something you cannot see is a list silently reordered by a number that is
+        nowhere on the screen."""
+        src = code("table.js")
+        block = src[src.index("function columns("):src.index("function pick(")]
+        self.assertIn("core.concat([chosen])", block)
+
+    def test_medals_sort_by_standing_not_alphabetically(self):
+        """Bronze before Diamond would be nonsense."""
+        src = code("table.js")
+        self.assertIn("function medalRank(", src)
+        self.assertIn("app.rubric.bands", src)
+
+    def test_the_first_tap_on_medal_leads_with_the_best(self):
+        """It is an ordered field even though it reads as a word, so it cannot take its default
+        direction from whether the column is right-aligned."""
+        src = code("table.js")
+        self.assertIn('key: "medal", label: "Medal", high: true', src)
+        self.assertIn("field(key).num || field(key).high", src)
+
+    def test_equal_scores_are_broken_the_way_the_desktop_breaks_them(self):
+        """A 90 from four nights outranks a 90 from one."""
+        src = code("table.js")
+        block = src[src.index("function tieBreak("):src.index("function shown(")]
+        self.assertIn("a.n !== b.n", block)
+
+    def test_the_two_derived_columns_are_worked_out_here(self):
+        """$ / oz and score / $ are the two the spreadsheet could never produce, and the phone is
+        not sent them — it has the price and the size, so it computes them."""
+        src = code("table.js")
+        self.assertIn("paid / oz", src)
+        self.assertIn("score / paid", src)
 
     def test_the_strip_scrolls_rather_than_being_squeezed(self):
         self.assertIn("overflow-x: auto", text("style.css"))
