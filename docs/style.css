@@ -348,3 +348,26 @@ label.field > span { color: var(--muted); font-size: 0.78rem; }
   color: var(--muted); font-size: 0.8rem; min-height: 44px;
 }
 .lenschoice input { accent-color: var(--brass); width: 20px; height: 20px; }
+
+/* One sitting in full: what each category was given, and what was written against it. */
+.qrow.sitting {
+  width: 100%; text-align: left; background: none; border: 0;
+  display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px;
+  min-height: 44px; padding: 8px 2px; color: var(--text); font-size: 0.9rem;
+  border-bottom: 1px solid var(--line);
+}
+.qrow.sitting:last-child { border-bottom: 0; }
+.qrow.sitting .chev { color: var(--muted); font-size: 1.1rem; }
+
+.brk { padding: 9px 0; border-bottom: 1px solid var(--line); }
+.brk:last-child { border-bottom: 0; }
+.brk-head { display: flex; justify-content: space-between; font-size: 0.86rem; margin-bottom: 6px; }
+.brk-val { color: var(--muted); font-variant-numeric: tabular-nums; }
+.brk-track { background: var(--surface-2); border-radius: 999px; height: 8px; overflow: hidden; }
+.brk-fill { height: 100%; border-radius: 999px; }
+.brk-note { color: var(--muted); font-size: 0.82rem; margin-top: 6px; line-height: 1.45; }
+.brk-overall { font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap; }
+.btn.danger {
+  background: none; color: #C97A6A;
+  border: 1px solid color-mix(in srgb, #C97A6A 45%, transparent);
+}

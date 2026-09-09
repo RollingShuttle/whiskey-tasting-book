@@ -51,6 +51,7 @@ const app = {
 const screens = {
   collection: document.getElementById("screen-collection"),
   detail: document.getElementById("screen-detail"),
+  sitting: document.getElementById("screen-sitting"),
   score: document.getElementById("screen-score"),
   add: document.getElementById("screen-add"),
   table: document.getElementById("screen-table"),
@@ -296,7 +297,10 @@ function buriedHere(code) {
   return ((Store.careers().sittings || {})[code] || []).filter((t) => gone.has(t.tasting_id)).length;
 }
 
-function openDetail(code) {
+/** `push` is false when arriving from a screen that is being left behind — a submitted card, or
+    a sitting that has just been deleted. Pushing there puts a screen on the back stack that the
+    chevron would return to and that no longer means anything. */
+function openDetail(code, { push = true } = {}) {
   const s = findSpirit(code);
   if (!s) return;
   const career = careerFor(code);
@@ -334,17 +338,80 @@ function openDetail(code) {
       ? el("div", { class: "card", style: "margin-top:12px" },
           el("div", { class: "muted", style: "margin-bottom:8px" },
             `${sittings.length} sitting${sittings.length === 1 ? "" : "s"}`),
-          ...sittings.map((c) => el("div", { class: "qrow sitting" },
+          // The row opens the sitting rather than carrying its controls. Two buttons squeezed
+          // beside a date is a poor tap target, and the card behind them — ten scores and the
+          // notes written with them — had nowhere to be read at all.
+          ...sittings.map((c) => el("button", {
+            class: "qrow sitting", type: "button",
+            onclick: () => openSitting(c, s),
+          },
             el("span", {}, c.date),
             el("span", { class: "when" },
               `${c.total}${c._path && !c._sent ? " · waiting" : ""}`),
-            el("button", { class: "linkish", type: "button",
-                           onclick: () => editSitting(c) }, "Edit"),
-            el("button", { class: "linkish danger", type: "button",
-                           onclick: () => removeSitting(c, s) }, "Delete"))))
+            c.medal
+              ? el("span", { class: "medal",
+                  style: `--m:${MEDAL_COLORS[c.medal] || "#9A9086"}` }, c.medal)
+              : null,
+            el("span", { class: "chev" }, "›"))))
       : null);
 
-  show("detail", s.name || s.code, { push: true });
+  show("detail", s.name || s.code, { push });
+}
+
+/** One sitting, in full: what each category was given, the note written against it, and the two
+    things you might want to do about it afterwards. */
+function openSitting(card, spirit) {
+  const rub = app.rubric;
+  const notes = { ...(card.notes || {}) };
+  const overall = notes.overall || "";
+  delete notes.overall;
+
+  const bars = el("div", { class: "card" },
+    ...(rub ? rub.categories : []).map((cat) => {
+      const v = card.scores ? card.scores[cat.key] : null;
+      const has = v !== null && v !== undefined;
+      return el("div", { class: "brk" },
+        el("div", { class: "brk-head" },
+          el("span", {}, cat.label || cat.key),
+          el("span", { class: "brk-val" }, has ? `${v} / ${cat.max}` : `— / ${cat.max}`)),
+        el("div", { class: "brk-track" },
+          el("div", { class: "brk-fill",
+                      style: `width:${has ? (v / cat.max) * 100 : 0}%;`
+                             + `background:${accentFor(spirit.type)}` })),
+        notes[cat.key] ? el("div", { class: "brk-note" }, notes[cat.key]) : null);
+    }));
+
+  const context = [card.date, card.venue, card.entered_from ? `entered on the ${card.entered_from}` : null]
+    .filter(Boolean).join(" · ");
+
+  fill(screens.sitting,
+    el("div", { class: "card", style: `border-left:3px solid ${accentFor(spirit.type)}` },
+      el("div", { class: "spirit-name" }, spirit.name || spirit.display_name || card.spirit_id),
+      el("div", { class: "spirit-meta" }, context),
+      el("div", { style: "margin-top:12px;display:flex;align-items:center;gap:10px" },
+        el("span", { class: "total-num" }, card.total === null || card.total === undefined
+          ? "—" : String(card.total)),
+        el("span", { class: "total-of" }, `/ ${rub ? rub.max_total : 100}`),
+        card.medal
+          ? el("span", { class: "medal", style: `--m:${MEDAL_COLORS[card.medal] || "#9A9086"}` },
+              card.medal)
+          : null),
+      card.include_in_average === false
+        ? el("div", { class: "muted", style: "margin-top:8px" }, "Not counted towards the score.")
+        : null),
+    bars,
+    overall
+      ? el("div", { class: "card" },
+          el("div", { class: "muted", style: "margin-bottom:6px" }, "Overall"),
+          el("div", { class: "brk-overall" }, overall))
+      : null,
+    el("div", { class: "actions", style: "margin-top:14px;gap:10px" },
+      el("button", { class: "btn wide", type: "button",
+                     onclick: () => editSitting(card) }, "Edit this sitting"),
+      el("button", { class: "btn wide danger", type: "button",
+                     onclick: () => removeSitting(card, spirit) }, "Delete")));
+
+  show("sitting", card.date || "Sitting", { push: true });
 }
 
 /** Reopen a sitting to correct it. Submitting writes revision n+1 of the same card, never a
@@ -375,7 +442,10 @@ function removeSitting(card, spirit) {
   Store.deleteCard(card);
   updateBadge();
   flush();
-  openDetail(card.spirit_id);
+  // The sitting pushed the detail screen on its way in; drop that entry and land back on the
+  // detail without pushing again, so the chevron does not lead to a sitting that is gone.
+  if (currentScreen() === "sitting") app.stack.pop();
+  openDetail(card.spirit_id, { push: false });
 }
 
 // ---------------------------------------------------------------- scorecard
@@ -528,11 +598,10 @@ function submitCard() {
   app.draft = null;
   updateBadge();
   flush();
-  app.stack.pop();                                   // straight back to the bottle
   app.stack = [{ name: "collection", title: "Collection" }];
   app.tab = "collection";
   markTab("collection");
-  openDetail(rec.spirit_id);
+  openDetail(rec.spirit_id, { push: false });        // back goes to the collection, not the card
 }
 
 const grow = (ta) => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight}px`; };

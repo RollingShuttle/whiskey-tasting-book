@@ -301,10 +301,40 @@ class TestEditingAndDeletingOnThePhone(unittest.TestCase):
         self.assertIn("d.revising", src)
         self.assertIn("Store.reviseCard(d.revising", src)
 
+    def test_a_sitting_opens_rather_than_carrying_its_controls(self):
+        """Two buttons squeezed beside a date is a poor tap target, and the card behind them had
+        nowhere to be read."""
+        src = code("app.js")
+        self.assertIn("openSitting(c, s)", src)
+
     def test_both_are_offered_on_the_sitting_itself(self):
         src = code("app.js")
-        self.assertIn("editSitting(c)", src)
-        self.assertIn("removeSitting(c, s)", src)
+        block = src[src.index("function openSitting("):src.index("function editSitting(")]
+        self.assertIn("editSitting(card)", block)
+        self.assertIn("removeSitting(card, spirit)", block)
+
+    def test_the_breakdown_shows_every_category(self):
+        """The scores and the notes written against them are the sitting; a total alone is not."""
+        block = code("app.js")
+        block = block[block.index("function openSitting("):block.index("function editSitting(")]
+        self.assertIn("rub.categories", block)
+        self.assertIn("card.scores", block)
+        self.assertIn("notes[cat.key]", block)
+        self.assertIn("overall", block)
+
+    def test_an_uncounted_sitting_says_so(self):
+        block = code("app.js")
+        block = block[block.index("function openSitting("):block.index("function editSitting(")]
+        self.assertIn("include_in_average === false", block)
+
+    def test_deleting_from_the_breakdown_does_not_go_back_to_it(self):
+        """The screen behind the chevron would be a sitting that no longer exists."""
+        src = code("app.js")
+        self.assertIn('currentScreen() === "sitting"', src)
+
+    def test_the_screen_exists(self):
+        self.assertIn("screen-sitting", text("index.html"))
+        self.assertIn('sitting: document.getElementById("screen-sitting")', code("app.js"))
 
     def test_deleting_asks_first(self):
         self.assertIn("window.confirm(", code("app.js"))

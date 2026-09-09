@@ -137,7 +137,8 @@ have ever scored, one row per review, sortable and filterable like the rest of t
   only those. You are asked once, and told which reviews are about to go.
 
 **On the phone:** open the bottle from Collection or Table. Its sittings are listed at the bottom
-of that page, each with **Edit** and **Delete**.
+of that page — tap one to see the whole card: what each category was given, the note written
+against it, and the overall note. **Edit** and **Delete** are at the foot of that screen.
 
 Either way, nothing is destroyed. A correction is saved as a *new revision* and the earlier one
 stays in the journal; a deletion writes a tombstone, so the card stops counting and stops being
