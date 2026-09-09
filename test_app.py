@@ -1188,6 +1188,41 @@ class TestReviseAndDelete(AppCase):
         self.assertEqual(row["n"], 1, "promoting a draft should make it count exactly once")
 
 
+class TestFilteringByKindOfSpirit(AppCase):
+    """Bottle, miniature or sample. The value was already on every row as `source` — the name was
+    taken by the ownership dropdown, which is a different question and was never the source of
+    anything."""
+
+    def source_js(self):
+        src = (Path(__file__).resolve().parent / "static" / "table.js").read_text(encoding="utf-8")
+        src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
+        return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
+
+    def test_source_is_offered_as_a_filter(self):
+        self.assertIn('FACETS = ["source"', self.source_js())
+
+    def test_the_ownership_filter_no_longer_squats_on_that_name(self):
+        """Both on f.source meant one silently overwrote the other."""
+        src = self.source_js()
+        self.assertIn("f.owned ===", src)
+        self.assertNotIn('f.source = e.target.value', src)
+
+    def test_the_collection_rows_carry_the_sheet_they_came_from(self):
+        rows = self.c.get("/api/table/collection").get_json()["rows"]
+        self.assertEqual({r["source"] for r in rows}, {"Bottle", "Sample"})
+
+    def test_a_review_carries_it_too(self):
+        """So "what did I think of my samples" is one dropdown, not a separate question."""
+        self._post({"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD)})
+        rows = self.c.get("/api/table/tastings").get_json()["rows"]
+        self.assertEqual(rows[0]["source"], "Bottle")
+
+    def test_the_filters_are_offered_on_the_review_list_as_well(self):
+        src = self.source_js()
+        self.assertIn("...FACETS.map(facetSelect).filter(Boolean),", src)
+        self.assertNotIn('T.mode === "collection" ? FACETS.map', src)
+
+
 class TestTheReviewControlsAreOnScreen(unittest.TestCase):
     """The table is wider than the window and scrolls sideways, so the last column is off the
     right edge. A control put there is present, documented and invisible — which is what happened

@@ -84,6 +84,7 @@ TASTING_COLUMNS = [
     {"key": "display_name",     "label": "Name",     "type": "name",  "default": True},
     {"key": "type",             "label": "Type",     "type": "text",  "default": True},
     {"key": "region",           "label": "Region",   "type": "text",  "default": False},
+    {"key": "source",           "label": "Source",   "type": "text",  "default": False},
     {"key": "proof",            "label": "Proof",    "type": "num",   "default": True},
     {"key": "release_year",     "label": "Year",     "type": "int",   "default": True},
     {"key": "counted",          "label": "Counted",  "type": "text",  "default": True},
@@ -720,6 +721,7 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
                 "scores": t.get("scores") or {},        # so a lens can re-total one sitting
                 "display_name": sp.get("display_name") or code,
                 "type": sp.get("type"), "region": sp.get("region"),
+                "source": sp.get("_sheet"),
                 "proof": sp.get("proof"), "release_year": sp.get("release_year"),
                 "total": t["total"], "medal": t["medal"],
                 "counted": "yes" if t.get("include_in_average", True) else "no",

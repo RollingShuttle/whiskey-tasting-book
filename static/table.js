@@ -11,7 +11,8 @@ const TableView = (() => {
     data: {},                        // mode -> {columns, rows}
     sort: {},                        // mode -> {key, dir}
     visible: {},                     // mode -> Set of column keys
-    filters: { q: "", type: "", region: "", rarity: "", status: "", source: "all", scored: false },
+    filters: { q: "", type: "", region: "", rarity: "", status: "", source: "",
+               owned: "all", scored: false },
     chooser: false,
     picked: new Set(),               // tasting_ids ticked for removal, in tastings mode
     lens: null,                      // {id, keys, custom} — set once config is loaded
@@ -22,7 +23,7 @@ const TableView = (() => {
     collection: { key: "career_score", dir: "desc" },
     tastings: { key: "date", dir: "desc" },
   };
-  const FACETS = ["type", "region", "rarity", "status"];
+  const FACETS = ["source", "type", "region", "rarity", "status"];
 
   const cols = () => T.data[T.mode]?.columns || [];
   const rows = () => T.data[T.mode]?.rows || [];
@@ -64,8 +65,8 @@ const TableView = (() => {
     const f = T.filters;
     const terms = f.q.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return rows().filter((r) => {
-      if (f.source === "owned" && r.owned !== true) return false;
-      if (f.source === "encounter" && r.owned !== false) return false;
+      if (f.owned === "owned" && r.owned !== true) return false;
+      if (f.owned === "encounter" && r.owned !== false) return false;
       if (f.scored && !(r.n > 0 || r.total !== undefined)) return false;
       for (const k of FACETS) if (f[k] && r[k] !== f[k]) return false;
       if (terms.length) {
@@ -220,10 +221,10 @@ const TableView = (() => {
       el("input", { class: "t-search", type: "text", placeholder: "Filter…", value: f.q,
                     "aria-label": "Filter rows",
                     oninput: (e) => { f.q = e.target.value; render(); } }),
-      ...(T.mode === "collection" ? FACETS.map(facetSelect).filter(Boolean) : []),
+      ...FACETS.map(facetSelect).filter(Boolean),
       T.mode === "collection"
         ? el("select", { class: "t-select", "aria-label": "Ownership",
-            onchange: (e) => { f.source = e.target.value; render(); } },
+            onchange: (e) => { f.owned = e.target.value; render(); } },
             el("option", { value: "all" }, "Owned + tasted"),
             el("option", { value: "owned" }, "Owned only"),
             el("option", { value: "encounter" }, "Tasted only"))
@@ -236,7 +237,7 @@ const TableView = (() => {
       el("button", { type: "button", class: "ghost", onclick: () => exportCSV(list) }, "CSV"));
 
     const sel = controls.querySelector('select[aria-label="Ownership"]');
-    if (sel) sel.value = f.source;
+    if (sel) sel.value = f.owned;
 
     const bar = el("div", { class: "t-toolbar" },
       el("div", { class: "t-modes" }, modeBtn("collection", "Collection"),
