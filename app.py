@@ -52,14 +52,14 @@ MEDAL_COLORS = {
 }
 
 
-# Column contracts for the table view (SPEC.md §4.3). The front end builds its column chooser and
-# its CSV straight from these, so adding a column is a one-line change here.
-# What shape careers.json is in. Two computers share this folder, and an older copy of the app
-# republishing over a newer one is silent otherwise: the phone simply finds nothing where the
-# sittings used to be and has no way to say why. Raise this whenever a field is added that the
-# phone depends on, and teach the phone the same number.
+# What shape careers.json is in. Two computers share that folder, and an older copy of the app
+# republishing over a newer one is silent otherwise: the phone finds nothing where the sittings
+# used to be and has no way to say why. Raise this whenever a field is added that the phone
+# depends on, and teach the phone the same number.
 PUBLISHED_VERSION = 2
 
+# Column contracts for the table view (SPEC.md §4.3). The front end builds its column chooser and
+# its CSV straight from these, so adding a column is a one-line change here.
 COLLECTION_COLUMNS = [
     {"key": "code",             "label": "Code",     "type": "code",  "default": True},
     {"key": "career_score",     "label": "Score",    "type": "score1", "default": True},
