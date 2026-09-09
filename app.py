@@ -884,7 +884,8 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
                 collection_mod.resolve_master(cfg, app.config["_master"]),
                 sheet, fields, backup_dir=backup_dir, keep=10,
                 config_path=config_path, coll=coll,
-                code_floor=journal.highest_seen(sheet))
+                code_floor=journal.highest_seen(
+                    sheet, prefix=collection_mod.CODE_PREFIX.get(sheet)))
         except master_write.MasterWriteError as e:
             return jsonify({"ok": False, "error": str(e)}), 409
         except Exception as e:                         # noqa: BLE001 — surface the real reason

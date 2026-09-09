@@ -165,6 +165,16 @@ being squeezed. Proof and release year are shown on the score sheet, both tables
 views, because three bottles in this collection are called George T. Stagg and those two fields are
 what separate one release from the next.
 
+`setup_machine.py` (+ `test_setup_machine.py`) writes `config.yaml` for a new computer by finding
+OneDrive and the workbook itself — config.yaml is gitignored because its paths carry a username, so
+it is the only thing stopping a fresh clone from starting. **More than one PC may share the
+journal**: cards are per-file with unique names and merge safely, but `meta/high_water.json`,
+`meta/codes.json` and `snapshot/*` are whole-file writes and a simultaneous refresh on two machines
+can lose one update. `highest_seen(sheet, prefix=...)` therefore also reads the `retired/` records,
+which are one file per code and cannot be lost that way, so a code can never be reissued even if
+the meta write is. Refresh and bottle approval should stay on one machine: they touch the 147 MB
+master, and a conflicted copy of that is the one loss this project cannot undo.
+
 That is the whole of SPEC.md. Nothing in the build order is outstanding.
 
 The front end serves two clients from one codebase: the PC app at `127.0.0.1:8765`, and a

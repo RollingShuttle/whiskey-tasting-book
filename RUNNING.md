@@ -196,6 +196,60 @@ should end with `PASS`, confirming all 198 photos are intact.
 
 ---
 
+## Part 1b — Running it on a second computer
+
+The app is not tied to one machine. A laptop can run the same thing, and the two stay in step
+because both read and write the same OneDrive folder — the same way the phone does.
+
+**On the laptop, once:**
+
+1. Install **Python** if it is not there: https://www.python.org/downloads/ — tick *Add Python to
+   PATH* on the first screen.
+2. Make sure **OneDrive is signed in and has finished syncing**, so the app folder exists.
+3. Get the code and set it up:
+
+   ```
+   git clone https://github.com/RollingShuttle/whiskey-tasting-book.git
+   cd whiskey-tasting-book
+   python setup_machine.py
+   pip install -r requirements.txt
+   ```
+
+   `setup_machine.py` writes `config.yaml` for that machine. It finds OneDrive and fills in the
+   paths itself, because those paths contain your username and so cannot be shared between
+   computers — that is the only reason a fresh copy will not start on its own.
+
+4. Then build the app and make its icon:
+
+   ```
+   build_exe.bat
+   python make_shortcut.py
+   ```
+
+### What works on both, and what to keep on one
+
+**Everything about scoring works on both.** Score, browse, the table, compare, analysis. Scores
+travel through OneDrive, and two machines cannot tread on each other's work: every card is its own
+file with a name nothing else can take.
+
+**Keep two things on the desktop:**
+
+- **Refresh**, which rereads the collection workbook
+- **Approving a new bottle**, which writes to the collection workbook
+
+Both touch the 147 MB workbook. Doing them from two machines at once is how OneDrive ends up making
+a *conflicted copy* of it, and that file is the one thing in this project that cannot be
+regenerated.
+
+The laptop does not need the collection workbook at all. If it is not there, `setup_machine.py`
+says so and carries on: the app still shows all 375 bottles and every score, because it reads the
+same published summary the phone does. Only Refresh and approvals need the workbook itself.
+
+Bottle codes are safe either way. A number that has ever been used is never handed out again, and
+that is recorded in two independent places so a sync clash cannot lose it.
+
+---
+
 ## Part 2 — The phone app
 
 This one needs three things set up once. After that it is just an icon on your home screen.

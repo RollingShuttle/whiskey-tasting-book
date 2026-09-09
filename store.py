@@ -298,14 +298,29 @@ class Journal:
             _atomic_write_json(path, known)
         return known
 
-    def highest_seen(self, sheet):
+    def highest_seen(self, sheet, prefix=None):
+        """The highest code number ever seen on a sheet.
+
+        Two machines can share this journal through OneDrive, and high_water.json is one of the few
+        files here that is rewritten rather than appended to — so a simultaneous refresh on both
+        could lose one update. The retired records cannot be lost that way, because each is its own
+        file named after its code, so they are consulted too. A number that either source has seen
+        is never handed out again.
+        """
+        best = 0
         path = self._dir("meta") / "high_water.json"
-        if not path.exists():
-            return 0
-        try:
-            return int(json.loads(path.read_text(encoding="utf-8")).get(sheet, 0))
-        except (OSError, ValueError, TypeError):
-            return 0
+        if path.exists():
+            try:
+                best = int(json.loads(path.read_text(encoding="utf-8")).get(sheet, 0))
+            except (OSError, ValueError, TypeError):
+                best = 0
+        if prefix:
+            for rec in self.retired():
+                code = str(rec.get("code") or "")
+                head, _, tail = code.partition("-")
+                if head == prefix and tail.isdigit():
+                    best = max(best, int(tail))
+        return best
 
     def write_pending_bottle(self, *, sheet, fields, entered_from="phone"):
         """A new-bottle request. Never touches the master workbook — SPEC.md §8.5."""
