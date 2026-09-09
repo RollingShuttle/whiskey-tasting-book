@@ -101,6 +101,9 @@ function watchWindow() {
 
 function showStopped() {
   if (document.getElementById("stopped")) return;
+  // The launcher finds the live window by this exact title, so a dead one must stop answering
+  // to it — otherwise reopening the app would raise this corpse instead of a working window.
+  document.title = "Whiskey Tasting Book (closed)";
   document.body.append(el("div", { id: "stopped", class: "stopped" },
     el("div", { class: "stopped-card" },
       el("div", { class: "stopped-title" }, "The app has been closed"),

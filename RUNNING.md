@@ -258,6 +258,8 @@ Your collection appears under the Collection tab. You are done.
 
 ### Things that are normal, not faults
 
+- **Double-clicking the icon twice does not open two copies.** The second one just brings the
+  window you already have to the front. There is only ever one app running.
 - **The app is still in the notification area after you close its window.** That is deliberate,
   not a leak. It uses almost nothing while it sits there. Quit it from that icon when you want it
   gone, or leave it — it stops when you shut the computer down either way.

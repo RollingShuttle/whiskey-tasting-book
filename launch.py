@@ -20,8 +20,12 @@ Four details worth knowing:
     we started exits within a moment, even with its own profile — waiting on it shut the server
     down while the window was still on screen, showing a dead page. So the *page* tells us when
     it is going, and we keep running until it does.
-  * If the app is already running, this just opens another window at it rather than trying to
-    start a second server on a port that is taken.
+  * There is only ever one of it, and that takes two separate guards. A named mutex keeps the
+    *process* unique — the port probe cannot, because the gap between looking and binding is one
+    double-click wide. Keeping the *window* unique is the harder half: a second copy cannot judge
+    it, since Edge takes seconds to draw a window and during that gap there is nothing to find.
+    So a second launch never opens one. It asks the owner over HTTP and leaves, and the owner
+    answers from what it remembers asking for rather than from what it can see.
 
     python launch.py                 start it and open the window
     python launch.py --no-window     start it and print the address (the old behaviour)
@@ -80,6 +84,121 @@ def report_problem(message):
             pass
     else:
         print(message, file=sys.stderr)
+
+
+def instance_name(port):
+    """One instance per port. The port is the thing actually being contended, and naming it that
+    way still allows a second copy on a different one when that is deliberate."""
+    return r"Local\WhiskeyTastingBook.%d" % int(port)
+
+
+_INSTANCE_HANDLES = []
+
+
+def claim_single_instance(name):
+    """True when this process is the only one. Creating a named mutex is atomic; probing a port
+    and then binding it is not, and the gap between the two is exactly one double-click wide."""
+    if os.name != "nt":
+        return True
+    import ctypes
+    from ctypes import wintypes
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.restype = wintypes.HANDLE
+    kernel32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+    handle = kernel32.CreateMutexW(None, False, name)
+    if not handle:
+        return True                          # cannot tell — do not stand in the way of starting
+    if ctypes.get_last_error() == 183:       # ERROR_ALREADY_EXISTS
+        return False
+    _INSTANCE_HANDLES.append(handle)         # held for the life of the process; Windows frees it
+    return True
+
+
+def find_app_window(title="Whiskey Tasting Book"):
+    """The window belongs to the browser rather than to us, so it can only be found by what it
+    says. The match is exact: a window merely *mentioning* the app — an editor, a folder — is not
+    it, and a window whose server has gone renames itself so it cannot be mistaken for a live one."""
+    if os.name != "nt":
+        return None
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    visitor = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    found = []
+
+    def visit(hwnd, _):
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        buf = ctypes.create_unicode_buffer(512)
+        user32.GetWindowTextW(hwnd, buf, 512)
+        if buf.value == title:
+            found.append(hwnd)
+            return False
+        return True
+
+    user32.EnumWindows(visitor(visit), 0)
+    return found[0] if found else None
+
+
+def raise_window(hwnd):
+    """Restore it if it was minimised, then bring it forward. Windows may refuse the foreground
+    change and flash the taskbar button instead, which is still the right outcome."""
+    import ctypes
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, 9)           # SW_RESTORE
+    user32.SetForegroundWindow(hwnd)
+
+
+def show_window(state, grace=20.0):
+    """Put the app's window in front, without ever creating a second one.
+
+    Only the copy that owns the app can make this decision, which is why every route to a window
+    ends up here. "Is there a window?" cannot be answered by looking: Edge takes seconds to draw
+    one, so during that gap a second copy sees nothing, concludes there is no window, and opens
+    the very duplicate we are avoiding. The owner does not have to look — it remembers asking,
+    and a request younger than `grace` counts as a window that is on its way."""
+    hwnd = find_app_window()
+    if hwnd:
+        raise_window(hwnd)
+        return False
+    if time.monotonic() - state.get("opened", 0.0) < grace:
+        return False                         # one is already on its way
+    state["opened"] = time.monotonic()
+    return open_window(state["url"])
+
+
+def request_window(url, timeout=25.0):
+    """Ask the copy that owns the app to show its window, and keep asking while it starts up.
+
+    A second launch has no business opening a window itself — it cannot know what the owner has
+    already done. It asks, and goes away."""
+    import urllib.request
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            ask = urllib.request.Request(url + "/api/window", method="POST", data=b"")
+            with urllib.request.urlopen(ask, timeout=3):
+                return True
+        except Exception:                    # noqa: BLE001 — it is still starting, or it is gone
+            time.sleep(0.4)
+    return False
+
+
+def ours_at(url, timeout=2.0):
+    """Whether the thing already on that port is this app or something unrelated.
+
+    The mutex is the real guard, but it is allowed to fail open — if Windows will not give us one
+    we would rather start than refuse to. This is the backstop underneath it, and it has to tell
+    "the app is already running" apart from "port 8765 belongs to something else", because the
+    first deserves a window and the second deserves an explanation."""
+    import json
+    import urllib.request
+    try:
+        with urllib.request.urlopen(url + "/api/health", timeout=timeout) as answer:
+            return bool(json.load(answer).get("ok"))
+    except Exception:                        # noqa: BLE001 — anything at all means "not ours"
+        return False
 
 
 def find_browser(candidates=None):
@@ -163,6 +282,12 @@ def attach_lifecycle(application, state):
         state["closing"] = time.monotonic()
         return "", 204
 
+    @application.post("/api/window")
+    def _window():
+        """A second launch asks for the window here rather than opening one of its own."""
+        show_window(state)
+        return "", 204
+
 
 def open_window(url):
     """Start the window and let it go. Nothing useful can be learned by waiting on it."""
@@ -182,21 +307,22 @@ def tray_image():
     return Image.open(app_mod.STATIC_DIR / "icon.ico")
 
 
-def build_tray(url):
+def build_tray(state):
     """Open is the default action, so double-clicking the tray icon puts the window back — which
-    is what people try first."""
+    is what people try first. It goes through show_window like everything else, so it cannot
+    stack up windows either."""
     import pystray
     return pystray.Icon("whiskey_tasting_book", tray_image(), "Whiskey Tasting Book", pystray.Menu(
-        pystray.MenuItem("Open", lambda icon, item: open_window(url), default=True),
+        pystray.MenuItem("Open", lambda icon, item: show_window(state), default=True),
         pystray.MenuItem("Quit", lambda icon, item: icon.stop()),
     ))
 
 
-def wait_in_tray(url):
+def wait_in_tray(state):
     """Blocks until Quit is chosen. None means no tray could be created — the caller then needs
     something that can still be stopped."""
     try:
-        icon = build_tray(url)
+        icon = build_tray(state)
     except Exception:                          # noqa: BLE001 — any failure here means "no tray"
         return None
     try:
@@ -206,7 +332,7 @@ def wait_in_tray(url):
     return 0
 
 
-def wait_for_exit(state, url, tray=True):
+def wait_for_exit(state, tray=True):
     """Closing the window is no longer the end of the program. The server stays up behind the
     tray icon; Quit there ends it.
 
@@ -214,7 +340,7 @@ def wait_for_exit(state, url, tray=True):
     than one that closes too eagerly, so if the tray will not start we go back to stopping when
     the window goes."""
     if tray:
-        done = wait_in_tray(url)
+        done = wait_in_tray(state)
         if done is not None:
             return done
     return wait_until_closed(state)
@@ -261,13 +387,28 @@ def main(argv=None):
     port = a.port or int(srv.get("port", 8765))
     url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}"
 
-    if port_open(host, port):
-        # Another copy already owns the server; just put a window in front of it and get out.
-        print(f"Already running at {url} — opening another window.")
-        open_window(url)
+    if not claim_single_instance(instance_name(port)):
+        # Another copy owns the app. Ask it for a window and get out of the way; deciding here
+        # whether one already exists is the mistake that produces two.
+        print(f"Already running at {url} - asking it to show its window.")
+        if not request_window(url):
+            report_problem("The app is already running but is not responding.\n\n"
+                           "Quit it from the icon in the notification area, then start it again.")
+            return 1
         return 0
 
-    state = {"last": time.monotonic(), "closing": None}
+    if port_open(host, port):
+        # We hold the mutex, so in principle this is not us — but the mutex fails open, so find
+        # out who is actually answering before accusing an innocent program of squatting.
+        if ours_at(url):
+            print(f"Already running at {url} - asking it to show its window.")
+            request_window(url)
+            return 0
+        report_problem(f"Port {port} is already in use by another program.\n\n"
+                       "Close whatever is using it, or set a different port in config.yaml.")
+        return 1
+
+    state = {"last": time.monotonic(), "closing": None, "url": url, "opened": 0.0}
     application = app_mod.create_app(config)
     attach_lifecycle(application, state)
     threading.Thread(target=serve, args=(application, host, port), daemon=True).start()
@@ -284,8 +425,8 @@ def main(argv=None):
         except KeyboardInterrupt:
             return 0
 
-    open_window(url)
-    return wait_for_exit(state, url, tray=not a.no_tray)
+    show_window(state)
+    return wait_for_exit(state, tray=not a.no_tray)
 
 
 if __name__ == "__main__":
