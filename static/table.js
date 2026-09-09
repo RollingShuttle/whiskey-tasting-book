@@ -13,6 +13,7 @@ const TableView = (() => {
     visible: {},                     // mode -> Set of column keys
     filters: { q: "", type: "", region: "", rarity: "", status: "", source: "all", scored: false },
     chooser: false,
+    picked: new Set(),               // tasting_ids ticked for removal, in tastings mode
     lens: null,                      // {id, keys, custom} — set once config is loaded
   };
 
@@ -53,6 +54,7 @@ const TableView = (() => {
 
   async function setMode(mode) {
     T.mode = mode;
+    T.picked = new Set();
     await load();
     render();
   }
@@ -67,8 +69,11 @@ const TableView = (() => {
       if (f.scored && !(r.n > 0 || r.total !== undefined)) return false;
       for (const k of FACETS) if (f[k] && r[k] !== f[k]) return false;
       if (terms.length) {
-        const hay = `${r.code || ""} ${r.display_name || ""} ${r.type || ""} ${r.region || ""} `
-          + `${r.venue || ""} ${r.medal || ""}`.toLowerCase();
+        // The brackets matter: `a + b.toLowerCase()` lowercases only b, so the code, the name,
+        // the type and the region all kept their capitals while the search terms did not, and
+        // filtering for anything with a capital letter in it quietly matched nothing.
+        const hay = (`${r.code || ""} ${r.display_name || ""} ${r.type || ""} ${r.region || ""} `
+          + `${r.venue || ""} ${r.medal || ""}`).toLowerCase();
         if (!terms.every((t) => hay.includes(t))) return false;
       }
       return true;
@@ -235,11 +240,23 @@ const TableView = (() => {
 
     const bar = el("div", { class: "t-toolbar" },
       el("div", { class: "t-modes" }, modeBtn("collection", "Collection"),
-                                       modeBtn("tastings", "Tastings")),
+                                       modeBtn("tastings", "Every review")),
       controls);
 
     if (T.chooser) bar.append(chooser());
-    return el("div", {}, lensBar(), bar);
+
+    const pickedHere = list.filter((r) => T.picked.has(r.tasting_id));
+    const picks = pickedHere.length
+      ? el("div", { class: "t-picked" },
+          el("span", {}, `${pickedHere.length} review${pickedHere.length === 1 ? "" : "s"} selected`),
+          el("button", { class: "ghost danger", type: "button", id: "delete-picked",
+                         onclick: () => removePicked(list) },
+             `Delete ${pickedHere.length === 1 ? "it" : "them"}`),
+          el("button", { class: "ghost", type: "button",
+                         onclick: () => { T.picked = new Set(); render(); } }, "Clear"))
+      : null;
+
+    return el("div", {}, lensBar(), bar, picks);
   }
 
   function chooser() {
@@ -262,6 +279,41 @@ const TableView = (() => {
       loadTastingIntoSheet(t.tasting);
     } catch (e) {
       showStatus("err", `Could not open that sitting: ${e.body?.error || e.message}`);
+    }
+  }
+
+  /** Remove several at once. One confirmation for the lot, then one request each: the server
+      writes a tombstone per card, and doing them in a loop keeps that honest rather than
+      inventing a bulk endpoint that would have to repeat the same guarantees. */
+  async function removePicked(list) {
+    const chosen = list.filter((r) => T.picked.has(r.tasting_id));
+    if (!chosen.length) return;
+    const many = chosen.length > 1;
+    const listed = chosen.slice(0, 8).map((r) => `  ${r.date}  ${r.display_name}`).join("\n");
+    const more = chosen.length > 8 ? `\n  ... and ${chosen.length - 8} more` : "";
+    if (!window.confirm(
+        `Delete ${chosen.length} review${many ? "s" : ""}?\n\n${listed}${more}\n\n`
+        + "They stop counting and stop being listed. Each stays in the journal as a "
+        + "tombstone, so nothing is actually destroyed.")) return;
+
+    const failed = [];
+    for (const r of chosen) {
+      try {
+        await api(`/api/tasting/${encodeURIComponent(r.tasting_id)}`, { method: "DELETE" });
+        T.picked.delete(r.tasting_id);
+      } catch (e) {
+        failed.push(`${r.display_name}: ${e.body?.error || e.message}`);
+      }
+    }
+    invalidate(); CompareView.invalidate(); AnalysisView.invalidate();
+    await load(true);
+    await loadHealth();
+    render();
+    const done = chosen.length - failed.length;
+    if (failed.length) {
+      showStatus("err", `Deleted ${done} of ${chosen.length}. ${failed[0]}`);
+    } else {
+      showStatus("ok", `Deleted ${done} review${done === 1 ? "" : "s"}.`);
     }
   }
 
@@ -305,11 +357,36 @@ const TableView = (() => {
     // an old one can be corrected or removed. Without this, Edit and Delete existed but were
     // reachable for about as long as the card stayed on screen after being submitted.
     const actions = T.mode === "tastings";
-    if (actions) head.append(el("th", { class: "t-actions" }, ""));
+    if (actions) {
+      const allPicked = list.length > 0 && list.every((r) => T.picked.has(r.tasting_id));
+      head.prepend(el("th", { class: "t-tick" },
+        el("input", {
+          type: "checkbox", checked: allPicked, "aria-label": "Select every review shown",
+          onchange: (e) => {
+            // Only what is on screen: ticking the box must never reach rows the filters hide.
+            if (e.target.checked) list.forEach((r) => T.picked.add(r.tasting_id));
+            else list.forEach((r) => T.picked.delete(r.tasting_id));
+            render();
+          },
+        })));
+      head.append(el("th", { class: "t-actions" }, ""));
+    }
 
     const body = el("tbody", {}, ...list.map((r) => {
-      const tr = el("tr", {}, ...shown.map((c) => cell(r, c)));
+      const tr = el("tr", { class: T.picked.has(r.tasting_id) ? "picked" : "" },
+        ...shown.map((c) => cell(r, c)));
       if (actions) {
+        tr.prepend(el("td", { class: "t-tick" },
+          el("input", {
+            type: "checkbox", checked: T.picked.has(r.tasting_id),
+            "aria-label": `Select the review of ${r.display_name} on ${r.date}`,
+            onclick: (e) => e.stopPropagation(),
+            onchange: (e) => {
+              if (e.target.checked) T.picked.add(r.tasting_id);
+              else T.picked.delete(r.tasting_id);
+              render();
+            },
+          })));
         tr.append(el("td", { class: "t-actions" },
           el("button", { class: "linkish", type: "button",
                          onclick: (e) => { e.stopPropagation(); editSitting(r); } }, "Edit"),
@@ -321,7 +398,7 @@ const TableView = (() => {
 
     if (!list.length) {
       body.append(el("tr", {}, el("td", { class: "t-null",
-        colspan: String(shown.length + (actions ? 1 : 0)) }, "Nothing matches those filters.")));
+        colspan: String(shown.length + (actions ? 2 : 0)) }, "Nothing matches those filters.")));
     }
     return el("div", { class: "t-scroll" }, el("table", { class: "t-table" },
       el("thead", {}, head), body));

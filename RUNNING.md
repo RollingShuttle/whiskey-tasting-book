@@ -127,9 +127,14 @@ time. A draft never counts towards a score, so an unfinished card cannot move an
 
 ### Changing or removing a score afterwards
 
-**On the PC:** open the **Table**, switch it to **one row per tasting**, and every sitting has
-**Edit** and **Delete** at the end of its row. Edit loads that card back onto the Score sheet;
-Delete removes it after asking.
+**On the PC:** open the **Table** and click **Every review**. That is the list of everything you
+have ever scored, one row per review, sortable and filterable like the rest of the table.
+
+- **One at a time:** each row ends with **Edit** and **Delete**. Edit loads that card back onto the
+  Score sheet.
+- **Several at once:** tick the boxes down the left, then **Delete them** in the bar that appears.
+  The tick box in the header selects everything *currently shown*, so filter first and it takes
+  only those. You are asked once, and told which reviews are about to go.
 
 **On the phone:** open the bottle from Collection or Table. Its sittings are listed at the bottom
 of that page, each with **Edit** and **Delete**.

@@ -1188,6 +1188,31 @@ class TestReviseAndDelete(AppCase):
         self.assertEqual(row["n"], 1, "promoting a draft should make it count exactly once")
 
 
+class TestSearchIsCaseInsensitiveEverywhere(unittest.TestCase):
+    """`a + b.toLowerCase()` lowercases only b. The search terms are lowercased, so every field
+    outside the brackets keeps its capitals and matches nothing — and it fails silently, as an
+    empty result rather than an error. This was found once on the phone and was still here."""
+
+    def sources(self):
+        base = Path(__file__).resolve().parent
+        for folder in ("static", "docs"):
+            for path in sorted((base / folder).glob("*.js")):
+                src = path.read_text(encoding="utf-8")
+                src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
+                yield path, re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
+
+    def test_no_haystack_lowercases_only_its_last_piece(self):
+        offenders = []
+        for path, src in self.sources():
+            for match in re.finditer(r"const hay = (.+?);", src, re.DOTALL):
+                expr = match.group(1).strip()
+                if "+" not in expr:
+                    continue                     # a single literal lowercases whole
+                if not (expr.startswith("(") and expr.endswith(").toLowerCase()")):
+                    offenders.append(f"{path.parent.name}/{path.name}: {expr[:70]}")
+        self.assertEqual(offenders, [], "a concatenated haystack must be bracketed first")
+
+
 class TestAnOldSittingCanBeReached(AppCase):
     """Edit and Delete existed but only on the card still on screen, which meant they were
     reachable for about as long as it took to press Score another. The list of sittings is the

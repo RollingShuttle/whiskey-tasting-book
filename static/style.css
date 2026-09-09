@@ -561,3 +561,15 @@ input:disabled, textarea:disabled { color: var(--text); opacity: .8; cursor: def
   padding: 2px 6px; text-decoration: underline; cursor: pointer;
 }
 .linkish.danger { color: #C97A6A; }
+
+/* Selecting reviews to remove. */
+.t-tick { width: 34px; text-align: center; }
+.t-tick input { accent-color: var(--brass); width: 16px; height: 16px; }
+.t-table tbody tr.picked { background: color-mix(in srgb, var(--brass) 12%, transparent); }
+.t-picked {
+  display: flex; align-items: center; gap: 12px;
+  margin: 10px 0 2px; padding: 9px 13px;
+  background: color-mix(in srgb, #C97A6A 10%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, #C97A6A 35%, transparent); border-radius: 8px;
+  font-size: 13px;
+}
