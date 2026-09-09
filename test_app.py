@@ -1104,6 +1104,130 @@ class TestASubmittedCardIsNotADeadEnd(unittest.TestCase):
         self.assertIn("onclick: backToPicker", block[:200])
 
 
+class TestReviseAndDelete(AppCase):
+    """Journal files are immutable, so a correction is a new revision and a deletion is a
+    tombstone. Nothing is ever edited in place and nothing is ever unlinked (SPEC.md 1.3)."""
+
+    def card(self, **over):
+        body = {"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD), **over}
+        r = self._post(body)
+        self.assertIn(r.status_code, (200, 201), r.get_json())
+        return r.get_json()["tasting"]
+
+    def journal(self):
+        return store_mod.Journal(self.tmp / "journal", rubric_mod.load_rubric()).ensure()
+
+    def test_a_correction_is_a_new_revision(self):
+        first = self.card()
+        fixed = dict(EXAMPLE_CARD, flavor=EXAMPLE_CARD["flavor"] - 3)
+        again = self.card(tasting_id=first["tasting_id"], scores=fixed)
+        self.assertEqual(again["tasting_id"], first["tasting_id"])
+        self.assertEqual(again["revision"], first["revision"] + 1)
+        live = self.journal().tastings()
+        self.assertEqual(len(live), 1, "a revision must not read as a second sitting")
+        self.assertEqual(live[0]["scores"]["flavor"], fixed["flavor"])
+
+    def test_the_earlier_revision_is_still_on_disk(self):
+        first = self.card()
+        self.card(tasting_id=first["tasting_id"], scores=dict(EXAMPLE_CARD, body=1))
+        files = sorted(p.name for p in (self.tmp / "journal" / "tastings").glob("*.json"))
+        self.assertEqual(len(files), 2, "the original was overwritten: %s" % files)
+
+    def test_deleting_writes_a_tombstone_rather_than_unlinking(self):
+        made = self.card()
+        r = self.c.delete("/api/tasting/%s" % made["tasting_id"])
+        self.assertEqual(r.status_code, 200, r.get_json())
+        files = list((self.tmp / "journal" / "tastings").glob("*.json"))
+        self.assertEqual(len(files), 2, "the card was deleted from disk")
+        self.assertEqual(self.journal().tastings(), [], "it still reads as live")
+
+    def test_a_deleted_card_stops_counting(self):
+        made = self.card()
+        before = self.c.get("/api/table/collection").get_json()["rows"]
+        self.assertEqual(next(r for r in before if r["code"] == "B-18")["n"], 1)
+        self.c.delete("/api/tasting/%s" % made["tasting_id"])
+        after = self.c.get("/api/table/collection").get_json()["rows"]
+        row = next(r for r in after if r["code"] == "B-18")
+        self.assertEqual(row["n"], 0)
+        self.assertIsNone(row["career_score"])
+
+    def test_deleting_something_that_is_not_there(self):
+        self.assertEqual(self.c.delete("/api/tasting/T-nope").status_code, 404)
+
+    def test_a_draft_may_be_incomplete(self):
+        """Autosave writes the card as it stands, half-scored, every few seconds."""
+        partial = {k: v for i, (k, v) in enumerate(EXAMPLE_CARD.items()) if i < 3}
+        r = self._post({"spirit_id": "B-18", "scores": partial, "status": "draft"})
+        self.assertIn(r.status_code, (200, 201), r.get_json())
+        self.assertEqual(r.get_json()["tasting"]["status"], "draft")
+
+    def test_a_draft_does_not_count_towards_a_score(self):
+        """Half a card is not an opinion yet."""
+        self._post({"spirit_id": "B-18", "scores": {"aroma": 7}, "status": "draft"})
+        row = next(r for r in self.c.get("/api/table/collection").get_json()["rows"]
+                   if r["code"] == "B-18")
+        self.assertEqual(row["n"], 0)
+
+    def test_a_draft_still_cannot_hold_an_impossible_score(self):
+        """Incomplete is fine; out of range is wrong whether the card is finished or not."""
+        r = self._post({"spirit_id": "B-18", "scores": {"aroma": 99}, "status": "draft"})
+        self.assertEqual(r.status_code, 400)
+
+    def test_a_submitted_card_must_still_be_whole(self):
+        r = self._post({"spirit_id": "B-18", "scores": {"aroma": 7}})
+        self.assertEqual(r.status_code, 400)
+
+    def test_a_draft_can_be_promoted_to_submitted(self):
+        """Which is what autosave then finishing a card does."""
+        draft = self.card(scores={"aroma": 7}, status="draft")
+        done = self.card(tasting_id=draft["tasting_id"], scores=dict(EXAMPLE_CARD),
+                         status="submitted")
+        self.assertEqual(done["status"], "submitted")
+        row = next(r for r in self.c.get("/api/table/collection").get_json()["rows"]
+                   if r["code"] == "B-18")
+        self.assertEqual(row["n"], 1, "promoting a draft should make it count exactly once")
+
+
+class TestAutosaveOnTheDesktop(unittest.TestCase):
+    """The localStorage mirror lives in one browser profile. Autosave puts the work in the journal
+    itself, as a draft, which is the thing that actually survives."""
+
+    def source(self, name="app.js"):
+        src = (Path(__file__).resolve().parent / "static" / name).read_text(encoding="utf-8")
+        src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
+        return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
+
+    def test_autosave_writes_a_draft(self):
+        src = self.source()
+        self.assertIn('cardBody(p, "draft")', src)
+
+    def test_it_hangs_off_the_same_signal_as_the_local_draft(self):
+        src = self.source()
+        self.assertIn("scheduleAutosave()", src)
+
+    def test_finishing_revises_the_autosaved_card(self):
+        """Otherwise every autosaved card would be followed by a second, complete one beside it."""
+        src = self.source()
+        block = src[src.index("function cardBody("):src.index("let autosaveTimer")]
+        self.assertIn("if (p.tasting_id) body.tasting_id = p.tasting_id;", block)
+
+    def test_autosave_and_submit_describe_the_card_the_same_way(self):
+        """One builder, so a draft cannot quietly differ from what finishing it would write."""
+        src = self.source()
+        self.assertEqual(src.count("function cardBody("), 1)
+        self.assertIn('cardBody(p, "submitted")', src)
+
+    def test_it_does_not_write_a_revision_that_says_nothing(self):
+        src = self.source()
+        self.assertIn("fingerprint === autosavedAs", src)
+
+    def test_a_submitted_card_can_be_corrected_or_removed(self):
+        src = self.source()
+        self.assertIn('id: "edit-card"', src)
+        self.assertIn('id: "delete-card"', src)
+        self.assertIn('method: "DELETE"', src)
+
+
 class TestCompareOffersOnlyWhatCanBeCompared(unittest.TestCase):
     """Comparing an unscored bottle produces an empty column, so offering the whole collection is
     offering hundreds of dead ends."""

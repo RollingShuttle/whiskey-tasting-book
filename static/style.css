@@ -548,3 +548,8 @@ input:disabled, textarea:disabled { color: var(--text); opacity: .8; cursor: def
 }
 .lens-total { margin-left: auto; color: var(--muted); font-size: 12px;
               font-variant-numeric: tabular-nums; }
+
+/* Autosave indicator and the destructive action on a submitted card. */
+.autosaved { color: var(--muted); font-size: 12px; margin-right: 10px; }
+.ghost.danger { color: #C97A6A; border-color: color-mix(in srgb, #C97A6A 45%, transparent); }
+.ghost.danger:hover { background: color-mix(in srgb, #C97A6A 14%, transparent); }

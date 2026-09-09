@@ -72,6 +72,7 @@ function newPour(spirit, flightPos = null) {
     blind: false,                      // standalone-pour blind; in a flight the session's wins
     submitted: false,
     tasting: null,
+    tasting_id: null,       // set once autosaved, so finishing writes a revision not a new card
   };
 }
 const activePour = () => state.pours[state.active] || null;
@@ -426,6 +427,7 @@ function saveDraft() {
       else localStorage.removeItem(DRAFT_KEY);
     } catch { /* private mode or quota — a lost draft must not break the app */ }
   }, 350);
+  scheduleAutosave();
 }
 
 function clearDraft() {
@@ -954,6 +956,12 @@ function buildFooter(p) {
 
   if (p.submitted) {
     foot.append(el("span", { class: "pill pill-ok" }, "Submitted"));
+    // A correction is a new revision and a deletion is a tombstone, so both are safe to offer
+    // right here: nothing is edited in place and nothing is unlinked.
+    foot.append(el("button", { class: "ghost", type: "button", id: "edit-card",
+                               onclick: editCard }, "Edit"));
+    foot.append(el("button", { class: "ghost danger", type: "button", id: "delete-card",
+                               onclick: deleteCard }, "Delete"));
     // Submitting used to be the end of the road: the Change button is gone by then, so a
     // standalone card left you looking at a finished sheet with no way onward. A flight has its
     // pour switcher and "+ Add pour" right above, so it needs nothing here.
@@ -962,6 +970,7 @@ function buildFooter(p) {
                                  onclick: backToPicker }, "Score another"));
     }
   } else {
+    foot.append(el("span", { class: "autosaved", id: "autosaved" }, ""));
     foot.append(el("button", { class: "submit", id: "submit", type: "button",
                                onclick: submitCard }, "Submit"));
   }
@@ -1062,17 +1071,16 @@ function toggleHint(btn, text) {
 }
 
 // ---------------------------------------------------------------- submit
-async function submitCard() {
-  const p = activePour();
-  if (!p) return;
-  const submit = document.getElementById("submit");
-  submit.disabled = true; submit.textContent = "Submitting…";
-
-  const notes = { ...p.notes };
+/** The card as the server wants it. Autosave and Submit send the same thing under a different
+    status, so a draft cannot quietly differ from what finishing it would have written. */
+function cardBody(p, status) {
+  const scores = status === "draft"
+    ? Object.fromEntries(Object.entries(p.scores).filter(([, v]) => v !== null))
+    : p.scores;
   const body = {
     spirit_id: p.spirit.code,
-    scores: p.scores,
-    notes,
+    scores,
+    notes: { ...p.notes },
     overall_notes: p.overall,
     date: p.context.date || today(),
     venue: p.context.venue,
@@ -1080,18 +1088,101 @@ async function submitCard() {
     pour_size_oz: p.context.pour_size_oz,
     blind: isBlind(p),
     include_in_average: true,
-    status: "submitted",
+    status,
     entered_from: "desktop",
   };
-  if (state.mode === "session") {
+  if (p.tasting_id) body.tasting_id = p.tasting_id;     // a correction, not a second sitting
+  if (state.mode === "session" && state.session) {
     body.session_id = state.session.session_id;
     body.flight_pos = state.active + 1;
   }
+  return body;
+}
+
+/* Autosave. The localStorage mirror lives in this browser only, so it goes with the profile; this
+   puts the work in the journal itself as a draft, which is the thing that actually survives.
+   A draft never counts towards a score, so half a card cannot move an average, and it carries its
+   tasting_id so finishing it later writes a revision of the same card rather than a second one. */
+let autosaveTimer = null;
+let autosavedAs = "";
+
+function scheduleAutosave() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(autosaveNow, 6000);
+}
+
+async function autosaveNow() {
+  const p = activePour();
+  if (!p || p.submitted) return;
+  const body = cardBody(p, "draft");
+  if (!Object.keys(body.scores).length && !p.overall.trim()) return;   // nothing yet worth a file
+  const fingerprint = JSON.stringify([body.scores, body.notes, body.overall_notes, body.date,
+                                      body.venue, body.pour_price, body.pour_size_oz]);
+  if (fingerprint === autosavedAs) return;             // unchanged; a revision would say nothing
+  try {
+    const r = await postJSON("/api/tasting", body);
+    p.tasting_id = r.tasting.tasting_id;
+    autosavedAs = fingerprint;
+    showSaved();
+  } catch { /* offline or refused — the localStorage draft still has it */ }
+}
+
+function showSaved() {
+  const tag = document.getElementById("autosaved");
+  if (tag) tag.textContent = `Draft saved ${new Date().toLocaleTimeString([], {
+    hour: "2-digit", minute: "2-digit" })}`;
+}
+
+/** Reopen a submitted card. It keeps its tasting_id, so finishing it again writes revision n+1
+    of the same sitting rather than a second one beside it. */
+function editCard() {
+  const p = activePour();
+  if (!p) return;
+  p.submitted = false;
+  autosavedAs = "";
+  renderSheet();
+  showStatus("ok", "Editing this card. Submitting again saves a new revision — "
+                 + "the earlier one stays in the journal.");
+}
+
+async function deleteCard() {
+  const p = activePour();
+  const id = p && (p.tasting_id || (p.tasting && p.tasting.tasting_id));
+  if (!id) return;
+  const name = p.spirit.name || p.spirit.display_name;
+  if (!window.confirm(`Delete this sitting of ${name}?\n\n`
+      + "It stops counting and stops being listed. The record stays in the journal as a "
+      + "tombstone, so nothing is actually destroyed.")) return;
+  try {
+    await api(`/api/tasting/${encodeURIComponent(id)}`, { method: "DELETE" });
+    TableView.invalidate(); CompareView.invalidate(); AnalysisView.invalidate();
+    await loadHealth();
+    state.pours.splice(state.active, 1);
+    state.active = Math.max(0, state.pours.length - 1);
+    autosavedAs = "";
+    if (state.mode === "session") { renderSession(); }
+    showStatus("ok", `Deleted the sitting of ${name}.`);
+    if (state.pours.length) renderSheet(); else backToPicker();
+  } catch (e) {
+    showStatus("err", `Could not delete: ${e.body?.error || e.message}`);
+  }
+}
+
+async function submitCard() {
+  const p = activePour();
+  if (!p) return;
+  const submit = document.getElementById("submit");
+  submit.disabled = true; submit.textContent = "Submitting…";
+
+  const body = cardBody(p, "submitted");
 
   try {
     const r = await postJSON("/api/tasting", body);
     p.submitted = true;
     p.tasting = r.tasting;
+    p.tasting_id = r.tasting.tasting_id;
+    autosavedAs = "";
+    clearTimeout(autosaveTimer);
     TableView.invalidate();            // the table must not show a stale career score
     CompareView.invalidate();
     AnalysisView.invalidate();

@@ -117,6 +117,23 @@ changed something in Excel, or when you want the phone to see new bottles.
 | **Compare** | Two to four things side by side. |
 | **Analysis** | Score against age, price, proof; by type and region; and whether your own scoring is drifting over time. |
 
+### Your scores are saved as you go
+
+You do not have to remember to press Submit for the work to survive. A few seconds after you stop
+typing, the card is written into the journal as a **draft** — the footer says "Draft saved" with the
+time. A draft never counts towards a score, so an unfinished card cannot move an average.
+
+**Submit** is still what marks it as counted. After that:
+
+- **Edit** reopens the card. Submitting again saves a *new revision* — the earlier one stays in the
+  journal, so nothing you wrote is ever lost.
+- **Delete** stops it counting and stops it being listed. It writes a tombstone rather than
+  removing anything; the record is still there.
+
+Both are on the phone too, under each sitting on a bottle's page. The phone can edit and delete the
+sittings it holds itself — the ones you scored on it — and works offline, queueing the change like
+any other upload.
+
 ### Where your data goes
 
 - **Scores** → one small file per tasting in

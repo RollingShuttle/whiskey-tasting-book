@@ -117,6 +117,27 @@ class Rubric:
             problems.append(f"unknown category {extra!r}")
         return problems
 
+    def validate_partial(self, scores: dict) -> list[str]:
+        """Range and type checks only, for a card still being filled in.
+
+        A draft is allowed to be incomplete — that is what makes it a draft — but a 24 in a
+        category scored out of 10 is wrong whether the card is finished or not, and letting it
+        through would only move the failure to somewhere harder to explain.
+        """
+        given = {k: v for k, v in scores.items() if v is not None}
+        problems = []
+        for c in self.categories:
+            if c.key not in given:
+                continue
+            v = given[c.key]
+            if isinstance(v, bool) or not isinstance(v, int):
+                problems.append(f"{c.label} must be a whole number, got {v!r}")
+            elif not 0 <= v <= c.max:
+                problems.append(f"{c.label} must be 0–{c.max}, got {v}")
+        for extra in set(given) - set(self.keys):
+            problems.append(f"unknown category {extra!r}")
+        return problems
+
     def total(self, scores: dict) -> int:
         problems = self.validate(scores)
         if problems:

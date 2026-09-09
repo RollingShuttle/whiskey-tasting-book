@@ -98,11 +98,22 @@ class Journal:
         """
         draft = str(status).lower() == "draft"
         if scores:
-            problems = self.rubric.validate(scores)
+            # A draft may be half-filled. It began as the Quick Entry lane, where a row is typed
+            # with no scores at all and scored later; autosave writes the same kind of record while
+            # a card is still being worked on, which is partly scored rather than not at all. Out
+            # of range is still wrong either way — incomplete is not the same as impossible.
+            problems = (self.rubric.validate_partial(scores) if draft
+                        else self.rubric.validate(scores))
             if problems:
                 raise ValueError("; ".join(problems))
         elif not draft:
             raise ValueError("a submitted card needs scores; only a draft may be unscored")
+
+        # An unfinished card has no total. rubric.total() insists on a whole card and would
+        # otherwise raise here, and a running subtotal would be worse than nothing: it would read
+        # as a low score rather than an incomplete one, and every average would be dragged down.
+        complete = bool(scores) and not self.rubric.validate(scores)
+        total = self.rubric.total(scores) if complete else None
 
         if tasting_id is None:
             # The random suffix is load-bearing, not decoration. Timestamps are second-resolution,
@@ -130,13 +141,15 @@ class Journal:
             "venue": venue,
             "pour_price": pour_price,
             "pour_size_oz": pour_size_oz,
-            "include_in_average": bool(include_in_average) and bool(scores),
+            # A draft never counts, however complete it looks and whatever the caller asks for.
+            # It is a card in progress, not an opinion yet.
+            "include_in_average": bool(include_in_average) and complete and not draft,
             "status": status,
             "entered_from": entered_from,
             "rubric": self.rubric.name,
             "rubric_version": self.rubric.version,
-            "total": self.rubric.total(scores) if scores else None,
-            "medal": self.rubric.medal(self.rubric.total(scores)) if scores else None,
+            "total": total,
+            "medal": self.rubric.medal(total) if total is not None else None,
             "created_at": _now_iso(),
         }
         path = self._dir("tastings") / f"{tasting_id}-r{revision}.json"

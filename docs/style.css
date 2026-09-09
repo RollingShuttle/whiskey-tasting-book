@@ -297,3 +297,33 @@ label.field > span { color: var(--muted); font-size: 0.78rem; }
 .cmp-bar-fill { height: 100%; border-radius: 999px; opacity: 0.75; }
 .cmp-bar-fill.lead { opacity: 1; }
 .cmp-bar-val { font-size: 0.78rem; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------- table */
+/* Six tabs on a 375-point screen: the labels have to give a little. */
+.tab { font-size: 0.62rem; }
+.tab .glyph { font-size: 1.05rem; }
+
+.ptable-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 4px; }
+.ptable { border-collapse: collapse; width: 100%; font-size: 0.8rem; }
+.ptable th, .ptable td {
+  padding: 8px 9px; text-align: left; white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+.ptable th {
+  color: var(--muted); font-weight: 500; font-size: 0.72rem; position: sticky; top: 0;
+  background: var(--bg); min-height: 44px;
+}
+.ptable th.sorted { color: var(--brass-bright); }
+.ptable .t-num { text-align: right; font-variant-numeric: tabular-nums; }
+.ptable .t-code { color: var(--muted); font-variant-numeric: tabular-nums; }
+.ptable .t-name { font-family: var(--serif); max-width: 12rem; overflow: hidden; text-overflow: ellipsis; }
+.ptable tbody tr.gone td { opacity: 0.6; }
+.t-caret { font-size: 0.7rem; }
+
+/* Per-sitting actions on the detail screen. 44 px targets, like everything else you tap. */
+.qrow.sitting { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; }
+.linkish {
+  background: none; border: 0; color: var(--brass-bright); font-size: 0.78rem;
+  min-height: 44px; padding: 0 4px; text-decoration: underline;
+}
+.linkish.danger { color: #C97A6A; }

@@ -149,6 +149,22 @@ journal keeps a high-water mark in `meta/high_water.json` so a code is **never r
 one and silently re-point its reviews. `collection.BASELINE` is a reference point, not an
 expectation: only a collapse below half is reported, because a shrinking shelf is normal.
 
+The desktop sheet **autosaves**: six seconds after a change it POSTs the card as `status="draft"`
+carrying its `tasting_id`, so finishing it writes a revision of the same sitting rather than a
+second one beside it. `cardBody()` builds both the draft and the submitted body so they cannot
+drift, and a fingerprint check stops a revision that would say nothing. Drafts may now be
+*partially* scored — `rubric.validate_partial` checks ranges but not completeness, and
+`store.write_tasting` gives an incomplete card `total: None` and never counts a draft, whatever the
+caller asks. Editing and deleting exist on both halves: `DELETE /api/tasting/<id>` on the PC,
+`Store.reviseCard`/`deleteCard` on the phone (which writes the revision and tombstone files
+straight into the app folder — no endpoint needed, so it works offline). The phone can only touch
+the sittings it holds; the PC can touch all of them.
+
+`docs/table.js` is the phone's table: sortable, no column chooser, scrolling sideways rather than
+being squeezed. Proof and release year are shown on the score sheet, both tables and both compare
+views, because three bottles in this collection are called George T. Stagg and those two fields are
+what separate one release from the next.
+
 That is the whole of SPEC.md. Nothing in the build order is outstanding.
 
 The front end serves two clients from one codebase: the PC app at `127.0.0.1:8765`, and a

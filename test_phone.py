@@ -21,7 +21,7 @@ import rubric as rubric_mod
 
 DOCS = Path(__file__).resolve().parent / "docs"
 REQUIRED = ["index.html", "style.css", "app.js", "store.js", "graph.js", "config.js",
-            "analysis.js", "compare.js",
+            "analysis.js", "compare.js", "table.js",
             "sw.js", "manifest.webmanifest", "rubric.json", "icon-180.png"]
 
 
@@ -201,6 +201,67 @@ class TestQueueRules(unittest.TestCase):
         """Private browsing and a full quota both throw; a lost draft must not take the app down."""
         js = text("store.js")
         self.assertGreaterEqual(js.count("catch"), 2)
+
+
+class TestPhoneTable(unittest.TestCase):
+    """The desktop table is wide and sortable. A phone is 375 points across, so the sorting stays
+    and the column chooser goes."""
+
+    def test_the_screen_and_tab_exist(self):
+        html = text("index.html")
+        self.assertIn("screen-table", html)
+        self.assertIn('data-tab="table"', html)
+        self.assertLess(html.index("table.js"), html.index('src="app.js"'))
+
+    def test_it_carries_proof_and_year(self):
+        """What separates one release from the next when three share a name."""
+        src = code("table.js")
+        self.assertIn('key: "proof"', src)
+        self.assertIn('key: "year"', src)
+
+    def test_unscored_rows_sort_to_the_bottom_either_way(self):
+        """An unscored bottle is not a low score. Floating them to the top of an ascending sort
+        would bury everything that has one."""
+        src = code("table.js")
+        block = src[src.index("function compare("):src.index("function shown(")]
+        self.assertIn("if (x === null) return 1;", block)
+        self.assertIn("if (y === null) return -1;", block)
+
+    def test_the_strip_scrolls_rather_than_being_squeezed(self):
+        self.assertIn("overflow-x: auto", text("style.css"))
+        self.assertIn("ptable-wrap", code("table.js"))
+
+
+class TestEditingAndDeletingOnThePhone(unittest.TestCase):
+    """Journal files are immutable on the phone too: a correction is a new revision file and a
+    deletion is a tombstone, both queued like any other upload so they work with no signal."""
+
+    def test_a_correction_writes_the_next_revision(self):
+        src = code("store.js")
+        block = src[src.index("function reviseCard("):src.index("function deleteCard(")]
+        self.assertIn("(previous.revision || 1) + 1", block)
+        self.assertIn("-r${revision}.json", block)
+        self.assertIn("enqueue(", block)
+
+    def test_a_deletion_is_a_tombstone_not_an_unlink(self):
+        src = code("store.js")
+        block = src[src.index("function deleteCard("):src.index("function submitScorecard(")]
+        self.assertIn("deleted: true", block)
+        self.assertIn("enqueue(", block)
+
+    def test_editing_revises_rather_than_adding_a_second_sitting(self):
+        """Otherwise correcting a typo would double the spirit's average."""
+        src = code("app.js")
+        self.assertIn("d.revising", src)
+        self.assertIn("Store.reviseCard(d.revising", src)
+
+    def test_both_are_offered_on_the_sitting_itself(self):
+        src = code("app.js")
+        self.assertIn("editSitting(c)", src)
+        self.assertIn("removeSitting(c, s)", src)
+
+    def test_deleting_asks_first(self):
+        self.assertIn("window.confirm(", code("app.js"))
 
 
 class TestAnalysisAndCompare(unittest.TestCase):

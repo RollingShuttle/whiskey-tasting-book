@@ -1,11 +1,12 @@
 /* Bar basements have no signal. The shell is cached so the app opens and scores a pour with no
    connection at all; the collection snapshot is cached separately because it is the one piece of
    data scoring needs (SPEC.md §9.2). Uploads are never cached — they go through the queue. */
-const VERSION = "v6";
+const VERSION = "v7";
 const SHELL = "shell-" + VERSION;
 const SHELL_FILES = [
   "./", "./index.html", "./style.css", "./config.js",
-  "./store.js", "./graph.js", "./analysis.js", "./compare.js", "./app.js", "./rubric.json",
+  "./store.js", "./graph.js", "./table.js", "./analysis.js", "./compare.js", "./app.js",
+  "./rubric.json",
   "./manifest.webmanifest", "./icon-180.png",
 ];
 

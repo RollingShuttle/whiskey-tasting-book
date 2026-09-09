@@ -52,6 +52,7 @@ const screens = {
   detail: document.getElementById("screen-detail"),
   score: document.getElementById("screen-score"),
   add: document.getElementById("screen-add"),
+  table: document.getElementById("screen-table"),
   compare: document.getElementById("screen-compare"),
   analysis: document.getElementById("screen-analysis"),
   sync: document.getElementById("screen-sync"),
@@ -85,6 +86,7 @@ function setTab(tab) {
   markTab(tab);
   if (tab === "collection") { renderCollection(); show("collection", "Collection"); }
   if (tab === "add") { renderAdd(); show("add", "Add"); }
+  if (tab === "table") { TableView.render(screens.table); show("table", "Table"); }
   if (tab === "compare") { CompareView.render(screens.compare); show("compare", "Compare"); }
   if (tab === "analysis") { AnalysisView.render(screens.analysis); show("analysis", "Analysis"); }
   if (tab === "sync") { renderSync(); show("sync", "Sync"); }
@@ -170,7 +172,9 @@ function paintRows() {
     return;
   }
   for (const s of spirits) {
-    const meta = [s.type, s.age ? `${s.age} yr` : s.age_label, s.proof ? `${s.proof} pf` : null]
+    const meta = [s.type, s.age ? `${s.age} yr` : s.age_label,
+                  s.proof ? `${s.proof} pf` : null,
+                  s.release_year ? String(Math.round(s.release_year)) : null]
       .filter(Boolean).join(" · ");
     const gone = s.owned === false && s.status;
     list.append(el("li", {
@@ -194,7 +198,9 @@ function openDetail(code) {
   const career = careerFor(code);
   const sittings = Store.cardsFor(code);
   const meta = [s.type, s.region, s.age ? `${s.age} yr` : s.age_label,
-                s.proof ? `${s.proof} proof` : null].filter(Boolean).join(" · ");
+                s.proof ? `${s.proof} proof` : null,
+                s.release_year ? `released ${Math.round(s.release_year)}` : null]
+    .filter(Boolean).join(" · ");
 
   fill(screens.detail,
     el("div", { class: "card", style: `border-left:3px solid ${accentFor(s.type)}` },
@@ -217,13 +223,46 @@ function openDetail(code) {
       ? el("div", { class: "card", style: "margin-top:12px" },
           el("div", { class: "muted", style: "margin-bottom:8px" },
             `${sittings.length} sitting${sittings.length === 1 ? "" : "s"} on this phone`),
-          ...sittings.map((c) => el("div", { class: "qrow" },
+          ...sittings.map((c) => el("div", { class: "qrow sitting" },
             el("span", {}, c.date),
             el("span", { class: "when" },
-              `${c.total}${c._sent ? "" : " · waiting"}`))))
+              `${c.total}${c._sent ? "" : " · waiting"}`),
+            el("button", { class: "linkish", type: "button",
+                           onclick: () => editSitting(c) }, "Edit"),
+            el("button", { class: "linkish danger", type: "button",
+                           onclick: () => removeSitting(c, s) }, "Delete"))))
       : null);
 
   show("detail", s.name || s.code, { push: true });
+}
+
+/** Reopen a sitting to correct it. Submitting writes revision n+1 of the same card, never a
+    second sitting beside it, so an average cannot be doubled by fixing a typo. */
+function editSitting(card) {
+  const s = findSpirit(card.spirit_id);
+  if (!s || !app.rubric) return;
+  app.draft = {
+    spirit: s,
+    revising: card,
+    scores: Object.fromEntries(app.rubric.categories.map((c) => [c.key, card.scores?.[c.key] ?? null])),
+    notes: { ...(card.notes || {}) },
+    overall: (card.notes && card.notes.overall) || "",
+    date: card.date || Store.today(),
+    venue: card.venue || "",
+  };
+  delete app.draft.notes.overall;
+  renderScore();
+  show("score", "Edit sitting", { push: true });
+}
+
+function removeSitting(card, spirit) {
+  const name = spirit.name || spirit.display_name || card.spirit_id;
+  if (!window.confirm(`Delete this sitting of ${name}?\n\nIt stops counting. The record stays `
+      + "in the journal as a tombstone, so nothing is actually destroyed.")) return;
+  Store.deleteCard(card);
+  updateBadge();
+  flush();
+  openDetail(card.spirit_id);
 }
 
 // ---------------------------------------------------------------- scorecard
@@ -366,10 +405,13 @@ function submitCard() {
   const d = app.draft;
   const notes = { ...d.notes };
   if (d.overall.trim()) notes.overall = d.overall.trim();
-  const { rec } = Store.submitScorecard({
-    spirit_id: d.spirit.code, scores: d.scores, notes,
-    date: d.date, venue: d.venue.trim() || null,
-  });
+  const { rec } = d.revising
+    ? Store.reviseCard(d.revising, { scores: d.scores, notes, date: d.date,
+                                     venue: d.venue.trim() || null })
+    : Store.submitScorecard({
+      spirit_id: d.spirit.code, scores: d.scores, notes,
+      date: d.date, venue: d.venue.trim() || null,
+    });
   app.draft = null;
   updateBadge();
   flush();
@@ -526,6 +568,7 @@ async function refresh() {
   }
   renderSync();
   if (app.tab === "collection") renderCollection();
+  if (app.tab === "table") TableView.render(screens.table);
   if (app.tab === "analysis") AnalysisView.render(screens.analysis);
   if (app.tab === "compare") CompareView.render(screens.compare);
 }

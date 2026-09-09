@@ -108,7 +108,10 @@ const CompareView = (() => {
         },
           el("div", { class: "row-main" },
             el("div", { class: "row-name" }, s.name || s.display_name || s.code),
-            el("div", { class: "row-sub" }, [s.distillery, s.type].filter(Boolean).join(" · "))),
+            el("div", { class: "row-sub" },
+              [s.distillery, s.type, s.proof ? s.proof + " pf" : null,
+               s.release_year ? String(Math.round(s.release_year)) : null]
+                .filter(Boolean).join(" · "))),
           scoreCell(c)));
       }
     }
@@ -151,7 +154,10 @@ const CompareView = (() => {
         el("div", { class: "cmp-name", style: "border-bottom-color:" + accentFor(it.spirit.type) },
           it.spirit.name || it.spirit.display_name || it.code,
           el("span", { class: "cmp-sub" },
-            [it.spirit.distillery, it.code].filter(Boolean).join(" · "))),
+            [it.spirit.distillery, it.code,
+             it.spirit.proof ? it.spirit.proof + " pf" : null,
+             it.spirit.release_year ? String(Math.round(it.spirit.release_year)) : null]
+              .filter(Boolean).join(" · "))),
         el("div", { class: "cmp-score" }, it.career.score.toFixed(1)),
         it.career.medal
           ? el("span", { class: "medal", style: "--m:" + (MEDAL_COLORS[it.career.medal] || "#9A9086") },

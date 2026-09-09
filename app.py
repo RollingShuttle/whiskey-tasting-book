@@ -62,7 +62,8 @@ COLLECTION_COLUMNS = [
     {"key": "status",           "label": "Status",   "type": "text",  "default": False},
     {"key": "source",           "label": "Source",   "type": "text",  "default": False},
     {"key": "age",              "label": "Age",      "type": "num",   "default": False},
-    {"key": "proof",            "label": "Proof",    "type": "num",   "default": False},
+    {"key": "proof",            "label": "Proof",    "type": "num",   "default": True},
+    {"key": "release_year",     "label": "Year",     "type": "int",   "default": True},
     {"key": "abv",              "label": "ABV",      "type": "num",   "default": False},
     {"key": "paid",             "label": "Paid",     "type": "money", "default": True},
     {"key": "size_oz",          "label": "Size oz",  "type": "num",   "default": False},
@@ -81,6 +82,8 @@ TASTING_COLUMNS = [
     {"key": "display_name",     "label": "Name",     "type": "name",  "default": True},
     {"key": "type",             "label": "Type",     "type": "text",  "default": True},
     {"key": "region",           "label": "Region",   "type": "text",  "default": False},
+    {"key": "proof",            "label": "Proof",    "type": "num",   "default": True},
+    {"key": "release_year",     "label": "Year",     "type": "int",   "default": True},
     {"key": "total",            "label": "Score",    "type": "score", "default": True},
     {"key": "medal",            "label": "Medal",    "type": "medal", "default": True},
     {"key": "counted",          "label": "Counted",  "type": "text",  "default": True},
@@ -193,6 +196,7 @@ def _career_item(rubric, code, sp, sittings):
         "key": code, "mode": "career", "code": code,
         "label": sp.get("display_name") or code,
         "sublabel": sp.get("type"), "type": sp.get("type"),
+        "proof": sp.get("proof"), "release_year": sp.get("release_year"),
         "scores": scores, "ranges": ranges,
         "total": (c or {}).get("mean_total"), "medal": (c or {}).get("medal"),
         "n": (c or {}).get("n", 0),
@@ -471,6 +475,17 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
         return jsonify({"spirit": sp, "career": _json_safe(career),
                         "sittings": journal.career(code)["sittings"]})
 
+    @app.delete("/api/tasting/<tasting_id>")
+    def api_delete_tasting(tasting_id):
+        """Remove a sitting. Nothing is unlinked: this writes a tombstone revision, so the card
+        stops counting and stops being shown while the history of it survives (SPEC.md §1.3)."""
+        try:
+            rec = journal.delete_tasting(tasting_id, reason=_clean(
+                (request.get_json(silent=True) or {}).get("reason")))
+        except KeyError:
+            return jsonify({"error": f"no such tasting {tasting_id}"}), 404
+        return jsonify({"ok": True, "tasting_id": tasting_id, "revision": rec["revision"]})
+
     # -- submit a scorecard --------------------------------------------------
     @app.post("/api/tasting")
     def api_tasting():
@@ -484,11 +499,18 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
 
         raw_scores = body.get("scores") or {}
         try:                                           # keep real ints; reject 8.5, "8", True
-            scores = {k: _as_int(v) for k, v in raw_scores.items()}
+            scores = {k: (None if v is None else _as_int(v)) for k, v in raw_scores.items()}
         except (TypeError, ValueError):
             return jsonify({"error": "every score must be a whole number"}), 400
 
-        problems = rubric.validate(scores)
+        # A draft is the card as it stands, autosaved while it is still being filled in, so it is
+        # allowed to be incomplete. Only a submitted card has to be whole.
+        draft = str(body.get("status") or "submitted").lower() == "draft"
+        if draft:
+            scores = {k: v for k, v in scores.items() if v is not None}
+            problems = rubric.validate_partial(scores)
+        else:
+            problems = rubric.validate(scores)
         if problems:
             return jsonify({"error": "; ".join(problems), "problems": problems}), 400
 
@@ -521,7 +543,8 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
             return jsonify({"error": str(e)}), 400
 
         return jsonify({"ok": True, "tasting": rec,
-                        "next_band": rubric.points_to_next_band(rec["total"])}), 201
+                        "next_band": (rubric.points_to_next_band(rec["total"])
+                                      if rec.get("total") is not None else None)}), 201
 
     # -- flights / sessions --------------------------------------------------
     @app.get("/api/sessions")
@@ -595,6 +618,7 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
                 "rarity": sp.get("rarity"), "status": sp.get("status"),
                 "age": sp.get("age"), "age_label": sp.get("age_label"),
                 "proof": sp.get("proof"), "abv": sp.get("abv"),
+                "release_year": sp.get("release_year"),
                 "paid": sp.get("paid"), "size_oz": sp.get("size_oz"),
                 "value_per_oz": sp.get("value_per_oz"),
                 "score_per_dollar": _ratio(bits["career_score"], sp.get("paid"), 3),
@@ -622,6 +646,7 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
                 "rarity": f.get("rarity"), "status": "Finished",
                 "age": f.get("age"), "age_label": f.get("age_label"),
                 "proof": f.get("proof"), "abv": f.get("abv"),
+                "release_year": f.get("release_year"),
                 "paid": f.get("paid"), "size_oz": f.get("size_oz"),
                 "value_per_oz": f.get("value_per_oz"),
                 "score_per_dollar": _ratio(bits["career_score"], f.get("paid"), 3),
@@ -643,6 +668,7 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
                 "rarity": None, "status": None,
                 "age": enc.get("age"), "age_label": None,
                 "proof": enc.get("proof"), "abv": None,
+                "release_year": None,
                 "paid": None, "size_oz": None,
                 "value_per_oz": _pour_value_per_oz(sits),
                 "score_per_dollar": None,
@@ -665,6 +691,7 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
                 "scores": t.get("scores") or {},        # so a lens can re-total one sitting
                 "display_name": sp.get("display_name") or code,
                 "type": sp.get("type"), "region": sp.get("region"),
+                "proof": sp.get("proof"), "release_year": sp.get("release_year"),
                 "total": t["total"], "medal": t["medal"],
                 "counted": "yes" if t.get("include_in_average", True) else "no",
                 "venue": t.get("venue"),

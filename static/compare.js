@@ -185,7 +185,10 @@ const CompareView = (() => {
         // The code, because three bottles here really are called George T. Stagg and two columns
         // under the same heading is precisely the moment you need to tell them apart.
         el("div", { class: "cmp-sub" },
-          [it.code, it.mode === "career" ? `career · n=${it.n}` : (it.date || "one sitting")]
+          [it.code,
+           it.proof ? `${it.proof} pf` : null,
+           it.release_year ? String(Math.round(it.release_year)) : null,
+           it.mode === "career" ? `career · n=${it.n}` : (it.date || "one sitting")]
             .filter(Boolean).join("  ·  ")),
         el("div", { class: "cmp-total" },
           it.total === null || it.total === undefined ? "—"

@@ -216,6 +216,53 @@ const Store = (() => {
   const meta = () => read(K.meta, {});
   const setMeta = (patch) => write(K.meta, { ...meta(), ...patch });
 
+  /** A correction: the same card, one revision later.
+
+      Journal files are immutable, so this writes a new file rather than touching the old one, and
+      the PC resolves the highest revision when it reads. The phone can only do this for cards it
+      holds itself — it keeps its own cards, not the journal — which is exactly the set it shows. */
+  function reviseCard(previous, fields) {
+    const rub = rubric();
+    const revision = (previous.revision || 1) + 1;
+    const scores = { ...fields.scores };
+    const total = rub ? rub.categories.reduce((a, c) => a + (scores[c.key] || 0), 0) : null;
+    const rec = {
+      ...previous,
+      revision,
+      deleted: false,
+      scores,
+      notes: fields.notes || {},
+      date: fields.date || previous.date,
+      venue: fields.venue ?? previous.venue ?? null,
+      total,
+      medal: rub && total !== null ? medalFor(total, rub) : null,
+      created_at: nowIso(),
+    };
+    delete rec._path;
+    delete rec._sent;
+    const path = `tastings/${rec.tasting_id}-r${revision}.json`;
+    write(K.cards, [{ ...rec, _path: path, _sent: false },
+                    ...cards().filter((c) => c.tasting_id !== rec.tasting_id)]);
+    enqueue({ path, kind: "tasting", body: rec, created_at: nowIso() });
+    return { rec, path };
+  }
+
+  /** A tombstone is just another revision. Nothing is unlinked, here or on the PC. */
+  function deleteCard(previous, reason) {
+    const revision = (previous.revision || 1) + 1;
+    const rec = {
+      tasting_id: previous.tasting_id,
+      revision,
+      deleted: true,
+      reason: reason || null,
+      created_at: nowIso(),
+    };
+    const path = `tastings/${rec.tasting_id}-r${revision}.json`;
+    write(K.cards, cards().filter((c) => c.tasting_id !== rec.tasting_id));
+    enqueue({ path, kind: "tasting", body: rec, created_at: nowIso() });
+    return { rec, path };
+  }
+
   /** Save the card, queue the upload, and tell the caller it is safe — in that order. */
   function submitScorecard(fields) {
     const { rec, path } = scorecard(fields, rubric());
@@ -242,7 +289,7 @@ const Store = (() => {
   return {
     snapshot, setSnapshot, spirits, rubric, setRubric, careers, setCareers,
     queue, enqueue, drop, queueCount,
-    cards, cardsFor, addCard, markSent,
+    cards, cardsFor, addCard, markSent, reviseCard, deleteCard,
     meta, setMeta,
     submitScorecard, submitPending, submitEncounter,
     encounters, addEncounter, asSpirit,
