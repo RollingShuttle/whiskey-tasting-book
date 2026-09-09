@@ -119,6 +119,13 @@ body.keyboard .tabs { display: none; }
 }
 .search:focus { outline: 2px solid var(--brass-bright); border-color: transparent; }
 
+.row.gone .row-name, .row.gone .row-sub { opacity: 0.62; }
+.tag {
+  margin-left: 8px; padding: 1px 7px; border-radius: 999px; vertical-align: 1px;
+  border: 1px solid var(--line); color: var(--muted); font-size: 0.66rem;
+  font-family: var(--sans); letter-spacing: 0.02em;
+}
+
 .chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 10px; scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }
 .chip {

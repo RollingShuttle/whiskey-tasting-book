@@ -122,7 +122,15 @@ add the Pages URL as a Single-page application redirect URI on the Entra registr
 turn on GitHub Pages for the `docs/` folder on `main`. Until then the app runs and scores;
 only uploading waits.
 
-Bottles and samples are **deleted from the workbook when they are finished** — that is the
+All three sheets carry a **Status** column: `Unopened`/`Opened` mean the spirit is held,
+`Finished`/`Removed` mean it has left. The vocabulary lives in `collection.py`
+(`GONE_STATUSES`, `is_gone`) and nowhere else; matching is case-insensitive and trimmed because
+these are typed by hand, a blank status counts as held (rows predate the column), and an
+unrecognised one raises a warning rather than being guessed at — a misspelling would otherwise
+leave an empty bottle counted as owned for ever. Every row gains a derived `owned`, which is what
+the table, the phone's **In stock** filter and the analysis all read.
+
+Rows may also be **deleted from the workbook when they are finished** — that is the
 owner's normal housekeeping, not damage. Three things follow, and none of them are optional:
 `POST /api/refresh` diffs the outgoing snapshot against the fresh read and writes `retired/<code>.json`
 for anything that left (the only moment both lists exist); the collection table renders a retired

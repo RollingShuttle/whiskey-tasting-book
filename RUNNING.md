@@ -128,10 +128,30 @@ changed something in Excel, or when you want the phone to see new bottles.
 - **Your collection workbook** → only ever read, never written, except when you explicitly approve
   a new bottle. A backup is taken before that happens.
 
-### Deleting bottles you have finished
+### Finishing a bottle
 
-Delete the row in Excel as you like — that is expected, not a problem. Press **Refresh** afterwards
-so the app notices.
+All three sheets have a **Status** column. The app reads four values:
+
+| Status | Means |
+|---|---|
+| **Unopened** | you have it, unopened |
+| **Opened** | you have it, open |
+| **Finished** | drunk — no longer yours |
+| **Removed** | gone some other way — sold, given away, a mistake |
+
+**Marking the status is better than deleting the row.** The row stays, so the bottle keeps its
+name, its price and everything else, and your reviews of it stay attached to something real. It
+drops out of "In stock" on the phone and shows as *not owned* in the Table, and Refresh records the
+date you marked it — the workbook has no date of its own, so that is the only way to know how long
+a bottle lasted.
+
+Capitalisation and stray spaces do not matter. A **blank** status is treated as still owned, since
+plenty of rows predate the column. A **misspelling** is reported rather than guessed at — otherwise
+"Finsihed" would leave an empty bottle counted as owned for ever and nothing would ever say so.
+
+### Deleting the row instead
+
+You can still delete rows, and nothing breaks. Press **Refresh** afterwards so the app notices.
 
 What happens to a bottle you had already reviewed:
 

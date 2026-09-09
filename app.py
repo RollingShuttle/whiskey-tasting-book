@@ -96,6 +96,13 @@ TASTING_COLUMNS = [
 ]
 
 
+def collection_status_gone(status):
+    """Thin wrapper so the vocabulary lives in one place — collection.py — and this module does
+    not grow its own opinion about what "Finished" means."""
+    import collection as collection_mod
+    return collection_mod.is_gone(status)
+
+
 def _encounter_alias(journal):
     """uid -> X- code, for every encounter that has been given one.
 
@@ -364,13 +371,26 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
             before = {r["code"]: r for r in json.loads(snap.read_text(encoding="utf-8"))["spirits"]}
         except (OSError, ValueError, KeyError, TypeError):
             return []                          # no usable previous list; nothing to compare
-        now = {r["code"] for r in coll.snapshot()["spirits"]}
+        rows = coll.snapshot()["spirits"]
+        now = {r["code"] for r in rows}
         gone = []
+
+        # Deleted outright: the row has vanished and this is the last moment it can be described.
         for code, row in before.items():
             if code not in now:
-                journal.write_retired(code=code, fields=row)
+                journal.write_retired(code=code, fields=row, reason="row deleted from the workbook")
                 gone.append(code)
-        return sorted(gone)
+
+        # Marked Finished or Removed: the row is still there, so nothing is at risk — but the
+        # workbook records no date, and "when did I finish it?" is worth keeping. Written once,
+        # so it is the date the app first saw the mark, not the date of the latest refresh.
+        for row in rows:
+            status = (row.get("status") or "").strip()
+            if collection_status_gone(status):
+                journal.write_retired(code=row["code"], fields=row,
+                                      reason=f"marked {status}")
+                gone.append(row["code"])
+        return sorted(set(gone))
 
     def _publish_for_phone(coll):
         """Write what the phone reads into the OneDrive app folder (SPEC.md §9.1).
@@ -544,10 +564,17 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
         for sp in catalog.all():
             sits = by_spirit.get(sp["code"], [])
             bits = _career_bits(rubric, sits)
+            # Status decides this, not mere presence in the workbook. A finished bottle keeps its
+            # row — which is the better way to do it, since the reviews keep something to belong
+            # to — but it is not something you still have.
             rows.append({
                 "code": sp["code"], "display_name": sp["display_name"],
                 "distillery": sp.get("distillery"), "name": sp.get("name"),
-                "source": sp.get("_sheet"), "owned": True,
+                "source": sp.get("_sheet"),
+                # A snapshot written before the loader derived this will not carry it, so fall
+                # back to reading the status directly rather than assuming everything is owned.
+                "owned": bool(sp["owned"]) if "owned" in sp
+                         else not collection_status_gone(sp.get("status")),
                 "type": sp.get("type"), "region": sp.get("region"),
                 "rarity": sp.get("rarity"), "status": sp.get("status"),
                 "age": sp.get("age"), "age_label": sp.get("age_label"),

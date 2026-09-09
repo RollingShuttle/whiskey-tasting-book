@@ -199,6 +199,7 @@ const Store = (() => {
     venue: e.venue,
     _sheet: "Encounter",
     _encounter: true,
+    owned: false,             // a bar pour was never yours; it must not count as stock
   });
 
   // -- connection notes -----------------------------------------------------

@@ -202,6 +202,30 @@ class TestQueueRules(unittest.TestCase):
         self.assertGreaterEqual(js.count("catch"), 2)
 
 
+class TestFinishedBottlesOnThePhone(unittest.TestCase):
+    """Standing at a bar believing you still own a bottle you finished is the failure this
+    prevents. The snapshot carries the status; the phone has to show it."""
+
+    def test_the_list_marks_what_is_gone(self):
+        src = code("app.js")
+        self.assertIn('s.owned === false', src)
+        self.assertIn('class: "tag"', src)
+
+    def test_there_is_a_filter_for_what_you_still_have(self):
+        src = code("app.js")
+        self.assertIn('["instock", "In stock"]', src)
+        self.assertIn('s.owned !== false', src)
+
+    def test_a_missing_owned_flag_is_not_read_as_gone(self):
+        """Older snapshots have no owned field, and hiding a real bottle is the worse mistake."""
+        src = code("app.js")
+        self.assertIn("s.owned !== false", src)
+        self.assertNotIn("!s.owned", src)
+
+    def test_a_bar_pour_never_counts_as_stock(self):
+        self.assertIn("owned: false", code("store.js"))
+
+
 class TestTimeZones(unittest.TestCase):
     """The phone is the device that travels. Instants are stored in UTC; calendar days and
     anything shown to a person are local."""

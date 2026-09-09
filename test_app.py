@@ -831,6 +831,83 @@ class TestFinishedBottles(AppCase):
         self.assertEqual(row["n"], 1, "and it keeps the review it already had")
 
 
+class TestStatus(AppCase):
+    """All three sheets carry a Status column. Finished and Removed mean the spirit has left the
+    collection; Opened and Unopened mean it is still there. Marking a row is better than deleting
+    it — the reviews keep something to belong to — so the app has to read the difference."""
+
+    def journal(self):
+        return store_mod.Journal(self.tmp / "journal", rubric_mod.load_rubric()).ensure()
+
+    def with_status(self, status, code="B-18"):
+        """Rewrite the snapshot so that one spirit carries `status`, and serve from it."""
+        spirits = [dict(sp, status=status) if sp["code"] == code else sp
+                   for sp in FIXTURE_SNAPSHOT["spirits"]]
+        self.snap.write_text(json.dumps(dict(FIXTURE_SNAPSHOT, spirits=spirits)), encoding="utf-8")
+        return app_mod.create_app(
+            "config.yaml", app_folder=str(self.tmp / "journal"), snapshot_path=str(self.snap),
+            master="Z:/nonexistent/x.xlsx", rollup=str(self.tmp / "r.xlsx"),
+            backups=str(self.tmp / "b")).test_client()
+
+    def row(self, client, code="B-18"):
+        return next(r for r in client.get("/api/table/collection").get_json()["rows"]
+                    if r["code"] == code)
+
+    def test_finished_is_not_owned(self):
+        self.assertFalse(self.row(self.with_status("Finished"))["owned"])
+
+    def test_removed_is_not_owned(self):
+        self.assertFalse(self.row(self.with_status("Removed"))["owned"])
+
+    def test_opened_and_unopened_still_are(self):
+        for held in ("Opened", "Unopened"):
+            self.assertTrue(self.row(self.with_status(held))["owned"], held)
+
+    def test_the_match_is_forgiving_about_typing(self):
+        """These are typed into Excel by hand."""
+        for spelling in ("finished", "FINISHED", " Finished "):
+            self.assertFalse(self.row(self.with_status(spelling))["owned"], spelling)
+
+    def test_a_blank_status_is_not_assumed_to_be_gone(self):
+        """Rows predate the column. Assuming the worst of them would hide real bottles."""
+        self.assertTrue(self.row(self.with_status(""))["owned"])
+
+    def test_a_finished_bottle_keeps_its_row_and_its_reviews(self):
+        j = self.journal()
+        j.write_tasting(spirit_id="B-18", scores=dict(EXAMPLE_CARD))
+        row = self.row(self.with_status("Finished"))
+        self.assertEqual(row["n"], 1, "the reviews went with the bottle")
+        self.assertEqual(row["source"], "Bottle", "it is still a workbook row, not a tombstone")
+        self.assertIsNotNone(row["career_score"])
+
+    def test_refresh_dates_the_bottle_being_finished(self):
+        """The workbook records no date for it, and "how long did that bottle last" is worth
+        keeping. Written once, so it is when the mark was first seen."""
+        import collection as collection_mod
+        spirits = [dict(sp, status="Finished") if sp["code"] == "B-18" else sp
+                   for sp in FIXTURE_SNAPSHOT["spirits"]]
+        stub = types.SimpleNamespace(errors=[], rows={"Bottle": spirits},
+                                     snapshot=lambda: dict(FIXTURE_SNAPSHOT, spirits=spirits))
+        with mock.patch.object(collection_mod, "load", return_value=stub):
+            r = self.c.post("/api/refresh")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("B-18", r.get_json()["retired"])
+        rec = next(x for x in self.journal().retired() if x["code"] == "B-18")
+        self.assertEqual(rec["reason"], "marked Finished")
+        self.assertTrue(rec["retired_at"])
+
+    def test_an_unrecognised_status_is_reported(self):
+        """A typo would otherwise leave an empty bottle counted as owned for ever, silently."""
+        import collection as collection_mod
+        coll = collection_mod.Collection.__new__(collection_mod.Collection)
+        coll.rows = {"Bottle": [{"code": "B-1", "_row": 9, "status": "Finsihed"}]}
+        coll.issues = []
+        coll.first_empty_row = lambda sheet: 99
+        coll._check()
+        self.assertTrue(any("not recognised" in i.message for i in coll.issues),
+                        "a misspelled status passed without comment")
+
+
 class TestCodesAreNeverReissued(AppCase):
     """The quiet danger in deleting rows. next_code is highest-present + 1, so finishing the
     newest bottle and deleting it would free its code for the next one — and every review of the

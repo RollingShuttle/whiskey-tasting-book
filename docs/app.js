@@ -127,8 +127,9 @@ function renderCollection() {
   });
 
   const chips = el("div", { class: "chips" },
-    ...[["all", "All"], ["Bottle", "Bottles"], ["Miniature", "Minis"], ["Sample", "Samples"],
-        ["Encounter", "Bar"], ["scored", "Scored"]].map(([id, label]) =>
+    ...[["all", "All"], ["instock", "In stock"], ["Bottle", "Bottles"],
+        ["Miniature", "Minis"], ["Sample", "Samples"], ["Encounter", "Bar"],
+        ["scored", "Scored"]].map(([id, label]) =>
       el("button", { type: "button", class: `chip${app.filter === id ? " active" : ""}`,
         onclick: () => { app.filter = id; renderCollection(); } }, label)));
 
@@ -146,6 +147,7 @@ function paintRows() {
   const terms = app.query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   let spirits = knownSpirits();
   if (app.filter === "scored") spirits = spirits.filter((s) => careerFor(s.code));
+  else if (app.filter === "instock") spirits = spirits.filter((s) => s.owned !== false);
   else if (app.filter !== "all") spirits = spirits.filter((s) => s._sheet === app.filter);
   if (terms.length) {
     spirits = spirits.filter((s) => {
@@ -165,12 +167,16 @@ function paintRows() {
   for (const s of spirits) {
     const meta = [s.type, s.age ? `${s.age} yr` : s.age_label, s.proof ? `${s.proof} pf` : null]
       .filter(Boolean).join(" · ");
+    const gone = s.owned === false && s.status;
     list.append(el("li", {
-      class: "row", style: `border-left-color:${accentFor(s.type)}`,
+      class: `row${s.owned === false ? " gone" : ""}`,
+      style: `border-left-color:${accentFor(s.type)}`,
       onclick: () => openDetail(s.code),
     },
       el("div", { class: "row-main" },
-        el("div", { class: "row-name" }, s.name || s.display_name || s.code),
+        el("div", { class: "row-name" },
+          s.name || s.display_name || s.code,
+          gone ? el("span", { class: "tag" }, s.status) : null),
         el("div", { class: "row-sub" }, [s.distillery, meta].filter(Boolean).join(" · "))),
       scoreCell(careerFor(s.code))));
   }

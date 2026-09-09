@@ -39,6 +39,22 @@ CODE_RE = re.compile(r"^([BMS])-(\d+)$")
 # that somebody drank seventy bottles in an afternoon.
 BASELINE = {"Bottle": 144, "Miniature": 22, "Sample": 209}
 COLLAPSE_FRACTION = 0.5
+
+# The Status column on all three sheets. These are typed by hand in Excel, so they are matched
+# case-insensitively and trimmed. GONE means the spirit is no longer in the collection: the row
+# stays, which is better than deleting it, because the reviews keep a bottle to belong to.
+#
+# A status outside this vocabulary is reported rather than guessed at. A typo — "Finsihed" — would
+# otherwise leave an empty bottle counted as owned for ever, and nothing would ever say so.
+GONE_STATUSES = {"finished", "removed"}
+HELD_STATUSES = {"opened", "unopened"}
+KNOWN_STATUSES = GONE_STATUSES | HELD_STATUSES
+
+
+def is_gone(status):
+    """True when a Status means the spirit has left the collection. A blank status is not gone:
+    plenty of rows predate the column, and assuming the worst of them would hide real bottles."""
+    return str(status or "").strip().lower() in GONE_STATUSES
 CODE_PREFIX = {"Bottle": "B", "Miniature": "M", "Sample": "S"}
 
 
@@ -237,6 +253,9 @@ class Collection:
                     continue                                # in-cell image, reads as #VALUE!
                 else:
                     rec[key] = _txt(raw)
+            # Derived once, here, so that every reader — the table, the phone, the analysis —
+            # answers "do I still have this?" the same way.
+            rec["owned"] = not is_gone(rec.get("status"))
             out.append(rec)
         return out
 
@@ -322,6 +341,15 @@ class Collection:
                 self.issues.append(Issue("error", sheet, f"{len(blanks)} row(s) with no Bottle Code: {blanks[:8]}"))
             if malformed:
                 self.issues.append(Issue("error", sheet, f"malformed code(s): {malformed[:8]}"))
+
+            unknown = sorted({(r.get("status") or "").strip() for r in rows
+                              if (r.get("status") or "").strip()
+                              and (r.get("status") or "").strip().lower() not in KNOWN_STATUSES})
+            if unknown:
+                self.issues.append(Issue("warn", sheet,
+                    f"status values not recognised: {unknown[:6]} — expected one of "
+                    f"{sorted(KNOWN_STATUSES)}; a misspelling leaves an empty bottle counted "
+                    "as owned"))
 
             base = BASELINE.get(sheet)
             if base is not None and len(rows) < base * COLLAPSE_FRACTION:
