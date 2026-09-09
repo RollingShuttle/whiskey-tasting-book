@@ -335,3 +335,16 @@ label.field > span { color: var(--muted); font-size: 0.78rem; }
   text-transform: uppercase; letter-spacing: 0.06em;
 }
 .sortbar .chip { font-size: 0.78rem; padding: 5px 11px; }
+
+/* The ranking lens: which categories the score is taken over. */
+.lensbar { align-items: center; padding-bottom: 6px; }
+.lenspicker {
+  display: flex; flex-wrap: wrap; gap: 10px 16px;
+  padding: 10px 12px; margin-bottom: 8px;
+  background: var(--surface-2); border-radius: 10px;
+}
+.lenschoice {
+  display: inline-flex; align-items: center; gap: 7px;
+  color: var(--muted); font-size: 0.8rem; min-height: 44px;
+}
+.lenschoice input { accent-color: var(--brass); width: 20px; height: 20px; }

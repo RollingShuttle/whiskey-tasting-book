@@ -19,20 +19,9 @@ const CompareView = (() => {
 
   const MAX = 4;
 
-  /** Per-category means for one spirit: what the PC published, else this phone's own cards. */
-  function categoriesFor(code) {
-    const published = (app.careers[code] || {}).categories;
-    if (published && Object.keys(published).length) return published;
-
-    const mine = Store.cardsFor(code).filter((c) => c.include_in_average && c.scores);
-    if (!mine.length) return null;
-    const out = {};
-    for (const cat of app.rubric.categories) {
-      const vals = mine.map((c) => c.scores[cat.key]).filter((v) => v !== null && v !== undefined);
-      if (vals.length) out[cat.key] = vals.reduce((a, b) => a + b, 0) / vals.length;
-    }
-    return Object.keys(out).length ? out : null;
-  }
+  /** Shared with the table, so a comparison and a ranking cannot disagree about the same
+      spirit — and so both fold in this phone's own cards the same way. */
+  const categoriesFor = (code) => categoryMeansFor(code);
 
   function chosen() {
     return codes.map((code) => {

@@ -38,6 +38,7 @@ const MEDAL_COLORS = { Diamond: "#AFC7DE", Gold: "#C8952F", Silver: "#B4ADA2",
 const app = {
   rubric: null,
   careers: {},            // code -> {score, medal, n, categories} as last reconciled by the PC
+  careersAt: "",          // when the PC worked those out, so its cards are not counted twice
   calibration: [],        // one mean per month, published by the PC (it holds the whole journal)
   stack: [],              // pushed screens, for the back chevron
   tab: "collection",
@@ -99,17 +100,99 @@ const knownSpirits = () => Store.spirits().concat(Store.encounters().map(Store.a
 const findSpirit = (code) => knownSpirits().find((x) => x.code === code);
 
 // ---------------------------------------------------------------- helpers
+/* The PC's figures plus this phone's own cards. The cutoff is the whole difficulty: the PC counts
+   a card as soon as it has been uploaded and refreshed, and the phone keeps its copy for ever, so
+   without knowing when the PC last did its sums the same sitting was added on top of itself — the
+   score stayed right, being an average of a number with itself, but n climbed. careers.json now
+   says when it was generated, so only cards written after that are still the phone's to add. */
+const countedLocally = (code) => Store.cardsFor(code).filter((c) => {
+  if (!c.include_in_average) return false;
+  if (!app.careersAt) return true;                    // nothing reconciled yet; all of them count
+  return String(c.created_at || "") > app.careersAt;
+});
+
 function careerFor(code) {
-  const local = Store.cardsFor(code).filter((c) => c.include_in_average && c.total !== null);
+  const local = countedLocally(code).filter((c) => c.total !== null);
   const fromPc = app.careers[code];
   if (!local.length) return fromPc || null;
-  // Local cards the PC has not folded in yet are added to what it last reconciled.
   const totals = local.map((c) => c.total);
   const pcN = fromPc?.n || 0;
   const pcSum = (fromPc?.score || 0) * pcN;
   const n = pcN + totals.length;
   const score = Math.round(((pcSum + totals.reduce((a, b) => a + b, 0)) / n) * 10) / 10;
-  return { score, n, medal: app.rubric ? Store.medalFor(Math.round(score), app.rubric) : null };
+  return { score, n, medal: app.rubric ? Store.medalFor(Math.round(score), app.rubric) : null,
+           best: fromPc?.best, worst: fromPc?.worst };
+}
+
+/** Per-category means, folded the same way and for the same reason. The lens and the comparison
+    both need the parts rather than the total. */
+function categoryMeansFor(code) {
+  const pc = app.careers[code] || {};
+  const published = pc.categories && Object.keys(pc.categories).length ? pc.categories : null;
+  const pcN = published ? (pc.n || 0) : 0;
+  const mine = countedLocally(code).filter((c) => c.scores);
+  if (!published && !mine.length) return null;
+
+  const out = {};
+  for (const cat of (app.rubric?.categories || [])) {
+    const vals = mine.map((c) => c.scores[cat.key])
+      .filter((v) => v !== null && v !== undefined);
+    const base = published ? published[cat.key] : undefined;
+    const haveBase = base !== null && base !== undefined;
+    if (!vals.length && !haveBase) continue;
+    const sum = (haveBase ? base * pcN : 0) + vals.reduce((a, b) => a + b, 0);
+    const n = (haveBase ? pcN : 0) + vals.length;
+    if (n) out[cat.key] = sum / n;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/* ---------------------------------------------------------------- ranking lens
+   Which categories a ranking is taken over. Aesthetics is the bottle and value is the price, so
+   "which is the better whiskey" is a different question from "which was the better buy" — and on
+   the full card several spirits often tie where their flavour scores separate cleanly.
+
+   Which categories count as flavour is config, not code (`flavour: false` in the rubric), so a
+   third non-flavour category one day would generate its own chips. */
+const sameKeys = (a, b) => a.length === b.length && a.every((k) => b.includes(k));
+const flavourKeys = () => (app.rubric?.categories || []).filter((c) => c.flavour).map((c) => c.key);
+
+function lensMax(keys) {
+  const by = Object.fromEntries((app.rubric?.categories || []).map((c) => [c.key, c.max]));
+  return keys.reduce((a, k) => a + (by[k] || 0), 0);
+}
+const lensIsEverything = (keys) => lensMax(keys) === (app.rubric?.max_total ?? -1);
+
+/** Flavour, flavour plus each non-flavour, everything, and each non-flavour on its own. */
+function lensPresets() {
+  const cats = app.rubric?.categories || [];
+  const flavour = cats.filter((c) => c.flavour);
+  const other = cats.filter((c) => !c.flavour);
+  const keysOf = (l) => l.map((c) => c.key);
+  const total = (l) => l.reduce((a, c) => a + c.max, 0);
+
+  const out = [{ id: "flavour", label: `Flavour ${total(flavour)}`, keys: keysOf(flavour) }];
+  for (const c of other) {
+    out.push({ id: `flavour+${c.key}`,
+               label: `+ ${(c.label || c.key).toLowerCase()} ${total(flavour) + c.max}`,
+               keys: [...keysOf(flavour), c.key] });
+  }
+  out.push({ id: "all", label: `Everything ${total(cats)}`, keys: keysOf(cats) });
+  for (const c of other) out.push({ id: c.key, label: `${c.label || c.key} ${c.max}`, keys: [c.key] });
+  return out;
+}
+
+/** Sum a subset of per-category figures. Null when anything in the lens is unscored, so those
+    rows still sink rather than posing as a low score. */
+function lensScore(source, keys) {
+  if (!source || !keys.length) return null;
+  let sum = 0;
+  for (const k of keys) {
+    const v = source[k];
+    if (v === null || v === undefined) return null;
+    sum += v;
+  }
+  return Math.round(sum * 10) / 10;
 }
 
 function scoreCell(career) {
@@ -559,6 +642,7 @@ async function refresh() {
       Store.setCareers(careers.careers ? careers : { careers });
       app.careers = Store.careers().careers;
       app.calibration = Store.careers().calibration;
+      app.careersAt = Store.careers().generatedAt;
     }
     const rub = await Graph.getJSON("snapshot/rubric.json");
     if (rub) { Store.setRubric(rub); app.rubric = rub; }
@@ -631,6 +715,7 @@ async function boot() {
   const kept = Store.careers();
   app.careers = kept.careers;
   app.calibration = kept.calibration;
+  app.careersAt = kept.generatedAt;
   app.rubric = Store.rubric();
   if (!app.rubric) {
     try {

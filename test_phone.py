@@ -350,12 +350,62 @@ class TestAnalysisAndCompare(unittest.TestCase):
         boot = code("app.js")
         self.assertIn("Store.careers()", boot)
 
-    def test_compare_prefers_the_published_categories(self):
-        """The phone cannot derive per-category means for a spirit it did not score itself: it
-        holds its own cards, not the journal."""
-        src = code("compare.js")
-        self.assertIn("app.careers[code] || {}).categories", src)
-        self.assertIn("Store.cardsFor(code)", src)
+    def test_compare_and_the_table_fold_the_figures_the_same_way(self):
+        """One helper, so a comparison and a ranking cannot disagree about the same spirit."""
+        self.assertIn("categoryMeansFor(code)", code("compare.js"))
+        self.assertIn("categoryMeansFor(s.code)", code("table.js"))
+        shared = code("app.js")
+        self.assertIn("function categoryMeansFor(", shared)
+        self.assertIn("pc.categories", shared)
+
+
+class TestTheRankingLens(unittest.TestCase):
+    """Aesthetics is the bottle and value is the price, so "which is the better whiskey" is a
+    different question from "which was the better buy". The desktop table can ask either; the
+    phone table now can too."""
+
+    def test_the_lens_is_built_from_the_rubric_not_hard_coded(self):
+        """Which categories count as flavour is config. A third non-flavour category one day
+        should generate its own chips rather than needing this rewritten."""
+        src = code("app.js")
+        self.assertIn("(c) => c.flavour", src)
+        block = src[src.index("function lensPresets("):src.index("function lensScore(")]
+        self.assertNotIn("aesthetics", block, "the presets name a category instead of reading it")
+        self.assertNotIn("value", block.replace("flavour", ""), "same for value")
+
+    def test_the_presets_cover_flavour_each_extra_and_everything(self):
+        src = code("app.js")
+        block = src[src.index("function lensPresets("):src.index("function lensScore(")]
+        self.assertIn('id: "flavour"', block)
+        self.assertIn("flavour+", block)
+        self.assertIn('id: "all"', block)
+        self.assertIn("for (const c of other) out.push", block)
+
+    def test_any_set_can_be_chosen(self):
+        self.assertIn("lensPicker(", code("table.js"))
+
+    def test_an_empty_lens_is_impossible(self):
+        """Unticking the last category would blank every row with no way back."""
+        block = code("table.js")
+        block = block[block.index("function lensPicker("):]
+        self.assertIn("keys.length ? keys : [c.key]", block)
+
+    def test_a_partly_scored_spirit_scores_nothing_under_the_lens(self):
+        """Summing only the categories that happen to be filled in would read as a low score
+        rather than an incomplete one."""
+        block = code("app.js")
+        block = block[block.index("function lensScore("):]
+        self.assertIn("return null;", block[:400])
+
+    def test_medals_are_withheld_unless_the_lens_is_the_whole_card(self):
+        """The bands are defined against 100. A medal beside a flavour-only score would claim
+        something the number cannot support."""
+        src = code("table.js")
+        self.assertIn("lensIsEverything(lens.keys)", src)
+        self.assertIn("whole && career ? career.medal : null", src)
+
+    def test_the_table_says_what_the_score_is_out_of(self):
+        self.assertIn("lensMax(lens.keys)", code("table.js"))
 
     def test_a_compare_column_is_identified_beyond_its_name(self):
         """Two different bottles can carry the same name; the column has to say which is which."""

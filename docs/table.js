@@ -20,6 +20,7 @@ const TableView = (() => {
   let desc = true;
   let query = "";
   let filter = "all";
+  let lens = null;          // {id, keys, custom} — set on first render, once the rubric is loaded
 
   const num = (v) => {
     if (v === null || v === undefined || v === "") return null;
@@ -33,6 +34,9 @@ const TableView = (() => {
   const FIELDS = [
     { key: "score", label: "Score", core: true, num: true,
       of: (r) => r.score, show: (r) => (r.score === null ? "—" : r.score.toFixed(1)) },
+    // Suppressed unless the lens is the whole card: the bands are defined against 100, so a
+    // medal beside a flavour-only score would be claiming something the number cannot support.
+
     { key: "name", label: "Name", core: true,
       of: (r) => r.name.toLowerCase(), show: (r) => r.name },
     { key: "code", label: "Code", core: true,
@@ -87,7 +91,12 @@ const TableView = (() => {
       const paid = num(s.paid);
       const oz = num(s.sizeoz) !== null ? num(s.sizeoz)
         : (num(s.size_ml) !== null ? num(s.size_ml) / ML_PER_OZ : null);
-      const score = career ? career.score : null;
+      // The score shown and sorted on is the lens, not the stored total.
+      const means = categoryMeansFor(s.code);
+      const whole = lensIsEverything(lens.keys);
+      const score = whole
+        ? (career ? career.score : null)
+        : lensScore(means, lens.keys);
       return {
         code: s.code,
         spirit: s,
@@ -99,8 +108,8 @@ const TableView = (() => {
         valuePerOz: paid !== null && oz ? round1(paid / oz) : null,
         scorePerDollar: score !== null && paid ? Math.round((score / paid) * 1000) / 1000 : null,
         score,
-        medal: career ? career.medal : null,
-        medalRank: medalRank(career && career.medal),
+        medal: whole && career ? career.medal : null,
+        medalRank: whole ? medalRank(career && career.medal) : null,
         best: career && career.best !== undefined ? career.best : null,
         worst: career && career.worst !== undefined ? career.worst : null,
         n: career ? career.n : 0,
@@ -162,8 +171,45 @@ const TableView = (() => {
     render(document.getElementById("screen-table"));
   }
 
+  /** Which categories the ranking is taken over: flavour alone, flavour plus one of the others,
+      everything, or any set you pick. Aesthetics is the bottle and value is the price, so leaving
+      them out asks a different question — which is the better whiskey, not the better buy. */
+  function lensBar() {
+    const presets = lensPresets();
+    const active = presets.find((p) => sameKeys(p.keys, lens.keys));
+    const bar = el("div", { class: "chips lensbar" },
+      el("span", { class: "sortlabel" }, "Rank by"),
+      ...presets.map((p) => el("button", {
+        type: "button", class: "chip" + (p === active ? " active" : ""),
+        onclick: () => { lens = { id: p.id, keys: p.keys, custom: false }; repaint(); },
+      }, p.label)),
+      el("button", {
+        type: "button", class: "chip" + (lens.custom ? " active" : ""),
+        onclick: () => { lens = { ...lens, custom: !lens.custom }; repaint(); },
+      }, lens.custom ? "Custom ▴" : "Custom ▾"));
+    return lens.custom ? el("div", {}, bar, lensPicker()) : bar;
+  }
+
+  function lensPicker() {
+    return el("div", { class: "lenspicker" },
+      ...(app.rubric.categories).map((c) => el("label", { class: "lenschoice" },
+        el("input", {
+          type: "checkbox", checked: lens.keys.includes(c.key),
+          onchange: (e) => {
+            const keys = e.target.checked
+              ? [...lens.keys, c.key]
+              : lens.keys.filter((k) => k !== c.key);
+            // Never leave nothing selected: every row would go blank with no way back.
+            lens = { ...lens, id: "custom", keys: keys.length ? keys : [c.key] };
+            repaint();
+          },
+        }),
+        `${c.label || c.key} ${c.max}`)));
+  }
+
   function render(host) {
     if (!host) return;
+    if (!lens) lens = { id: "flavour", keys: flavourKeys(), custom: false };
 
     const search = el("input", {
       class: "search", type: "text", value: query, enterkeyhint: "search",
@@ -190,7 +236,7 @@ const TableView = (() => {
 
     const table = el("table", { class: "ptable" },
       el("thead", { id: "t-head" }), el("tbody", { id: "t-body" }));
-    fill(host, search, filters, sorts,
+    fill(host, search, filters, lensBar(), sorts,
       el("div", { class: "ptable-wrap" }, table),
       el("div", { class: "chart-basis", id: "t-count" }, ""));
     paint();
@@ -226,7 +272,9 @@ const TableView = (() => {
       }
       if (count) {
         count.textContent = `${list.length} shown, sorted by ${field(sort).label.toLowerCase()}`
-          + (desc ? ", highest first" : ", lowest first");
+          + (desc ? ", highest first" : ", lowest first")
+          + ` · score out of ${lensMax(lens.keys)}`
+          + (lensIsEverything(lens.keys) ? "" : " — medals need the whole card");
       }
     }
   }

@@ -78,10 +78,11 @@ const Store = (() => {
   /* Careers used to live only in memory, so closing the app threw away every score the PC had
      reconciled and the collection went blank until the next sync — which needs a connection, the
      one thing this app is built not to need. */
-  const careers = () => read(K.careers, { careers: {}, calibration: [] });
+  const careers = () => read(K.careers, { careers: {}, calibration: [], generatedAt: "" });
   const setCareers = (data) => write(K.careers, {
     careers: (data && data.careers) || {},
     calibration: (data && data.calibration) || [],
+    generatedAt: (data && data.generated_at) || "",
   });
 
   // -- the queue ------------------------------------------------------------

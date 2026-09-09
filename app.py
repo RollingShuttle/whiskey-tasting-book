@@ -21,6 +21,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -434,8 +435,13 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
         # spirit, and the phone cannot derive it: it holds its own cards, not the whole journal.
         calibration = [{"month": m, "mean": round(sum(v) / len(v), 1), "n": len(v)}
                        for m, v in sorted(months.items())]
+        # When these figures were worked out. The phone adds its own cards on top of them, and
+        # without a cutoff it cannot tell a card the PC has already counted from one it has not —
+        # so every sitting scored on the phone was counted twice once the PC caught up.
         out.joinpath("careers.json").write_text(
-            json.dumps({"careers": careers, "calibration": calibration}, ensure_ascii=False),
+            json.dumps({"careers": careers, "calibration": calibration,
+                        "generated_at": datetime.now(timezone.utc).isoformat()},
+                       ensure_ascii=False),
             encoding="utf-8")
         return {"spirits": len(coll.rows and coll.snapshot()["spirits"]), "careers": len(careers)}
 
