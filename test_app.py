@@ -1007,6 +1007,47 @@ class TestBarPours(AppCase):
         self.assertEqual(row["n"], 2)
 
 
+class TestScoringSheetIdentifiesTheBottle(unittest.TestCase):
+    """You cannot judge what you cannot identify. "Double Oaked" is several different whiskies
+    without the distillery beside it, and the sheet used to show only that."""
+
+    def source(self, name="app.js"):
+        src = (Path(__file__).resolve().parent / "static" / name).read_text(encoding="utf-8")
+        src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
+        return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
+
+    def header(self):
+        src = self.source()
+        return src[src.index("const hidden = isBlind(p)"):src.index('class: "sheet-head"')]
+
+    def test_it_names_the_distillery_and_the_code(self):
+        head = self.header()
+        self.assertIn("sp.distillery", head)
+        self.assertIn("sp.code", head)
+
+    def test_it_carries_the_rest_of_what_the_workbook_knows(self):
+        head = self.header()
+        for field in ("sp.release_year", "sp.rarity", "sp.status", "sp.entry_proof", "sp.paid"):
+            self.assertIn(field, head, f"{field} is not shown while scoring")
+
+    def test_it_shows_the_workbook_note_about_the_bottle(self):
+        """Barrel numbers and provenance, which is exactly what you want in front of you."""
+        head = self.header()
+        for field in ("sp.notes", "sp.comment", "sp.special_note"):
+            self.assertIn(field, head)
+
+    def test_blind_hides_every_one_of_them(self):
+        """A release year and a price identify a bottle as surely as its name does. Each new
+        element must be built only when the identity is not hidden."""
+        head = self.header()
+        for built in ("const detailEl", "const bookEl"):
+            line = head[head.index(built):]
+            self.assertRegex(line[:60], r"=\s*!hidden",
+                             f"{built} is not gated on the identity being visible")
+        self.assertIn("hidden || !sp.distillery", head,
+                      "the distillery would show through blind mode")
+
+
 class TestNothingIsSilentlyTruncated(unittest.TestCase):
     """A `.slice(0, n)` in a picker hides bottles the collection really has. On a 375-bottle
     collection the score list simply ended at B-60 and the compare list at 25, with nothing on

@@ -119,6 +119,23 @@ button.ghost:hover { color: var(--text); border-color: var(--brass); }
 .sheet-title { flex: 1 1 auto; min-width: 0; }
 .sheet-name { font-family: var(--serif); font-size: 23px; line-height: 1.15; }
 .sheet-name.blind { color: var(--muted); font-style: italic; }
+.sheet-dist {
+  margin-left: 10px; color: var(--muted); font-family: var(--sans); font-size: 15px;
+  font-weight: 400;
+}
+.sheet-detail {
+  margin-top: 5px; color: var(--muted); font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.sheet-book {
+  margin: 10px 0 2px; padding: 9px 12px;
+  background: var(--surface-2); border-radius: 8px; border-left: 2px solid var(--line);
+}
+.sheet-book-label {
+  display: block; color: var(--muted); font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.06em; margin-bottom: 4px;
+}
+.sheet-book-text { color: var(--text); font-size: 13px; white-space: pre-wrap; line-height: 1.45; }
 .sheet-meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
 .dot { opacity: .5; margin: 0 7px; }
 .sheet-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }

@@ -741,12 +741,29 @@ function renderSheet() {
   sheet.replaceChildren();
 
   const hidden = isBlind(p) && !p.submitted;
-  const metaBits = [sp.type, sp.region, sp.age ? `${sp.age} yr` : sp.age_label,
+  // Everything the workbook knows, because "Double Oaked" is four different whiskies without the
+  // distillery beside it, and you cannot judge what you cannot identify.
+  const money = (v) => (v === null || v === undefined || v === "" ? null
+    : `$${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  const size = sp.size_ml ? `${+sp.size_ml} ml` : (sp.sizeoz ? `${+sp.sizeoz} oz` : null);
+  const metaBits = [sp.code, sp.type, sp.region, sp.age ? `${sp.age} yr` : sp.age_label,
                     sp.proof ? `${sp.proof} proof` : null, sp.abv ? `${sp.abv}% ABV` : null]
                    .filter(Boolean);
+  const detailBits = [
+    sp.release_year ? `Released ${Math.round(sp.release_year)}` : null,
+    sp.rarity, sp.status, sp.bottle_type,
+    sp.entry_proof ? `entry ${sp.entry_proof} proof` : null,
+    size, money(sp.paid),
+    sp.quantity && +sp.quantity > 1 ? `${+sp.quantity} in stock` : null,
+  ].filter(Boolean);
+  // The workbook's own note about the bottle — barrel numbers, provenance, what it was finished
+  // in. Not the tasting notes; those are written below, on this card.
+  const fromBook = [sp.notes, sp.comment, sp.special_note]
+    .map((t) => (t || "").trim()).filter(Boolean).join("\n");
 
   const nameEl = el("div", { class: `sheet-name${hidden ? " blind" : ""}` },
-    hidden ? `Pour ${state.active + 1} — identity hidden` : (sp.name || sp.display_name));
+    hidden ? `Pour ${state.active + 1} — identity hidden` : (sp.name || sp.display_name),
+    hidden || !sp.distillery ? null : el("span", { class: "sheet-dist" }, sp.distillery));
   const metaEl = el("div", { class: "sheet-meta" });
   if (hidden) {
     metaEl.append("Revealed when this card is submitted");
@@ -756,6 +773,14 @@ function renderSheet() {
       metaEl.append(document.createTextNode(b));
     });
   }
+  // Blind hides all of it: a release year and a price identify a bottle as surely as its name.
+  const detailEl = !hidden && detailBits.length
+    ? el("div", { class: "sheet-detail" }, detailBits.join("  ·  ")) : null;
+  const bookEl = !hidden && fromBook
+    ? el("div", { class: "sheet-book" },
+        el("span", { class: "sheet-book-label" }, "From the collection"),
+        el("div", { class: "sheet-book-text" }, fromBook))
+    : null;
 
   const actions = el("div", { class: "sheet-actions" });
   if (state.mode === "session") {
@@ -770,7 +795,8 @@ function renderSheet() {
                        state.mode === "session" ? "Drop pour" : "Change"));
   }
   sheet.append(el("div", { class: "sheet-head" },
-    el("div", { class: "sheet-title" }, nameEl, metaEl), actions));
+    el("div", { class: "sheet-title" }, nameEl, metaEl, detailEl), actions));
+  if (bookEl) sheet.append(bookEl);
 
   // context row
   const ctxInput = (key, labelText, extra = {}) =>
