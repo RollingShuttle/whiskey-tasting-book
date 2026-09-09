@@ -1188,6 +1188,44 @@ class TestReviseAndDelete(AppCase):
         self.assertEqual(row["n"], 1, "promoting a draft should make it count exactly once")
 
 
+class TestTheReviewControlsAreOnScreen(unittest.TestCase):
+    """The table is wider than the window and scrolls sideways, so the last column is off the
+    right edge. A control put there is present, documented and invisible — which is what happened
+    to the score, and then to these."""
+
+    def source(self):
+        src = (Path(__file__).resolve().parent / "static" / "table.js").read_text(encoding="utf-8")
+        src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
+        return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
+
+    def test_the_actions_and_ticks_are_prepended_not_appended(self):
+        src = self.source()
+        for cls in ("t-actions", "t-tick"):
+            for line in [l for l in src.splitlines() if cls in l and ("prepend" in l or "append" in l)]:
+                self.assertIn("prepend", line, f"{cls} would land off the right edge: {line.strip()}")
+
+    def test_the_tick_ends_up_left_of_the_actions(self):
+        """prepend puts things first, so whatever is prepended last is leftmost."""
+        src = self.source()
+        body = src[src.index("const body = el(\"tbody\""):]
+        self.assertLess(body.index('t-actions'), body.index('t-tick'),
+                        "the checkbox should be the leftmost cell")
+
+    def test_the_score_is_not_the_last_column(self):
+        import app as app_mod
+        for columns, key in ((app_mod.COLLECTION_COLUMNS, "career_score"),
+                             (app_mod.TASTING_COLUMNS, "total")):
+            shown = [c["key"] for c in columns if c["default"]]
+            self.assertLess(shown.index(key), 3, "the score is buried again: %s" % shown)
+
+    def test_a_scored_collection_row_opens_its_reviews(self):
+        """Otherwise finding the review behind a score means knowing to switch mode and filter."""
+        src = self.source()
+        self.assertIn("function showReviewsOf(", src)
+        self.assertIn("(r.n || 0) > 0", src)
+        self.assertIn('setMode("tastings")', src)
+
+
 class TestSearchIsCaseInsensitiveEverywhere(unittest.TestCase):
     """`a + b.toLowerCase()` lowercases only b. The search terms are lowercased, so every field
     outside the brackets keeps its capitals and matches nothing — and it fails silently, as an

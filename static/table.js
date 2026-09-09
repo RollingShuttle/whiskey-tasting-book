@@ -285,6 +285,16 @@ const TableView = (() => {
   /** Remove several at once. One confirmation for the lot, then one request each: the server
       writes a tombstone per card, and doing them in a loop keeps that honest rather than
       inventing a bulk endpoint that would have to repeat the same guarantees. */
+  /** Jump to this spirit's reviews, filtered to it. */
+  async function showReviewsOf(row) {
+    T.filters.q = row.code;
+    await setMode("tastings");
+    showStatus("ok", el("span", {},
+      `Showing the reviews of ${row.display_name}. `,
+      el("button", { class: "link", type: "button",
+                     onclick: () => { T.filters.q = ""; render(); } }, "Show every review")));
+  }
+
   async function removePicked(list) {
     const chosen = list.filter((r) => T.picked.has(r.tasting_id));
     if (!chosen.length) return;
@@ -359,6 +369,10 @@ const TableView = (() => {
     const actions = T.mode === "tastings";
     if (actions) {
       const allPicked = list.length > 0 && list.every((r) => T.picked.has(r.tasting_id));
+      // Prepended, not appended. Last put these off the right edge of a table that scrolls
+      // sideways — the same reason the score column had to move, and the same result: a control
+      // that is present, documented and invisible. The tick goes on after, so it ends up first.
+      head.prepend(el("th", { class: "t-actions" }, ""));
       head.prepend(el("th", { class: "t-tick" },
         el("input", {
           type: "checkbox", checked: allPicked, "aria-label": "Select every review shown",
@@ -369,13 +383,24 @@ const TableView = (() => {
             render();
           },
         })));
-      head.append(el("th", { class: "t-actions" }, ""));
     }
 
     const body = el("tbody", {}, ...list.map((r) => {
-      const tr = el("tr", { class: T.picked.has(r.tasting_id) ? "picked" : "" },
-        ...shown.map((c) => cell(r, c)));
+      // A spirit with reviews opens them. Standing on the Collection looking at a score, the
+      // reviews behind it are the obvious next question, and "switch to the other mode and filter
+      // it yourself" is not an answer anyone finds.
+      const openable = T.mode === "collection" && (r.n || 0) > 0;
+      const tr = el("tr", {
+        class: T.picked.has(r.tasting_id) ? "picked" : (openable ? "openable" : ""),
+        title: openable ? `Show the ${r.n} review${r.n === 1 ? "" : "s"} of this` : null,
+        onclick: openable ? () => showReviewsOf(r) : null,
+      }, ...shown.map((c) => cell(r, c)));
       if (actions) {
+        tr.prepend(el("td", { class: "t-actions" },
+          el("button", { class: "linkish", type: "button",
+                         onclick: (e) => { e.stopPropagation(); editSitting(r); } }, "Edit"),
+          el("button", { class: "linkish danger", type: "button",
+                         onclick: (e) => { e.stopPropagation(); removeSitting(r); } }, "Delete")));
         tr.prepend(el("td", { class: "t-tick" },
           el("input", {
             type: "checkbox", checked: T.picked.has(r.tasting_id),
@@ -387,11 +412,6 @@ const TableView = (() => {
               render();
             },
           })));
-        tr.append(el("td", { class: "t-actions" },
-          el("button", { class: "linkish", type: "button",
-                         onclick: (e) => { e.stopPropagation(); editSitting(r); } }, "Edit"),
-          el("button", { class: "linkish danger", type: "button",
-                         onclick: (e) => { e.stopPropagation(); removeSitting(r); } }, "Delete")));
       }
       return tr;
     }));

@@ -573,3 +573,7 @@ input:disabled, textarea:disabled { color: var(--text); opacity: .8; cursor: def
   border: 1px solid color-mix(in srgb, #C97A6A 35%, transparent); border-radius: 8px;
   font-size: 13px;
 }
+
+/* A collection row with reviews behind it opens them. */
+.t-table tbody tr.openable { cursor: pointer; }
+.t-table tbody tr.openable:hover { background: color-mix(in srgb, var(--brass) 8%, transparent); }
