@@ -122,6 +122,16 @@ add the Pages URL as a Single-page application redirect URI on the Entra registr
 turn on GitHub Pages for the `docs/` folder on `main`. Until then the app runs and scores;
 only uploading waits.
 
+Bottles and samples are **deleted from the workbook when they are finished** — that is the
+owner's normal housekeeping, not damage. Three things follow, and none of them are optional:
+`POST /api/refresh` diffs the outgoing snapshot against the fresh read and writes `retired/<code>.json`
+for anything that left (the only moment both lists exist); the collection table renders a retired
+spirit that has sittings as a not-owned "Retired" row so its reviews outlive the bottle; and the
+journal keeps a high-water mark in `meta/high_water.json` so a code is **never reissued** —
+`next_code` is highest-present + 1, which would otherwise hand a deleted bottle's code to the next
+one and silently re-point its reviews. `collection.BASELINE` is a reference point, not an
+expectation: only a collapse below half is reported, because a shrinking shelf is normal.
+
 That is the whole of SPEC.md. Nothing in the build order is outstanding.
 
 The front end serves two clients from one codebase: the PC app at `127.0.0.1:8765`, and a

@@ -32,8 +32,13 @@ NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 REL_NS = "{http://schemas.openxmlformats.org/package/2006/relationships}"
 CODE_RE = re.compile(r"^([BMS])-(\d+)$")
 
-# Row counts recorded 7 Sep 2026. Informational: a mismatch is expected once bottles are added.
+# Row counts recorded 7 Sep 2026, kept as a reference point rather than an expectation. Bottles
+# and samples are deleted from the workbook when they are finished, so a smaller count is ordinary
+# housekeeping and not a finding — reporting it every time would only teach you to ignore findings.
+# A collapse is different: half the rows gone means the table reference or the read is wrong, not
+# that somebody drank seventy bottles in an afternoon.
 BASELINE = {"Bottle": 144, "Miniature": 22, "Sample": 209}
+COLLAPSE_FRACTION = 0.5
 CODE_PREFIX = {"Bottle": "B", "Miniature": "M", "Sample": "S"}
 
 
@@ -284,14 +289,17 @@ class Collection:
                 return r
         return None
 
-    def next_code(self, sheet):
+    def next_code(self, sheet, floor=0):
         prefix = CODE_PREFIX[sheet]
         highest = 0
         for r in self.rows.get(sheet, []):
             p = parse_code(r["code"])
             if p and p[0] == prefix:
                 highest = max(highest, p[1])
-        return f"{prefix}-{highest + 1}"
+        # `floor` is the highest number ever issued, which the journal
+        # remembers. Without it, deleting the newest bottle would free its
+        # code for the next one and re-point old reviews at a new whiskey.
+        return f"{prefix}-{max(highest, int(floor or 0)) + 1}"
 
     # -- checks --------------------------------------------------------------
     def _check(self):
@@ -316,9 +324,10 @@ class Collection:
                 self.issues.append(Issue("error", sheet, f"malformed code(s): {malformed[:8]}"))
 
             base = BASELINE.get(sheet)
-            if base is not None and len(rows) != base:
-                self.issues.append(Issue("info", sheet,
-                    f"{len(rows)} rows (baseline {base}, delta {len(rows) - base:+d})"))
+            if base is not None and len(rows) < base * COLLAPSE_FRACTION:
+                self.issues.append(Issue("error", sheet,
+                    f"only {len(rows)} rows against a reference of {base} — that is a broken "
+                    "read or a changed table range, not a collection that shrank"))
 
             if self.first_empty_row(sheet) is None:
                 self.issues.append(Issue("error", sheet,

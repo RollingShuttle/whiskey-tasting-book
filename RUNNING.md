@@ -128,6 +128,24 @@ changed something in Excel, or when you want the phone to see new bottles.
 - **Your collection workbook** → only ever read, never written, except when you explicitly approve
   a new bottle. A backup is taken before that happens.
 
+### Deleting bottles you have finished
+
+Delete the row in Excel as you like — that is expected, not a problem. Press **Refresh** afterwards
+so the app notices.
+
+What happens to a bottle you had already reviewed:
+
+- **Its reviews are kept.** It stays in the Table marked **Retired** and *not owned*, with its
+  score, its name and everything else it was. Drinking a bottle does not erase your notes on it.
+- **Its code is retired with it.** If you delete B-144 the next bottle becomes B-145, never B-144
+  again. That matters more than it sounds: reusing the number would quietly turn old reviews into
+  reviews of a different whiskey.
+- A bottle you delete **without ever having reviewed it** simply disappears. There is nothing to keep.
+
+Press Refresh after deleting. That is the moment the app compares the old list with the new one and
+records what left — before the old list is overwritten, which is the only time the difference can
+be seen at all.
+
 ### Proving nothing was damaged
 
 If you ever want reassurance that the app has not touched your collection workbook:

@@ -336,6 +336,42 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
     app.config["JSON_SORT_KEYS"] = False
     app.config["_master"] = master
 
+    def _highest_codes(coll):
+        """The largest code number on each sheet right now. Recorded so it can never go backwards
+        when the row holding it is deleted."""
+        import collection as collection_mod
+        out = {}
+        for sheet, rows in coll.rows.items():
+            best = 0
+            for r in rows:
+                parsed = collection_mod.parse_code(r.get("code"))
+                if parsed:
+                    best = max(best, parsed[1])
+            out[sheet] = best
+        return out
+
+    def _record_departures(coll):
+        """Notice bottles that have left the workbook, before the snapshot forgets them.
+
+        Finishing a bottle and deleting its row is ordinary housekeeping, but the reviews of it
+        are not disposable — they are the point of the whole journal. This is the only moment the
+        old list and the new one both exist, so it is the only moment the difference can be seen
+        at all: once the snapshot is overwritten there is nothing left to compare against.
+        """
+        if not snap.exists():
+            return []
+        try:
+            before = {r["code"]: r for r in json.loads(snap.read_text(encoding="utf-8"))["spirits"]}
+        except (OSError, ValueError, KeyError, TypeError):
+            return []                          # no usable previous list; nothing to compare
+        now = {r["code"] for r in coll.snapshot()["spirits"]}
+        gone = []
+        for code, row in before.items():
+            if code not in now:
+                journal.write_retired(code=code, fields=row)
+                gone.append(code)
+        return sorted(gone)
+
     def _publish_for_phone(coll):
         """Write what the phone reads into the OneDrive app folder (SPEC.md §9.1).
 
@@ -519,6 +555,33 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
                 "paid": sp.get("paid"), "size_oz": sp.get("size_oz"),
                 "value_per_oz": sp.get("value_per_oz"),
                 "score_per_dollar": _ratio(bits["career_score"], sp.get("paid"), 3),
+                **bits,
+            })
+
+        listed = {r["code"] for r in rows}
+        for rec in journal.retired():
+            code = rec["code"]
+            sits = by_spirit.get(code, [])
+            # A retired bottle earns a row only if it was actually scored. One deleted without
+            # ever being reviewed is simply gone; there is nothing to preserve.
+            if code in listed or not sits:
+                continue
+            f = rec.get("fields") or {}
+            bits = _career_bits(rubric, sits)
+            # Older records, and any snapshot that did not carry one, still have the parts.
+            name = f.get("display_name") or " ".join(
+                p for p in (f.get("distillery"), f.get("name")) if p).strip()
+            rows.append({
+                "code": code, "display_name": name or code,
+                "distillery": f.get("distillery"), "name": f.get("name"),
+                "source": "Retired", "owned": False,
+                "type": f.get("type"), "region": f.get("region"),
+                "rarity": f.get("rarity"), "status": "Finished",
+                "age": f.get("age"), "age_label": f.get("age_label"),
+                "proof": f.get("proof"), "abv": f.get("abv"),
+                "paid": f.get("paid"), "size_oz": f.get("size_oz"),
+                "value_per_oz": f.get("value_per_oz"),
+                "score_per_dollar": _ratio(bits["career_score"], f.get("paid"), 3),
                 **bits,
             })
 
@@ -750,7 +813,8 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
             result = master_write.append_row(
                 collection_mod.resolve_master(cfg, app.config["_master"]),
                 sheet, fields, backup_dir=backup_dir, keep=10,
-                config_path=config_path, coll=coll)
+                config_path=config_path, coll=coll,
+                code_floor=journal.highest_seen(sheet))
         except master_write.MasterWriteError as e:
             return jsonify({"ok": False, "error": str(e)}), 409
         except Exception as e:                         # noqa: BLE001 — surface the real reason
@@ -801,12 +865,14 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
         if coll.errors:
             return jsonify({"ok": False,
                             "errors": [f"[{i.sheet}] {i.message}" for i in coll.errors]}), 409
+        retired = _record_departures(coll)
+        journal.note_codes_seen(_highest_codes(coll))
         snap.parent.mkdir(parents=True, exist_ok=True)
         snap.write_text(json.dumps(coll.snapshot(), ensure_ascii=False), encoding="utf-8")
         published = _publish_for_phone(coll)
         catalog.load()
         return jsonify({"ok": True, "count": len(catalog), "snapshot": str(snap),
-                        "published": published})
+                        "published": published, "retired": retired})
 
     return app
 

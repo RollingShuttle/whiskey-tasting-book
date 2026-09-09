@@ -178,7 +178,7 @@ def _with_full_calc(attrs):
 
 # --------------------------------------------------------------------------- the write
 def append_row(master_path, sheet, fields, *, backup_dir, keep=10, config_path="config.yaml",
-               coll=None):
+               coll=None, code_floor=0):
     """Fill the first empty row inside `sheet`'s table. Returns a summary dict.
 
     `fields` maps header names to values; the Bottle Code is assigned here, on the PC, never by
@@ -209,7 +209,7 @@ def append_row(master_path, sheet, fields, *, backup_dir, keep=10, config_path="
             "then try again — this code will not grow a table's ref itself (SPEC.md §8.2).")
 
     if not fields.get("Bottle Code"):
-        fields = dict(fields, **{"Bottle Code": coll.next_code(sheet)})
+        fields = dict(fields, **{"Bottle Code": coll.next_code(sheet, floor=code_floor)})
         code = fields["Bottle Code"]
 
     before_rows = len(coll.rows.get(sheet, []))

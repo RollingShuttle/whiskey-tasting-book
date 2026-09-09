@@ -12,8 +12,10 @@ import json
 import re
 import shutil
 import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import app as app_mod
 import rubric as rubric_mod
@@ -746,6 +748,136 @@ class TestPageAndHealth(AppCase):
         self.assertTrue(h["ok"])
         self.assertEqual(h["catalog"]["spirits"], 2)
         self.assertIn("journal", h["journal_root"])
+
+
+class TestFinishedBottles(AppCase):
+    """Bottles and samples are deleted from the workbook when they are emptied. The row is
+    disposable; the reviews of it are not, and they are the reason the journal exists."""
+
+    def journal(self):
+        return store_mod.Journal(self.tmp / "journal", rubric_mod.load_rubric()).ensure()
+
+    def refresh_without(self, code):
+        """A refresh where the workbook no longer lists `code` — a finished bottle deleted."""
+        import collection as collection_mod
+        left = [s for s in FIXTURE_SNAPSHOT["spirits"] if s["code"] != code]
+        stub = types.SimpleNamespace(
+            errors=[], rows={"Bottle": left},
+            snapshot=lambda: dict(FIXTURE_SNAPSHOT, spirits=left))
+        with mock.patch.object(collection_mod, "load", return_value=stub):
+            return self.c.post("/api/refresh")
+
+    def test_the_departure_is_recorded(self):
+        r = self.refresh_without("B-18")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.get_json()["retired"], ["B-18"])
+        kept = self.journal().retired()
+        self.assertEqual([x["code"] for x in kept], ["B-18"])
+        self.assertEqual(kept[0]["fields"]["name"], "Single Barrel",
+                         "what the bottle was has to survive the row that described it")
+
+    def test_the_reviews_survive_the_bottle(self):
+        j = self.journal()
+        j.write_tasting(spirit_id="B-18", scores=dict(EXAMPLE_CARD))
+        self.refresh_without("B-18")
+        rows = self.c.get("/api/table/collection").get_json()["rows"]
+        row = next((r for r in rows if r["code"] == "B-18"), None)
+        self.assertIsNotNone(row, "the review vanished with the bottle")
+        self.assertEqual(row["n"], 1)
+        self.assertIsNotNone(row["career_score"])
+        self.assertEqual(row["display_name"], "Example Distillery Single Barrel")
+
+    def test_it_is_no_longer_owned(self):
+        j = self.journal()
+        j.write_tasting(spirit_id="B-18", scores=dict(EXAMPLE_CARD))
+        self.refresh_without("B-18")
+        row = next(r for r in self.c.get("/api/table/collection").get_json()["rows"]
+                   if r["code"] == "B-18")
+        self.assertFalse(row["owned"])
+        self.assertEqual(row["source"], "Retired")
+
+    def test_one_deleted_without_ever_being_scored_is_simply_gone(self):
+        """Nothing to preserve, so nothing to clutter the table with."""
+        self.refresh_without("B-18")
+        codes = [r["code"] for r in self.c.get("/api/table/collection").get_json()["rows"]]
+        self.assertNotIn("B-18", codes)
+
+    def test_recording_it_twice_keeps_the_first_record(self):
+        """Refresh is pressed often. The record nearest to when the bottle was owned is the one
+        worth keeping, and journal files are never rewritten."""
+        self.refresh_without("B-18")
+        first = self.journal().retired()[0]["retired_at"]
+        self.refresh_without("B-18")
+        again = self.journal().retired()
+        self.assertEqual(len(again), 1)
+        self.assertEqual(again[0]["retired_at"], first)
+
+    def test_a_bottle_that_comes_back_is_owned_again(self):
+        """Deleted by mistake and typed back in: the live workbook row wins over the record."""
+        j = self.journal()
+        j.write_tasting(spirit_id="B-18", scores=dict(EXAMPLE_CARD))
+        self.refresh_without("B-18")
+        rows = self.c.get("/api/table/collection").get_json()["rows"]   # snapshot still lacks it
+        self.assertFalse(next(r for r in rows if r["code"] == "B-18")["owned"])
+        self.snap.write_text(json.dumps(FIXTURE_SNAPSHOT), encoding="utf-8")
+        self.app.config["_catalog"].load() if "_catalog" in self.app.config else None
+        fresh = app_mod.create_app(
+            "config.yaml", app_folder=str(self.tmp / "journal"), snapshot_path=str(self.snap),
+            master="Z:/nonexistent/x.xlsx", rollup=str(self.tmp / "r.xlsx"),
+            backups=str(self.tmp / "b")).test_client()
+        row = next(r for r in fresh.get("/api/table/collection").get_json()["rows"]
+                   if r["code"] == "B-18")
+        self.assertTrue(row["owned"], "it is in the workbook again; it is owned again")
+        self.assertEqual(row["n"], 1, "and it keeps the review it already had")
+
+
+class TestCodesAreNeverReissued(AppCase):
+    """The quiet danger in deleting rows. next_code is highest-present + 1, so finishing the
+    newest bottle and deleting it would free its code for the next one — and every review of the
+    bottle that held it would silently become a review of a different whiskey."""
+
+    def journal(self):
+        return store_mod.Journal(self.tmp / "journal", rubric_mod.load_rubric()).ensure()
+
+    def bottles(self, numbers):
+        return types.SimpleNamespace(
+            errors=[],
+            rows={"Bottle": [{"code": "B-%d" % n, "_row": 8 + n} for n in numbers]},
+            snapshot=lambda: dict(FIXTURE_SNAPSHOT, spirits=[
+                {"_sheet": "Bottle", "_row": 8 + n, "code": "B-%d" % n} for n in numbers]))
+
+    def refresh_with(self, numbers):
+        import collection as collection_mod
+        with mock.patch.object(collection_mod, "load", return_value=self.bottles(numbers)):
+            return self.c.post("/api/refresh")
+
+    def test_the_mark_is_taken_when_the_workbook_is_read(self):
+        self.refresh_with([1, 2, 3])
+        self.assertEqual(self.journal().highest_seen("Bottle"), 3)
+
+    def test_it_never_falls_when_the_newest_bottle_is_finished(self):
+        self.refresh_with([1, 2, 3])
+        self.refresh_with([1, 2])                     # B-3 emptied and its row deleted
+        self.assertEqual(self.journal().highest_seen("Bottle"), 3,
+                         "the mark went backwards; B-3 would be handed out again")
+
+    def test_the_next_code_clears_the_deleted_one(self):
+        import collection as collection_mod
+        self.refresh_with([1, 2, 3])
+        self.refresh_with([1, 2])
+        coll = self.bottles([1, 2])
+        coll.next_code = lambda sheet, floor=0: collection_mod.Collection.next_code(
+            coll, sheet, floor=floor)
+        coll.rows = {"Bottle": [{"code": "B-1", "_row": 9}, {"code": "B-2", "_row": 10}]}
+        self.assertEqual(coll.next_code("Bottle", floor=self.journal().highest_seen("Bottle")),
+                         "B-4")
+
+    def test_without_the_mark_the_code_would_be_reused(self):
+        """Stated plainly so the fix is not quietly removed as redundant."""
+        import collection as collection_mod
+        coll = collection_mod.Collection.__new__(collection_mod.Collection)
+        coll.rows = {"Bottle": [{"code": "B-1", "_row": 9}, {"code": "B-2", "_row": 10}]}
+        self.assertEqual(coll.next_code("Bottle"), "B-3")
 
 
 class TestBarPours(AppCase):

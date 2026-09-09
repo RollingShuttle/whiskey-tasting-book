@@ -66,7 +66,13 @@ class TestAgainstRealWorkbook(unittest.TestCase):
         cls.path = C.resolve_master(cfg)
         if not cls.path.exists():
             raise unittest.SkipTest(f"master workbook not reachable at {cls.path}")
-        cls.before = sha256(cls.path)
+        try:
+            cls.before = sha256(cls.path)
+        except PermissionError:
+            # Excel holds a lock while the workbook is open, and it is open whenever bottles are
+            # being deleted from it. That is not a failure of anything; there is simply nothing
+            # to check until it is closed.
+            raise unittest.SkipTest("the workbook is open in Excel — close it to run these")
         cls.coll = C.load(CONFIG)
         for s in cls.coll.rows:                             # force the second read pass too
             cls.coll.formula_columns(s)
@@ -75,9 +81,16 @@ class TestAgainstRealWorkbook(unittest.TestCase):
         self.assertEqual(sha256(self.path), self.before,
                          "THE MASTER WORKBOOK CHANGED. Stop. 198 photos are at risk.")
 
-    def test_row_counts_match_baseline(self):
-        for sheet, expected in C.BASELINE.items():
-            self.assertEqual(len(self.coll.rows[sheet]), expected, f"{sheet} row count")
+    def test_row_counts_are_plausible(self):
+        """Not an exact match. Bottles and samples are deleted from the workbook as they are
+        finished, so the count drifts down by design and pinning it would fail every time you
+        emptied a bottle. What still has to hold is that the read found the table at all."""
+        for sheet, reference in C.BASELINE.items():
+            found = len(self.coll.rows[sheet])
+            self.assertGreater(found, reference * C.COLLAPSE_FRACTION,
+                               f"{sheet}: {found} rows is a broken read, not a shrinking shelf")
+            self.assertLessEqual(found, reference + 500, f"{sheet} row count implausibly high")
+
 
     def test_every_code_is_present_unique_and_well_formed(self):
         for sheet, rows in self.coll.rows.items():
@@ -136,7 +149,8 @@ class TestAgainstRealWorkbook(unittest.TestCase):
             p = Path(d) / "collection.json"
             p.write_text(json.dumps(self.coll.snapshot(), ensure_ascii=False), encoding="utf-8")
             data = json.loads(p.read_text(encoding="utf-8"))
-            self.assertEqual(len(data["spirits"]), sum(C.BASELINE.values()))
+            self.assertEqual(len(data["spirits"]),
+                             sum(len(r) for r in self.coll.rows.values()))
             self.assertLess(p.stat().st_size, 2_000_000, "snapshot too big to sync comfortably")
 
     def test_no_errors_reported(self):

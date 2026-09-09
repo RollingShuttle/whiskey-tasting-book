@@ -11,8 +11,10 @@ merges it without conflict copies.
   encounters/  E-<ts>-<rand>.json            spirits scored but never owned (bar pours)
   pending/     P-<ts>-<rand>.json            new-bottle requests awaiting approval on the PC
   pending/rejected/                          declined requests, kept not deleted
+  retired/     <code>.json                    a spirit that has left the collection workbook
   snapshot/    collection.json               written by the PC, read by the phone
   meta/        codes.json                    X- display codes assigned by the PC
+  meta/        high_water.json               highest code number ever seen, per sheet
 
 Session ids use an `F-` (flight) prefix deliberately: `S-` is already a Sample bottle code, and a
 session id sitting in a `spirit_id`-shaped field would be a nasty thing to debug.
@@ -34,7 +36,8 @@ import yaml
 
 import rubric as rubric_mod
 
-SUBDIRS = ("tastings", "sessions", "encounters", "pending", "pending/rejected", "snapshot", "meta")
+SUBDIRS = ("tastings", "sessions", "encounters", "pending", "pending/rejected", "retired",
+           "snapshot", "meta")
 TASTING_RE = re.compile(r"^(?P<id>T-\d{8}-\d{6}-[A-Za-z0-9_.-]+)-r(?P<rev>\d+)\.json$")
 SESSION_RE = re.compile(r"^(?P<id>F-\d{8}-\d{6}-[A-Za-z0-9]+)-r(?P<rev>\d+)\.json$")
 
@@ -237,6 +240,60 @@ class Journal:
         _atomic_write_json(self._dir("encounters") / f"{uid}.json", rec)
         return rec
 
+    def write_retired(self, *, code, fields=None, reason="deleted from the collection workbook"):
+        """A spirit that has left the collection — a bottle finished and its row deleted.
+
+        The row goes; the reviews do not. This keeps what the spirit *was* — its name, type,
+        proof — so its sittings still mean something long after the workbook has forgotten it.
+        Codes are never reissued (next_code is highest+1, not the first gap), so a retired code
+        can never come to mean a different bottle.
+
+        The filename is the code rather than a stamp with a random suffix, and deliberately so:
+        there is exactly one of these per code and the write is guarded below, so the collision
+        this project's naming rule exists to prevent cannot arise. The first record stands if a
+        code is retired twice, because it is the one written nearest to when it was owned.
+        """
+        path = self._dir("retired") / f"{code}.json"
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+        rec = {"code": code, "fields": dict(fields or {}), "reason": reason,
+               "retired_at": _now_iso()}
+        _atomic_write_json(path, rec)
+        return rec
+
+    def retired(self):
+        """Every spirit recorded as having left the collection, oldest code first."""
+        return [json.loads(p.read_text(encoding="utf-8"))
+                for p in sorted(self._dir("retired").glob("*.json"))]
+
+    def note_codes_seen(self, highest):
+        """Remember the highest code number ever seen on each sheet, and never let it fall.
+
+        next_code() is highest-present + 1, which is right until a row is deleted. Finish your
+        newest bottle, delete its row, add another, and the workbook would hand out the code the
+        old one had — quietly attaching its reviews to a different whiskey. Codes are cheap and
+        the journal is forever, so a number once used is never used again.
+        """
+        path = self._dir("meta") / "high_water.json"
+        known = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        changed = False
+        for sheet, n in (highest or {}).items():
+            if int(n or 0) > int(known.get(sheet, 0)):
+                known[sheet] = int(n)
+                changed = True
+        if changed:
+            _atomic_write_json(path, known)
+        return known
+
+    def highest_seen(self, sheet):
+        path = self._dir("meta") / "high_water.json"
+        if not path.exists():
+            return 0
+        try:
+            return int(json.loads(path.read_text(encoding="utf-8")).get(sheet, 0))
+        except (OSError, ValueError, TypeError):
+            return 0
+
     def write_pending_bottle(self, *, sheet, fields, entered_from="phone"):
         """A new-bottle request. Never touches the master workbook — SPEC.md §8.5."""
         if sheet not in ("Bottle", "Miniature", "Sample"):
@@ -330,7 +387,8 @@ class Journal:
         t = self.tastings()
         return {"tastings": len(t), "spirits_scored": len({x["spirit_id"] for x in t}),
                 "sessions": len(self.sessions()),
-                "encounters": len(self.encounters()), "pending": len(self.pending()),
+                "encounters": len(self.encounters()), "retired": len(self.retired()),
+                "pending": len(self.pending()),
                 "files": sum(1 for _ in self._dir("tastings").glob("*.json"))}
 
 
