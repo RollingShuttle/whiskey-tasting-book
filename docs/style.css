@@ -240,3 +240,56 @@ label.field > span { color: var(--muted); font-size: 0.78rem; }
 }
 .notice.warn { color: var(--warn); border-color: #6a3a2a; }
 .notice.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); }
+
+/* ---------------------------------------------------------------- charts (analysis) */
+.chart-card { margin-top: 12px; }
+.chart-title { font-family: var(--serif); font-size: 1.02rem; margin-bottom: 8px; }
+.chart-note { color: var(--muted); font-size: 0.78rem; margin-bottom: 8px; line-height: 1.4; }
+.chart { width: 100%; height: auto; display: block; margin-top: 4px; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .tick { fill: var(--muted); font-size: 9px; font-family: var(--sans); }
+.chart .spark { fill: none; stroke: var(--brass); stroke-width: 2; stroke-linejoin: round; }
+.chart-basis { color: var(--muted); font-size: 0.72rem; margin-top: 6px; }
+.chart-empty { padding: 10px 2px; font-size: 0.85rem; }
+
+.bars { margin-top: 6px; }
+.bar-row {
+  display: grid; grid-template-columns: 5.6rem 1fr 2.2rem 2.2rem;
+  align-items: center; gap: 8px; padding: 4px 0;
+}
+.bar-label { font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-track { background: var(--surface-2); border-radius: 999px; height: 10px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 999px; }
+.bar-value { font-size: 0.8rem; text-align: right; font-variant-numeric: tabular-nums; }
+.bar-n { color: var(--muted); font-size: 0.7rem; text-align: right; }
+
+.sum-row { display: flex; gap: 18px; }
+.sum-cell { display: flex; flex-direction: column; }
+.sum-cell b { font-family: var(--serif); font-size: 1.5rem; line-height: 1.1; }
+.sum-cell span { color: var(--muted); font-size: 0.72rem; }
+.sum-best { margin-top: 6px; font-size: 0.8rem; }
+
+/* ---------------------------------------------------------------- compare */
+.cmp-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.btn.small { min-height: 34px; padding: 6px 14px; font-size: 0.85rem; }
+.cmp-totals { display: flex; gap: 10px; }
+.cmp-col { flex: 1 1 0; min-width: 0; text-align: center; }
+.cmp-name {
+  font-family: var(--serif); font-size: 0.9rem; line-height: 1.2; min-height: 2.4em;
+  border-bottom: 2px solid var(--line); padding-bottom: 6px; margin-bottom: 8px;
+  overflow: hidden;
+}
+.cmp-score { font-family: var(--serif); font-size: 1.5rem; }
+.cmp-drop {
+  margin-top: 8px; background: none; border: 0; color: var(--muted);
+  font-size: 0.7rem; text-decoration: underline; min-height: 34px;
+}
+.cmp-axes { display: flex; flex-direction: column; gap: 14px; }
+.cmp-axis-head {
+  display: flex; justify-content: space-between; font-size: 0.82rem; margin-bottom: 5px;
+}
+.cmp-bar-row { display: grid; grid-template-columns: 1fr 2.4rem; align-items: center; gap: 8px; margin: 3px 0; }
+.cmp-bar-track { background: var(--surface-2); border-radius: 999px; height: 9px; overflow: hidden; }
+.cmp-bar-fill { height: 100%; border-radius: 999px; opacity: 0.75; }
+.cmp-bar-fill.lead { opacity: 1; }
+.cmp-bar-val { font-size: 0.78rem; text-align: right; font-variant-numeric: tabular-nums; }

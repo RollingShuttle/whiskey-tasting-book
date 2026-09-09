@@ -37,7 +37,8 @@ const MEDAL_COLORS = { Diamond: "#AFC7DE", Gold: "#C8952F", Silver: "#B4ADA2",
 
 const app = {
   rubric: null,
-  careers: {},            // code -> {score, medal, n} as last reconciled by the PC
+  careers: {},            // code -> {score, medal, n, categories} as last reconciled by the PC
+  calibration: [],        // one mean per month, published by the PC (it holds the whole journal)
   stack: [],              // pushed screens, for the back chevron
   tab: "collection",
   filter: "all",
@@ -51,6 +52,8 @@ const screens = {
   detail: document.getElementById("screen-detail"),
   score: document.getElementById("screen-score"),
   add: document.getElementById("screen-add"),
+  compare: document.getElementById("screen-compare"),
+  analysis: document.getElementById("screen-analysis"),
   sync: document.getElementById("screen-sync"),
 };
 
@@ -82,6 +85,8 @@ function setTab(tab) {
   markTab(tab);
   if (tab === "collection") { renderCollection(); show("collection", "Collection"); }
   if (tab === "add") { renderAdd(); show("add", "Add"); }
+  if (tab === "compare") { CompareView.render(screens.compare); show("compare", "Compare"); }
+  if (tab === "analysis") { AnalysisView.render(screens.analysis); show("analysis", "Analysis"); }
   if (tab === "sync") { renderSync(); show("sync", "Sync"); }
 }
 
@@ -508,7 +513,11 @@ async function refresh() {
     const snap = await Graph.getJSON("snapshot/collection.json");
     if (snap) Store.setSnapshot(snap);
     const careers = await Graph.getJSON("snapshot/careers.json");
-    if (careers) app.careers = careers.careers || careers;
+    if (careers) {
+      Store.setCareers(careers.careers ? careers : { careers });
+      app.careers = Store.careers().careers;
+      app.calibration = Store.careers().calibration;
+    }
     const rub = await Graph.getJSON("snapshot/rubric.json");
     if (rub) { Store.setRubric(rub); app.rubric = rub; }
     Store.setMeta({ lastSync: new Date().toISOString() });
@@ -517,6 +526,8 @@ async function refresh() {
   }
   renderSync();
   if (app.tab === "collection") renderCollection();
+  if (app.tab === "analysis") AnalysisView.render(screens.analysis);
+  if (app.tab === "compare") CompareView.render(screens.compare);
 }
 
 /** Walk the queue one item at a time. Uploads are idempotent, so a failure just leaves the item
@@ -574,6 +585,9 @@ async function boot() {
   window.addEventListener("online", () => { updateNet(); flush(); });
   window.addEventListener("offline", updateNet);
 
+  const kept = Store.careers();
+  app.careers = kept.careers;
+  app.calibration = kept.calibration;
   app.rubric = Store.rubric();
   if (!app.rubric) {
     try {

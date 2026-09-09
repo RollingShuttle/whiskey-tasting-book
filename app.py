@@ -406,14 +406,30 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
             json.dumps(coll.snapshot(), ensure_ascii=False), encoding="utf-8")
         out.joinpath("rubric.json").write_text(
             json.dumps(rubric.as_config(), ensure_ascii=False), encoding="utf-8")
-        careers = {}
+        careers, months = {}, {}
         for code, sits in _group_tastings(journal).items():
             bits = _career_bits(rubric, sits)
             if bits["n"]:
-                careers[code] = {"score": bits["career_score"], "medal": bits["medal"],
-                                 "n": bits["n"]}
+                careers[code] = {
+                    "score": bits["career_score"], "medal": bits["medal"], "n": bits["n"],
+                    # Per-category means, so the phone can compare two whiskies axis by axis
+                    # rather than only by their totals. Ten small numbers per scored spirit.
+                    "categories": {k: round(v, 2) for k, v in bits["category_means"].items()},
+                }
+            for t in sits:
+                if not t.get("include_in_average", True) or t.get("total") is None:
+                    continue
+                month = (t.get("date") or "")[:7]
+                if len(month) == 7:
+                    months.setdefault(month, []).append(t["total"])
+
+        # One mean per month over every counted sitting. This measures the scorer rather than the
+        # spirit, and the phone cannot derive it: it holds its own cards, not the whole journal.
+        calibration = [{"month": m, "mean": round(sum(v) / len(v), 1), "n": len(v)}
+                       for m, v in sorted(months.items())]
         out.joinpath("careers.json").write_text(
-            json.dumps({"careers": careers}, ensure_ascii=False), encoding="utf-8")
+            json.dumps({"careers": careers, "calibration": calibration}, ensure_ascii=False),
+            encoding="utf-8")
         return {"spirits": len(coll.rows and coll.snapshot()["spirits"]), "careers": len(careers)}
 
     # -- the page ------------------------------------------------------------

@@ -21,6 +21,7 @@ import rubric as rubric_mod
 
 DOCS = Path(__file__).resolve().parent / "docs"
 REQUIRED = ["index.html", "style.css", "app.js", "store.js", "graph.js", "config.js",
+            "analysis.js", "compare.js",
             "sw.js", "manifest.webmanifest", "rubric.json", "icon-180.png"]
 
 
@@ -200,6 +201,66 @@ class TestQueueRules(unittest.TestCase):
         """Private browsing and a full quota both throw; a lost draft must not take the app down."""
         js = text("store.js")
         self.assertGreaterEqual(js.count("catch"), 2)
+
+
+class TestAnalysisAndCompare(unittest.TestCase):
+    """Both screens work from what the phone already holds, because the whole app is built to
+    open in a bar basement with no signal."""
+
+    def test_the_screens_and_tabs_exist(self):
+        html = text("index.html")
+        for screen in ("screen-compare", "screen-analysis"):
+            self.assertIn(screen, html)
+        for tab in ('data-tab="compare"', 'data-tab="analysis"'):
+            self.assertIn(tab, html)
+
+    def test_they_are_loaded_before_the_app_that_calls_them(self):
+        html = text("index.html")
+        self.assertLess(html.index("analysis.js"), html.index('src="app.js"'))
+        self.assertLess(html.index("compare.js"), html.index('src="app.js"'))
+
+    def test_nothing_is_fetched_to_draw_them(self):
+        """A chart that needs the network is useless where this app is used."""
+        for name in ("analysis.js", "compare.js"):
+            src = code(name)
+            self.assertNotIn("fetch(", src, f"{name} reaches for the network")
+            self.assertNotIn("Graph.", src, f"{name} depends on being signed in")
+
+    def test_no_charting_library_is_pulled_in(self):
+        """Hand-written SVG. A library would be a large download for a page whose point is
+        opening instantly without one."""
+        html = text("index.html")
+        for bad in ("cdn.", "chart.js", "d3.", "unpkg", "jsdelivr"):
+            self.assertNotIn(bad, html.lower())
+        self.assertIn("createElementNS", code("analysis.js"))
+
+    def test_careers_survive_the_app_being_closed(self):
+        """They used to live only in memory, so closing the app threw away every score the PC had
+        reconciled — and analysis would open blank until the next sync, which needs a connection."""
+        store = code("store.js")
+        self.assertIn('careers: "wtb.careers"', store)
+        self.assertIn("setCareers", store)
+        boot = code("app.js")
+        self.assertIn("Store.careers()", boot)
+
+    def test_compare_prefers_the_published_categories(self):
+        """The phone cannot derive per-category means for a spirit it did not score itself: it
+        holds its own cards, not the journal."""
+        src = code("compare.js")
+        self.assertIn("app.careers[code] || {}).categories", src)
+        self.assertIn("Store.cardsFor(code)", src)
+
+    def test_each_axis_is_drawn_against_its_own_maximum(self):
+        """Otherwise Flavor out of 20 looks twice as good as Balance out of 10 (SPEC.md 4.2)."""
+        self.assertIn("cat.max) * 100", code("compare.js"))
+
+    def test_a_chart_says_how_many_points_it_stands_on(self):
+        """Three bottles is not a finding, and a chart that does not say so is making a claim it
+        cannot support."""
+        self.assertIn("chart-basis", code("analysis.js"))
+
+    def test_the_scatter_uses_career_scores(self):
+        self.assertIn("careerFor(s.code)", code("analysis.js"))
 
 
 class TestFinishedBottlesOnThePhone(unittest.TestCase):

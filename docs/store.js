@@ -16,6 +16,7 @@ const Store = (() => {
     queue: "wtb.queue",
     cards: "wtb.cards",
     encounters: "wtb.encounters",
+    careers: "wtb.careers",
     meta: "wtb.meta",
   };
 
@@ -73,6 +74,15 @@ const Store = (() => {
 
   const rubric = () => read(K.rubric, null);
   const setRubric = (data) => write(K.rubric, data);
+
+  /* Careers used to live only in memory, so closing the app threw away every score the PC had
+     reconciled and the collection went blank until the next sync — which needs a connection, the
+     one thing this app is built not to need. */
+  const careers = () => read(K.careers, { careers: {}, calibration: [] });
+  const setCareers = (data) => write(K.careers, {
+    careers: (data && data.careers) || {},
+    calibration: (data && data.calibration) || [],
+  });
 
   // -- the queue ------------------------------------------------------------
   const queue = () => read(K.queue, []);
@@ -230,7 +240,7 @@ const Store = (() => {
   }
 
   return {
-    snapshot, setSnapshot, spirits, rubric, setRubric,
+    snapshot, setSnapshot, spirits, rubric, setRubric, careers, setCareers,
     queue, enqueue, drop, queueCount,
     cards, cardsFor, addCard, markSent,
     meta, setMeta,

@@ -102,8 +102,17 @@ a SHA-256 comparison. It passed on 8 Sep 2026 — 198 photos and 5 richData part
 Re-run it after anything that touches collection.py or master_write.py.
 
 The iPhone client is built: `docs/` is the static bundle for GitHub Pages —
-`index.html`, `style.css`, `app.js` (five screens), `store.js` (local cache + upload queue),
+`index.html`, `style.css`, `app.js` (screens), `analysis.js`, `compare.js`,
+`store.js` (local cache + upload queue),
 `graph.js` (MSAL + Graph), `sw.js`, `manifest.webmanifest`, `rubric.json`, `icon-180.png`.
+Analysis and Compare derive everything from the snapshot and `careers.json` — no fetch, no
+charting library, hand-written SVG — so they work with no signal. Two things the phone cannot
+derive are published for it: per-category means (it holds its own cards, not the journal) and the
+calibration series. `careers.json` is now `{careers: {code: {score, medal, n, categories}},
+calibration: [...]}` and is **persisted to localStorage**; it used to live only in memory, so
+closing the app blanked every published score until the next sync.
+**Bump `sw.js` VERSION whenever anything in `docs/` changes**, or an installed phone serves the
+cached old bundle for ever.
 Guarded by `test_phone.py`, which checks the §9.2 rules that only fail on a phone: safe-area
 insets on every edge, 100dvh not 100vh, 16 px inputs, a 44 px score strip with
 `touch-action: none`, the tab bar hiding for the keyboard, and every precached file existing.

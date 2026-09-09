@@ -831,6 +831,36 @@ class TestFinishedBottles(AppCase):
         self.assertEqual(row["n"], 1, "and it keeps the review it already had")
 
 
+class TestWhatThePhoneIsGiven(AppCase):
+    """The phone has no server, so anything it cannot work out for itself has to be published."""
+
+    def publish(self):
+        import collection as collection_mod
+        j = store_mod.Journal(self.tmp / "journal", rubric_mod.load_rubric()).ensure()
+        j.write_tasting(spirit_id="B-18", scores=dict(EXAMPLE_CARD), date="2026-05-04")
+        j.write_tasting(spirit_id="B-18", scores=dict(EXAMPLE_CARD), date="2026-06-11")
+        stub = types.SimpleNamespace(errors=[], rows={"Bottle": FIXTURE_SNAPSHOT["spirits"]},
+                                     snapshot=lambda: FIXTURE_SNAPSHOT)
+        with mock.patch.object(collection_mod, "load", return_value=stub):
+            self.assertEqual(self.c.post("/api/refresh").status_code, 200)
+        return json.loads((self.tmp / "journal" / "snapshot" / "careers.json")
+                          .read_text(encoding="utf-8"))
+
+    def test_per_category_means_are_published(self):
+        """Without them the phone can only compare totals, and comparing whiskies by one number
+        is what the ten categories exist to avoid."""
+        cats = self.publish()["careers"]["B-18"]["categories"]
+        self.assertEqual(set(cats), {c.key for c in rubric_mod.load_rubric().categories})
+        self.assertAlmostEqual(cats["flavor"], EXAMPLE_CARD["flavor"], places=2)
+
+    def test_the_calibration_series_is_published(self):
+        """One mean per month over every counted sitting. The phone holds its own cards, not the
+        journal, so this is the one thing on that screen it cannot derive."""
+        series = self.publish()["calibration"]
+        self.assertEqual([m["month"] for m in series], ["2026-05", "2026-06"])
+        self.assertTrue(all(m["n"] >= 1 for m in series))
+
+
 class TestStatus(AppCase):
     """All three sheets carry a Status column. Finished and Removed mean the spirit has left the
     collection; Opened and Unopened mean it is still there. Marking a row is better than deleting

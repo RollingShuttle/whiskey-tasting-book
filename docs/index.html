@@ -32,6 +32,8 @@
     <section class="screen" id="screen-detail" hidden></section>
     <section class="screen" id="screen-score" hidden></section>
     <section class="screen" id="screen-add" hidden></section>
+    <section class="screen" id="screen-compare" hidden></section>
+    <section class="screen" id="screen-analysis" hidden></section>
     <section class="screen" id="screen-sync" hidden></section>
   </main>
 
@@ -43,6 +45,12 @@
     <button class="tab" data-tab="add" type="button">
       <span class="glyph" aria-hidden="true">+</span>Add
     </button>
+    <button class="tab" data-tab="compare" type="button">
+      <span class="glyph" aria-hidden="true">&#8646;</span>Compare
+    </button>
+    <button class="tab" data-tab="analysis" type="button">
+      <span class="glyph" aria-hidden="true">&#9678;</span>Analysis
+    </button>
     <button class="tab" data-tab="sync" type="button">
       <span class="glyph" aria-hidden="true">&#8645;</span>Sync
       <span class="badge" id="tab-badge" hidden></span>
@@ -52,6 +60,8 @@
   <script src="config.js"></script>
   <script src="store.js"></script>
   <script src="graph.js"></script>
+  <script src="analysis.js"></script>
+  <script src="compare.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
