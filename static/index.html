@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="icon" href="/static/icon.ico" sizes="any">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -38,7 +39,10 @@
 
     <!-- Spirit picker -->
     <section id="picker" class="picker card" hidden>
-      <label class="picker-label" id="picker-label" for="picker-input">Score a spirit</label>
+      <div class="picker-head">
+        <label class="picker-label" id="picker-label" for="picker-input">Score a spirit</label>
+        <span class="picker-count" id="picker-count" aria-live="polite"></span>
+      </div>
       <div class="picker-controls">
         <input id="picker-input" type="text" autocomplete="off" spellcheck="false"
                placeholder="Search by name, distillery or code…" aria-label="Search spirits">

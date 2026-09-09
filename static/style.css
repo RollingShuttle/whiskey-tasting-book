@@ -74,7 +74,9 @@ button.ghost:hover { color: var(--text); border-color: var(--brass); }
 .card + .card { margin-top: 18px; }
 
 /* ---------------------------------------------------------------- picker */
-.picker-label { display: block; color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+.picker-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.picker-label { display: block; color: var(--muted); font-size: 13px; }
+.picker-count { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .picker-controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 #picker-input {
   flex: 1 1 320px; min-width: 220px;

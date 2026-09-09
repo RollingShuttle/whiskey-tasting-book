@@ -139,8 +139,10 @@ function paintRows() {
   else if (app.filter !== "all") spirits = spirits.filter((s) => s._sheet === app.filter);
   if (terms.length) {
     spirits = spirits.filter((s) => {
-      const hay = `${s.code} ${s.display_name || ""} ${s.distillery || ""} ${s.name || ""} `
-        + `${s.type || ""}`.toLowerCase();
+      // The parentheses matter: `a + b.toLowerCase()` lowercases only b, so every name and
+      // distillery kept its capitals while the search terms did not, and nothing matched.
+      const hay = (`${s.code} ${s.display_name || ""} ${s.distillery || ""} `
+        + `${s.name || ""} ${s.type || ""}`).toLowerCase();
       return terms.every((t) => hay.includes(t));
     });
   }
@@ -150,7 +152,7 @@ function paintRows() {
     list.append(el("li", { class: "empty" }, "Nothing matches."));
     return;
   }
-  for (const s of spirits.slice(0, 200)) {
+  for (const s of spirits) {
     const meta = [s.type, s.age ? `${s.age} yr` : s.age_label, s.proof ? `${s.proof} pf` : null]
       .filter(Boolean).join(" · ");
     list.append(el("li", {

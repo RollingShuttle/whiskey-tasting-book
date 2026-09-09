@@ -37,7 +37,7 @@ total, and a medal band: Diamond 90+, Gold 80+, Silver 70+, Bronze 60+.
 | `static/` | the PC front end — `app.js` (sheet + flights), `table.js`, `compare.js`, `analysis.js` | — |
 | `docs/` | the iPhone client — offline-first, syncs through OneDrive | `test_phone.py` |
 
-238 tests, all passing. `python verify_gate.py` runs the SPEC §7 shipping gate.
+244 tests, all passing. `python verify_gate.py` runs the SPEC §7 shipping gate.
 
 ## Views
 

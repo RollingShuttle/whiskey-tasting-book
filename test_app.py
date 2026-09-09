@@ -9,6 +9,7 @@ snapshot-only hot path is proven by pointing the master override at a path that 
 confirming the spirit list still loads.
 """
 import json
+import re
 import shutil
 import tempfile
 import unittest
@@ -734,11 +735,38 @@ class TestPageAndHealth(AppCase):
         self.assertEqual(self.c.get("/static/app.js").status_code, 200)
         self.assertEqual(self.c.get("/static/style.css").status_code, 200)
 
+    def test_the_page_carries_its_own_icon(self):
+        """The app window's taskbar button takes its icon from the page, not from the shortcut
+        that launched it, so without this it shows a generic browser globe instead."""
+        self.assertIn(b'rel="icon"', self.c.get("/").data)
+        self.assertEqual(self.c.get("/static/icon.ico").status_code, 200)
+
     def test_health_reports_the_journal_and_catalog(self):
         h = self.c.get("/api/health").get_json()
         self.assertTrue(h["ok"])
         self.assertEqual(h["catalog"]["spirits"], 2)
         self.assertIn("journal", h["journal_root"])
+
+
+class TestNothingIsSilentlyTruncated(unittest.TestCase):
+    """A `.slice(0, n)` in a picker hides bottles the collection really has. On a 375-bottle
+    collection the score list simply ended at B-60 and the compare list at 25, with nothing on
+    screen to say either had stopped early."""
+
+    def source(self, name):
+        src = (Path(__file__).resolve().parent / "static" / name).read_text(encoding="utf-8")
+        src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
+        return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
+
+    def test_the_score_picker_shows_every_match(self):
+        self.assertNotIn("list.slice(", self.source("app.js"))
+
+    def test_the_compare_picker_shows_every_match(self):
+        self.assertNotIn("list.slice(", self.source("compare.js"))
+
+    def test_the_score_picker_says_how_many_it_is_showing(self):
+        """The count is what makes a future cap visible rather than silent."""
+        self.assertIn("picker-count", self.source("app.js"))
 
 
 if __name__ == "__main__":

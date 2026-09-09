@@ -531,7 +531,15 @@ function renderResults() {
       return terms.every((t) => hay.includes(t));
     });
   }
-  list = list.slice(0, 60);
+  // Every match is rendered. This used to stop at 60, which silently hid two thirds of a
+  // 375-bottle collection: the list simply ended at B-60 with nothing to say it had. The count
+  // below is the guard against that returning unnoticed.
+  const count = document.getElementById("picker-count");
+  if (count) {
+    count.textContent = !state.spirits.length ? ""
+      : list.length === state.spirits.length ? `${list.length} spirits`
+      : `${list.length} of ${state.spirits.length}`;
+  }
   ul.replaceChildren();
   if (!list.length) {
     ul.append(el("li", { class: "pr-empty" },

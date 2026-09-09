@@ -202,5 +202,25 @@ class TestQueueRules(unittest.TestCase):
         self.assertGreaterEqual(js.count("catch"), 2)
 
 
+class TestCollectionList(unittest.TestCase):
+    """Two faults that only appear once a real collection is behind the screen."""
+
+    def test_the_list_shows_every_spirit(self):
+        """`spirits.slice(0, 200)` dropped 175 of 375 bottles off the end with no sign of it."""
+        self.assertNotIn("spirits.slice(", code("app.js"))
+
+    def test_the_whole_search_haystack_is_lowercased(self):
+        """`a + b.toLowerCase()` lowercases only b. The search terms are lowercased, so every
+        name and distillery that had a capital in it stopped matching anything."""
+        found = re.findall(r"const hay = (.+?);", code("app.js"), re.DOTALL)
+        self.assertTrue(found, "no search haystack found to check")
+        for expr in found:
+            if "+" not in expr:
+                continue
+            expr = expr.strip()
+            self.assertTrue(expr.startswith("(") and expr.endswith(").toLowerCase()"),
+                            "a concatenated haystack must be bracketed before lowercasing: " + expr)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

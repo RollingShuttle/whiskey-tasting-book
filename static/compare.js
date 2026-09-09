@@ -132,7 +132,7 @@ const CompareView = (() => {
         return terms.every((t) => hay.includes(t));
       });
     }
-    return list.slice(0, 25).map((s) => el("li", {
+    return list.map((s) => el("li", {
       role: "option", style: `border-left-color:${accentFor(s.type)}`,
       onclick: () => addCode(s.code),
     }, el("span", { class: "pr-name" }, s.name || s.display_name),
