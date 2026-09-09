@@ -793,6 +793,9 @@ function renderSheet() {
   if (!p.submitted) {
     actions.append(el("button", { class: "ghost", type: "button", onclick: backToPicker },
                        state.mode === "session" ? "Drop pour" : "Change"));
+  } else if (state.mode !== "session") {
+    actions.append(el("button", { class: "ghost", type: "button", onclick: backToPicker },
+                       "Back"));
   }
   sheet.append(el("div", { class: "sheet-head" },
     el("div", { class: "sheet-title" }, nameEl, metaEl, detailEl), actions));
@@ -951,6 +954,13 @@ function buildFooter(p) {
 
   if (p.submitted) {
     foot.append(el("span", { class: "pill pill-ok" }, "Submitted"));
+    // Submitting used to be the end of the road: the Change button is gone by then, so a
+    // standalone card left you looking at a finished sheet with no way onward. A flight has its
+    // pour switcher and "+ Add pour" right above, so it needs nothing here.
+    if (state.mode !== "session") {
+      foot.append(el("button", { class: "ghost", type: "button", id: "score-another",
+                                 onclick: backToPicker }, "Score another"));
+    }
   } else {
     foot.append(el("button", { class: "submit", id: "submit", type: "button",
                                onclick: submitCard }, "Submit"));

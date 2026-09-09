@@ -1048,6 +1048,32 @@ class TestScoringSheetIdentifiesTheBottle(unittest.TestCase):
                       "the distillery would show through blind mode")
 
 
+class TestASubmittedCardIsNotADeadEnd(unittest.TestCase):
+    """Submitting removed the Change button and put nothing in its place, so a standalone card
+    ended with a finished sheet and no way onward — the only escape was the top navigation."""
+
+    def source(self):
+        src = (Path(__file__).resolve().parent / "static" / "app.js").read_text(encoding="utf-8")
+        src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
+        return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
+
+    def test_the_footer_offers_the_next_card(self):
+        self.assertIn('id: "score-another"', self.source())
+
+    def test_the_header_offers_a_way_back(self):
+        src = self.source()
+        block = src[src.index('state.mode === "session" ? "Drop pour" : "Change"'):]
+        self.assertIn('"Back"', block[:400],
+                      "a submitted card leaves the header with no control at all")
+
+    def test_both_go_through_the_one_function_that_knows_how_to_leave(self):
+        """backToPicker also drops an unsubmitted pour from a flight rather than leaving a ghost
+        in the switcher; hand-rolling the navigation here would skip that."""
+        src = self.source()
+        block = src[src.index('id: "score-another"'):]
+        self.assertIn("onclick: backToPicker", block[:200])
+
+
 class TestNothingIsSilentlyTruncated(unittest.TestCase):
     """A `.slice(0, n)` in a picker hides bottles the collection really has. On a 375-bottle
     collection the score list simply ended at B-60 and the compare list at 25, with nothing on
