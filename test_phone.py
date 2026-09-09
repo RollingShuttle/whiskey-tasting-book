@@ -202,6 +202,50 @@ class TestQueueRules(unittest.TestCase):
         self.assertGreaterEqual(js.count("catch"), 2)
 
 
+class TestTimeZones(unittest.TestCase):
+    """The phone is the device that travels. Instants are stored in UTC; calendar days and
+    anything shown to a person are local."""
+
+    def test_no_calendar_date_comes_from_utc(self):
+        """toISOString().slice(0, 10) is the UTC day. East of Greenwich an evening pour lands on
+        tomorrow; west of it a late one lands on yesterday. The PC uses datetime.now(), so the
+        two devices would also disagree about the same sitting."""
+        for name in ("store.js", "app.js"):
+            self.assertNotIn("toISOString().slice(0, 10)", code(name),
+                             "%s still takes a calendar date from UTC" % name)
+
+    def test_today_reads_the_local_clock(self):
+        src = code("store.js")
+        block = src[src.index("function today("):src.index("function localTime(")]
+        for local, utc in (("getFullYear", "getUTCFullYear"), ("getMonth", "getUTCMonth"),
+                           ("getDate", "getUTCDate")):
+            self.assertIn(local, block)
+            self.assertNotIn(utc, block)
+
+    def test_the_card_is_dated_locally(self):
+        src = code("store.js")
+        block = src[src.index("function scorecard("):src.index("function encounter(")]
+        self.assertIn("date: fields.date || today()", block)
+
+    def test_nothing_shown_to_a_person_is_a_sliced_utc_string(self):
+        """Slicing the stored ISO string prints UTC under a local-looking label, which is what
+        made the sync time read five hours out."""
+        src = code("app.js")
+        self.assertNotIn('String(m.lastSync)', src)
+        self.assertNotIn('String(m.offlineSince).slice', src)
+        self.assertIn("Store.localTime(m.lastSync)", src)
+        self.assertIn("Store.localClock(m.offlineSince)", src)
+
+    def test_filenames_and_created_at_stay_utc(self):
+        """Those are instants and sort keys shared with store.py, which stamps them in UTC.
+        Making them local would break the ordering the whole journal relies on."""
+        src = code("store.js")
+        block = src[src.index("function stamp("):src.index("function rand4(")]
+        for part in ("getUTCFullYear", "getUTCMonth", "getUTCDate", "getUTCHours"):
+            self.assertIn(part, block)
+        self.assertIn("new Date().toISOString()", src)      # nowIso, for created_at
+
+
 class TestBarPours(unittest.TestCase):
     """Scoring something you do not own, standing at a bar. The phone writes the encounter file
     itself, so its shape is a contract with store.py rather than a convention."""

@@ -230,7 +230,7 @@ function openScoreFor(s, venue = "") {
     scores: Object.fromEntries(app.rubric.categories.map((c) => [c.key, null])),
     notes: {},
     overall: "",
-    date: new Date().toISOString().slice(0, 10),
+    date: Store.today(),
     venue,
   };
   renderScore();
@@ -468,12 +468,12 @@ function renderSync() {
       el("div", { class: "state" },
         el("span", { class: `dot ${online ? "on" : "off"}` }),
         el("span", {}, online ? "Online" : `Offline${m.offlineSince
-          ? ` since ${String(m.offlineSince).slice(11, 16)}` : ""}`)),
+          ? ` since ${Store.localClock(m.offlineSince)}` : ""}`)),
       el("div", { class: "state" },
         el("span", { class: `dot ${signedIn ? "on" : ""}` }),
         el("span", {}, signedIn ? `Signed in as ${Graph.who()}` : "Not signed in")),
       el("div", { class: "muted" },
-        m.lastSync ? `Last sync ${String(m.lastSync).replace("T", " ").slice(0, 16)}`
+        m.lastSync ? `Last sync ${Store.localTime(m.lastSync)}`
                    : "Never synced on this phone"),
       el("div", { class: "actions" },
         Graph.configured() && !signedIn

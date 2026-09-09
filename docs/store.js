@@ -46,6 +46,26 @@ const Store = (() => {
   }
   const nowIso = () => new Date().toISOString();
 
+  /** The local calendar date, not the UTC one.
+
+      A pour belongs to the night it was drunk. toISOString() would file a card by UTC, so east of
+      Greenwich an early-evening pour lands on tomorrow and west of it a late one lands on
+      yesterday — and the PC, which uses datetime.now(), would disagree with the phone about the
+      same sitting. Instants (created_at, filenames) stay UTC; calendar days are local. */
+  function today(d = new Date()) {
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  /** An ISO instant shown in the phone's own time zone. Everything is stored in UTC and nothing
+      is displayed in it. */
+  function localTime(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return String(iso);
+    return `${today(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  /** Just the clock part, for "offline since". */
+  const localClock = (iso) => localTime(iso).slice(11);
+
   // -- cached collection ----------------------------------------------------
   const snapshot = () => read(K.snapshot, null);
   const setSnapshot = (data) => write(K.snapshot, data);
@@ -78,7 +98,7 @@ const Store = (() => {
       deleted: false,
       spirit_id: fields.spirit_id,
       session_id: fields.session_id ?? null,
-      date: fields.date || new Date().toISOString().slice(0, 10),
+      date: fields.date || today(),
       flight_pos: fields.flight_pos ?? null,
       scores,
       barrel_id: fields.barrel_id ?? null,
@@ -215,6 +235,6 @@ const Store = (() => {
     meta, setMeta,
     submitScorecard, submitPending, submitEncounter,
     encounters, addEncounter, asSpirit,
-    stamp, rand4, medalFor,
+    stamp, rand4, medalFor, today, localTime, localClock,
   };
 })();
