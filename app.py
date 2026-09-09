@@ -58,7 +58,6 @@ COLLECTION_COLUMNS = [
     {"key": "code",             "label": "Code",     "type": "code",  "default": True},
     {"key": "career_score",     "label": "Score",    "type": "score1", "default": True},
     {"key": "medal",            "label": "Medal",    "type": "medal", "default": True},
-    {"key": "n",                "label": "n",        "type": "int",   "default": True},
     {"key": "display_name",     "label": "Name",     "type": "name",  "default": True},
     {"key": "type",             "label": "Type",     "type": "text",  "default": True},
     {"key": "region",           "label": "Region",   "type": "text",  "default": True},
@@ -74,7 +73,7 @@ COLLECTION_COLUMNS = [
     {"key": "value_per_oz",     "label": "$ / oz",   "type": "money", "default": True},
     {"key": "best",             "label": "Best",     "type": "int",   "default": False},
     {"key": "worst",            "label": "Worst",    "type": "int",   "default": False},
-    {"key": "score_per_dollar", "label": "Score / $", "type": "num3", "default": False},
+    {"key": "score_per_dollar", "label": "Score / $", "type": "num3", "default": False},    {"key": "n",                "label": "n",        "type": "int",   "default": True},
 ]
 
 TASTING_COLUMNS = [
