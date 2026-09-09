@@ -77,6 +77,23 @@ function newPour(spirit, flightPos = null) {
 const activePour = () => state.pours[state.active] || null;
 const isBlind = (p) => (state.mode === "session" ? !!state.session?.blind : !!p.blind);
 
+// ---------------------------------------------------------------- launcher lifecycle
+/* Started from the desktop icon there is no console to close, so this window *is* the app. Telling
+   the launcher when it goes lets it stop the server rather than leave one running invisibly and
+   holding the port. Minimising changes nothing: the heartbeat keeps going, throttled but far
+   inside the launcher's patience.
+
+   A reload fires pagehide too, so the launcher waits a few seconds before acting and any heartbeat
+   cancels it. Run under `python app.py` these simply 404 and are ignored. */
+function watchWindow() {
+  const beat = () => fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
+  beat();
+  setInterval(beat, 5000);
+  window.addEventListener("pagehide", () => {
+    try { navigator.sendBeacon("/api/goodbye"); } catch { /* closing anyway */ }
+  });
+}
+
 // ---------------------------------------------------------------- boot
 async function boot() {
   document.getElementById("btn-refresh").addEventListener("click", refresh);
@@ -100,6 +117,7 @@ async function boot() {
   await loadPending();
   buildPicker();
   if (!(await restoreDraft())) showPicker();
+  watchWindow();
 }
 
 async function loadSpirits() {

@@ -10,9 +10,10 @@ Three details worth knowing:
 
   * The server runs in a thread of *this* process rather than a separate one, so it cannot outlive
     the launcher and leave a port held by an invisible program.
-  * The window is opened with a dedicated browser profile. Without one, Edge and Chrome hand the
-    request to an already-running copy of themselves and exit immediately — which would look like
-    the app closing the instant it opened.
+  * The browser process cannot be waited on. Edge hands off to a background process and the one
+    we started exits within a moment, even with its own profile — waiting on it shut the server
+    down while the window was still on screen, showing a dead page. So the *page* tells us when
+    it is going, and we keep running until it does.
   * If the app is already running, this just opens another window at it rather than trying to
     start a second server on a port that is taken.
 
@@ -109,6 +110,52 @@ def serve(application, host, port):
     application.run(host=host, port=port, debug=False, use_reloader=False, threaded=True)
 
 
+def attach_lifecycle(application, state):
+    """Let the page report that it is still there, and that it is closing.
+
+    Only the launcher registers these: `python app.py` has a console to close and needs no such
+    machinery. A reload fires the same goodbye, so the caller waits a few seconds and any
+    heartbeat — from the reloaded page, or from a second window — cancels the shutdown.
+    """
+    @application.post("/api/heartbeat")
+    def _heartbeat():
+        state["last"] = time.monotonic()
+        state["closing"] = None
+        return {"ok": True}
+
+    @application.post("/api/goodbye")
+    def _goodbye():
+        state["closing"] = time.monotonic()
+        return "", 204
+
+
+def open_window(url):
+    """Start the window and let it go. Nothing useful can be learned by waiting on it."""
+    browser = find_browser()
+    if not browser:
+        webbrowser.open(url)
+        return False
+    profile = profile_path()
+    profile.mkdir(parents=True, exist_ok=True)
+    subprocess.Popen(window_command(browser, url, str(profile)))
+    return True
+
+
+def wait_until_closed(state, grace=15.0, idle=3600.0):
+    """Stay up while the window is open. `grace` covers a reload; `idle` is only a leak guard for
+    the case where the goodbye never arrives at all."""
+    try:
+        while True:
+            time.sleep(0.5)
+            now = time.monotonic()
+            if state["closing"] and now - state["closing"] > grace:
+                return 0
+            if now - state["last"] > idle:
+                return 0
+    except KeyboardInterrupt:
+        return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Start the Whiskey Tasting Book and open its window")
     ap.add_argument("--config", default="config.yaml")
@@ -123,16 +170,20 @@ def main(argv=None):
     port = a.port or int(srv.get("port", 8765))
     url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}"
 
-    already = port_open(host, port)
-    if already:
+    if port_open(host, port):
+        # Another copy already owns the server; just put a window in front of it and get out.
         print(f"Already running at {url} — opening another window.")
-    else:
-        application = app_mod.create_app(a.config)
-        threading.Thread(target=serve, args=(application, host, port), daemon=True).start()
-        if not wait_for_port(host, port):
-            print("The app did not start. Run `python app.py` to see why.", file=sys.stderr)
-            return 1
-        print(f"Whiskey Tasting Book  →  {url}")
+        open_window(url)
+        return 0
+
+    state = {"last": time.monotonic(), "closing": None}
+    application = app_mod.create_app(a.config)
+    attach_lifecycle(application, state)
+    threading.Thread(target=serve, args=(application, host, port), daemon=True).start()
+    if not wait_for_port(host, port):
+        print("The app did not start. Run `python app.py` to see why.", file=sys.stderr)
+        return 1
+    print(f"Whiskey Tasting Book  →  {url}")
 
     if a.no_window:
         print("Press Ctrl+C to stop.")
@@ -142,24 +193,8 @@ def main(argv=None):
         except KeyboardInterrupt:
             return 0
 
-    browser = find_browser()
-    if browser:
-        profile = profile_path()
-        profile.mkdir(parents=True, exist_ok=True)
-        # Blocks until the window is closed; the server thread is a daemon, so returning here
-        # takes it with us.
-        subprocess.run(window_command(browser, url, str(profile)))
-    else:
-        # No Chromium browser found: open a normal tab and stay up until interrupted, because
-        # there is no window to wait on.
-        webbrowser.open(url)
-        print("Opened in your default browser. Press Ctrl+C here to stop the app.")
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            pass
-    return 0
+    open_window(url)
+    return wait_until_closed(state)
 
 
 if __name__ == "__main__":

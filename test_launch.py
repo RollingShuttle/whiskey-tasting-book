@@ -9,6 +9,7 @@ building a command line that actually produces an application window rather than
 """
 import socket
 import tempfile
+import time
 import threading
 import unittest
 from pathlib import Path
@@ -96,6 +97,62 @@ class TestPortProbe(unittest.TestCase):
             s.bind(("127.0.0.1", 0))
             port = s.getsockname()[1]
         self.assertFalse(launch.wait_for_port("127.0.0.1", port, timeout=0.5))
+
+
+class TestLifecycle(unittest.TestCase):
+    """The window cannot be waited on, so the page reports for itself."""
+
+    def app(self):
+        import tempfile as tf
+        import app as app_mod
+        d = tf.mkdtemp()
+        application = app_mod.create_app(
+            "config.yaml",
+            app_folder=str(Path(d) / "journal"),
+            snapshot_path=str(Path(d) / "missing.json"),
+            master="Z:/nonexistent/x.xlsx",
+            rollup=str(Path(d) / "r.xlsx"),
+            backups=str(Path(d) / "b"),
+        )
+        state = {"last": 0.0, "closing": None}
+        launch.attach_lifecycle(application, state)
+        return application.test_client(), state
+
+    def test_a_heartbeat_marks_the_window_alive(self):
+        c, state = self.app()
+        self.assertEqual(c.post("/api/heartbeat").status_code, 200)
+        self.assertGreater(state["last"], 0)
+
+    def test_goodbye_starts_the_countdown(self):
+        c, state = self.app()
+        self.assertEqual(c.post("/api/goodbye").status_code, 204)
+        self.assertIsNotNone(state["closing"])
+
+    def test_a_heartbeat_cancels_a_pending_shutdown(self):
+        """A reload fires goodbye too, and so does closing one of two windows."""
+        c, state = self.app()
+        c.post("/api/goodbye")
+        c.post("/api/heartbeat")
+        self.assertIsNone(state["closing"])
+
+    def test_it_waits_while_the_window_is_open(self):
+        state = {"last": time.monotonic(), "closing": None}
+        started = time.monotonic()
+        done = []
+        t = threading.Thread(target=lambda: done.append(launch.wait_until_closed(state, 0.2, 1.0)),
+                             daemon=True)
+        t.start()
+        time.sleep(0.4)
+        self.assertEqual(done, [], "it gave up while the window was still open")
+        state["closing"] = time.monotonic()
+        t.join(timeout=3)
+        self.assertEqual(done, [0])
+        self.assertLess(time.monotonic() - started, 3)
+
+    def test_it_gives_up_if_nothing_ever_speaks_to_it(self):
+        """Only a leak guard: without it a crashed window would leave the port held forever."""
+        state = {"last": time.monotonic() - 10, "closing": None}
+        self.assertEqual(launch.wait_until_closed(state, grace=5, idle=1.0), 0)
 
 
 class TestServesInThread(unittest.TestCase):
