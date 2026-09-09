@@ -1188,6 +1188,34 @@ class TestReviseAndDelete(AppCase):
         self.assertEqual(row["n"], 1, "promoting a draft should make it count exactly once")
 
 
+class TestThePickersIdentifyTheRelease(unittest.TestCase):
+    """A picker is where you choose *between* bottles, so it needs what tells them apart more than
+    any finished view does. Three here are called George T. Stagg; the proof and the release year
+    are the only things that separate them."""
+
+    def source(self, name):
+        src = (Path(__file__).resolve().parent / "static" / name).read_text(encoding="utf-8")
+        src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
+        return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
+
+    def body(self, src, name):
+        """One function's text. Comments are stripped by then, so the section banners cannot be
+        used as boundaries — the next function is."""
+        start = src.index("function %s(" % name)
+        nxt = src.find("function ", start + len(name) + 12)
+        return src[start:nxt if nxt != -1 else len(src)]
+
+    def test_the_score_picker_shows_proof_and_year(self):
+        block = self.body(self.source("app.js"), "renderResults")
+        self.assertIn("s.proof", block)
+        self.assertIn("s.release_year", block)
+
+    def test_the_compare_picker_shows_proof_and_year(self):
+        block = self.body(self.source("compare.js"), "results")
+        self.assertIn("s.proof", block)
+        self.assertIn("s.release_year", block)
+
+
 class TestAutosaveOnTheDesktop(unittest.TestCase):
     """The localStorage mirror lives in one browser profile. Autosave puts the work in the journal
     itself, as a draft, which is the thing that actually survives."""

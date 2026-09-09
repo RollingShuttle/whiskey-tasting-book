@@ -566,7 +566,9 @@ function renderResults() {
     return;
   }
   for (const s of list) {
-    const meta = [s.type, s.age ? `${s.age}y` : s.age_label, s.proof ? `${s.proof}pf` : null]
+    const meta = [s.type, s.age ? `${s.age}y` : s.age_label,
+                  s.proof ? `${s.proof}pf` : null,
+                  s.release_year ? String(Math.round(s.release_year)) : null]
       .filter(Boolean).join(" · ");
     ul.append(el("li", { role: "option", style: `border-left-color:${accentFor(s.type)}`,
                          onclick: () => addPour(s.code) },

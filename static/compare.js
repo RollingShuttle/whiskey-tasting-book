@@ -158,6 +158,10 @@ const CompareView = (() => {
       onclick: () => addCode(s.code),
     }, el("span", { class: "pr-name" }, s.name || s.display_name),
        el("span", { class: "pr-dist" }, s.distillery || ""),
+       el("span", { class: "pr-meta" },
+         [s.type, s.proof ? `${s.proof}pf` : null,
+          s.release_year ? String(Math.round(s.release_year)) : null]
+           .filter(Boolean).join(" · ")),
        el("span", { class: "pr-code" }, s.code)));
   }
 
