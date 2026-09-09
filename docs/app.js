@@ -43,6 +43,7 @@ const app = {
   filter: "all",
   query: "",
   draft: null,
+  addMode: "pour",       // the Add tab opens on the bar pour, which is the one done standing up
 };
 
 const screens = {
@@ -72,14 +73,23 @@ function back() {
   if (prev.name === "collection") renderCollection();
 }
 
+const markTab = (tab) => document.querySelectorAll(".tab")
+  .forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+
 function setTab(tab) {
   app.tab = tab;
   app.stack = [];
-  document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  markTab(tab);
   if (tab === "collection") { renderCollection(); show("collection", "Collection"); }
-  if (tab === "add") { renderAdd(); show("add", "Add bottle"); }
+  if (tab === "add") { renderAdd(); show("add", "Add"); }
   if (tab === "sync") { renderSync(); show("sync", "Sync"); }
 }
+
+/** Everything this phone can show: the collection the PC published, plus the bar pours scored
+    here. The PC does not publish encounters back, so without the second half a pour would leave
+    the screen the moment it was submitted. */
+const knownSpirits = () => Store.spirits().concat(Store.encounters().map(Store.asSpirit));
+const findSpirit = (code) => knownSpirits().find((x) => x.code === code);
 
 // ---------------------------------------------------------------- helpers
 function careerFor(code) {
@@ -118,7 +128,7 @@ function renderCollection() {
 
   const chips = el("div", { class: "chips" },
     ...[["all", "All"], ["Bottle", "Bottles"], ["Miniature", "Minis"], ["Sample", "Samples"],
-        ["scored", "Scored"]].map(([id, label]) =>
+        ["Encounter", "Bar"], ["scored", "Scored"]].map(([id, label]) =>
       el("button", { type: "button", class: `chip${app.filter === id ? " active" : ""}`,
         onclick: () => { app.filter = id; renderCollection(); } }, label)));
 
@@ -134,7 +144,7 @@ function paintRows() {
   const list = document.getElementById("rows");
   if (!list) return;
   const terms = app.query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  let spirits = Store.spirits();
+  let spirits = knownSpirits();
   if (app.filter === "scored") spirits = spirits.filter((s) => careerFor(s.code));
   else if (app.filter !== "all") spirits = spirits.filter((s) => s._sheet === app.filter);
   if (terms.length) {
@@ -168,7 +178,7 @@ function paintRows() {
 
 // ---------------------------------------------------------------- detail
 function openDetail(code) {
-  const s = Store.spirits().find((x) => x.code === code);
+  const s = findSpirit(code);
   if (!s) return;
   const career = careerFor(code);
   const sittings = Store.cardsFor(code);
@@ -179,7 +189,8 @@ function openDetail(code) {
     el("div", { class: "card", style: `border-left:3px solid ${accentFor(s.type)}` },
       el("div", { class: "spirit-name" }, s.name || s.display_name),
       el("div", { class: "spirit-meta" }, [s.distillery, meta].filter(Boolean).join(" · ")),
-      el("div", { class: "spirit-meta" }, s.code),
+      el("div", { class: "spirit-meta" },
+        s._encounter ? ["Bar pour", s.venue].filter(Boolean).join(" · ") : s.code),
       career
         ? el("div", { style: "margin-top:12px;display:flex;align-items:center;gap:10px" },
             el("span", { class: "total-num" }, career.score.toFixed(1)),
@@ -206,7 +217,13 @@ function openDetail(code) {
 
 // ---------------------------------------------------------------- scorecard
 function openScore(code) {
-  const s = Store.spirits().find((x) => x.code === code);
+  const s = findSpirit(code);
+  if (s) openScoreFor(s, s.venue || "");
+}
+
+/** Takes the spirit itself rather than a code, because a bar pour has no code yet — the X- number
+    is handed out on the PC afterwards, and until then the encounter's uid is its only name. */
+function openScoreFor(s, venue = "") {
   if (!s || !app.rubric) return;
   app.draft = {
     spirit: s,
@@ -214,7 +231,7 @@ function openScore(code) {
     notes: {},
     overall: "",
     date: new Date().toISOString().slice(0, 10),
-    venue: "",
+    venue,
   };
   renderScore();
   show("score", "Scorecard", { push: true });
@@ -346,24 +363,38 @@ function submitCard() {
   updateBadge();
   flush();
   app.stack.pop();                                   // straight back to the bottle
-  openDetail(rec.spirit_id);
   app.stack = [{ name: "collection", title: "Collection" }];
+  app.tab = "collection";
+  markTab("collection");
+  openDetail(rec.spirit_id);
 }
 
 const grow = (ta) => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight}px`; };
 
 // ---------------------------------------------------------------- add bottle
 function renderAdd() {
+  const pour = app.addMode === "pour";
   const fields = {};
   const input = (name, attrs = {}) => {
     const i = el("input", Object.assign({ type: "text" }, attrs));
     i.addEventListener("input", (e) => { fields[name] = e.target.value; });
     return el("label", { class: "field" }, el("span", {}, name), i);
   };
+  const named = () => (fields.Name || "").trim() || (fields.Distillery || "").trim();
+
+  const modes = el("div", { class: "chips" },
+    ...[["pour", "Bar pour"], ["bottle", "Bottle I bought"]].map(([id, label]) =>
+      el("button", { type: "button", class: `chip${app.addMode === id ? " active" : ""}`,
+        onclick: () => { app.addMode = id; renderAdd(); } }, label)));
 
   fill(screens.add,
-    notice("ok", "Queued for approval on the PC. Nothing reaches the collection workbook from "
-      + "this phone — a person checks each row first."),
+    modes,
+    notice(pour ? "ok" : "ok", pour
+      ? "Something you are drinking but do not own. Score it now — it is saved on this phone "
+        + "first, so no signal is needed — and it lands on the PC as a bar pour, never in your "
+        + "collection."
+      : "Queued for approval on the PC. Nothing reaches the collection workbook from this phone "
+        + "— a person checks each row first."),
     el("div", { class: "card" },
       input("Distillery", { autocapitalize: "words" }),
       input("Name", { autocapitalize: "words" }),
@@ -371,18 +402,45 @@ function renderAdd() {
       input("Region", { autocapitalize: "words" }),
       input("Age", { inputmode: "numeric" }),
       input("Proof", { inputmode: "decimal" }),
-      input("Size (ml)", { inputmode: "decimal" }),
-      input("Paid", { inputmode: "decimal" }),
+      pour ? input("Venue", { autocapitalize: "words" }) : input("Size (ml)", { inputmode: "decimal" }),
+      pour ? null : input("Paid", { inputmode: "decimal" }),
       el("div", { class: "actions" },
         el("button", { class: "btn wide", type: "button", onclick: () => {
+          if (!named()) return;
+          if (pour) { startBarPour(fields); return; }
           const filled = Object.fromEntries(
             Object.entries(fields).filter(([, v]) => v && String(v).trim()));
-          if (!filled.Name && !filled.Distillery) return;
           Store.submitPending("Bottle", filled);
           updateBadge();
           flush();
           setTab("sync");
-        } }, "Queue for approval"))));
+        } }, pour ? "Score this pour" : "Queue for approval"))));
+}
+
+/** A pour at a bar: the encounter is recorded, then its scorecard opens straight away. Both are
+    queued separately, and the card names the encounter by uid — the PC hands out the X- number
+    later and joins the two when it reads. */
+function startBarPour(f) {
+  const trimmed = (k) => ((f[k] || "").trim() || null);
+  // Age and proof go in as numbers. A text field hands back a string, and a string sorts as text
+  // wherever the PC lists it — "9" after "18" — which is the sort of thing nobody notices until
+  // the table looks wrong months later.
+  const num = (k) => {
+    const v = trimmed(k);
+    return v !== null && v !== "" && Number.isFinite(Number(v)) ? Number(v) : v;
+  };
+  const { spirit } = Store.submitEncounter({
+    name: trimmed("Name") || trimmed("Distillery"),
+    distillery: trimmed("Distillery"),
+    type: trimmed("Type"),
+    region: trimmed("Region"),
+    age: num("Age"),
+    proof: num("Proof"),
+    venue: trimmed("Venue"),
+  });
+  updateBadge();
+  flush();
+  openScoreFor(spirit, spirit.venue || "");
 }
 
 // ---------------------------------------------------------------- sync

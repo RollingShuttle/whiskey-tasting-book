@@ -96,15 +96,28 @@ TASTING_COLUMNS = [
 ]
 
 
+def _encounter_alias(journal):
+    """uid -> X- code, for every encounter that has been given one.
+
+    A pour at a bar is scored on the phone before it has a code: X- numbers are handed out here
+    on the PC, afterwards. The card therefore names the encounter by its uid permanently, because
+    journal files are immutable and a card is never rewritten to say something else. Translating
+    at the point of reading is what lets everything downstream go on keying by the code alone.
+    """
+    journal.assign_encounter_codes()          # idempotent; writes only when a new one appears
+    return {e["encounter_uid"]: e["code"] for e in journal.encounters() if e.get("code")}
+
+
 def _group_tastings(journal):
     """One pass over the journal, grouped by spirit.
 
     journal.careers() re-reads every tasting file once per scored spirit, which is fine for a
     handful and quadratic for a few hundred. The table touches every spirit, so it reads once.
     """
+    alias = _encounter_alias(journal)
     by = {}
     for t in journal.tastings():
-        by.setdefault(t["spirit_id"], []).append(t)
+        by.setdefault(alias.get(t["spirit_id"], t["spirit_id"]), []).append(t)
     return by
 
 
@@ -489,8 +502,7 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
     def api_table_collection():
         """One row per spirit: the master's fields joined to the career score. Encounters are in
         here too, so "have I had this?" is answerable next to "do I own this?" (SPEC.md §2.1)."""
-        by_spirit = _group_tastings(journal)
-        journal.assign_encounter_codes()          # PC-side, idempotent, writes only on a change
+        by_spirit = _group_tastings(journal)   # assigns any new X- codes on the way through
         rows = []
 
         for sp in catalog.all():
@@ -537,12 +549,15 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
     def api_table_tastings():
         """One row per sitting — every tasting, sortable and filterable on every field."""
         rows = []
+        alias = _encounter_alias(journal)
         for t in journal.tastings():
-            sp = catalog.get(t["spirit_id"]) or {}
+            # A bar pour's card names its encounter by uid; show the X- code it was given.
+            code = alias.get(t["spirit_id"], t["spirit_id"])
+            sp = catalog.get(code) or _encounter_stub(journal, code) or {}
             rows.append({
-                "tasting_id": t["tasting_id"], "date": t.get("date"), "code": t["spirit_id"],
+                "tasting_id": t["tasting_id"], "date": t.get("date"), "code": code,
                 "scores": t.get("scores") or {},        # so a lens can re-total one sitting
-                "display_name": sp.get("display_name") or t["spirit_id"],
+                "display_name": sp.get("display_name") or code,
                 "type": sp.get("type"), "region": sp.get("region"),
                 "total": t["total"], "medal": t["medal"],
                 "counted": "yes" if t.get("include_in_average", True) else "no",

@@ -202,6 +202,78 @@ class TestQueueRules(unittest.TestCase):
         self.assertGreaterEqual(js.count("catch"), 2)
 
 
+class TestBarPours(unittest.TestCase):
+    """Scoring something you do not own, standing at a bar. The phone writes the encounter file
+    itself, so its shape is a contract with store.py rather than a convention."""
+
+    def js_encounter_fields(self):
+        """The keys docs/store.js puts in the encounter record."""
+        src = code("store.js")
+        start = src.index("function encounter(fields)")
+        block = src[start:src.index("path: `encounters/", start)]
+        return set(re.findall(r"^\s{8}(\w+):", block, re.MULTILINE))
+
+    def test_the_phone_writes_the_record_store_py_reads(self):
+        """Both halves write this file; only the PC reads it. A field named differently on the
+        phone would not fail anywhere — it would just quietly never arrive."""
+        import tempfile
+        import store as store_mod
+        with tempfile.TemporaryDirectory() as d:
+            journal = store_mod.Journal(Path(d), rubric_mod.load_rubric()).ensure()
+            written = journal.write_encounter(name="X", entered_from="phone")
+        self.assertEqual(self.js_encounter_fields(), set(written),
+                         "the phone and the PC disagree about an encounter's fields")
+
+    def test_the_code_is_left_for_the_pc_to_assign(self):
+        """X- numbers are handed out in order of first tasting, which only the PC can know."""
+        src = code("store.js")
+        block = src[src.index("function encounter(fields)"):src.index("function pendingBottle")]
+        self.assertRegex(block, r"code:\s*null")
+
+    def test_it_is_queued_like_everything_else(self):
+        src = code("store.js")
+        self.assertIn('kind: "encounter"', src)
+        self.assertIn("`encounters/${uid}.json`", src)
+
+    def test_the_uid_carries_a_random_suffix(self):
+        """Same rule as every other generated filename: the timestamp is second-resolution, so
+        two pours in one second would otherwise share a name (SPEC.md 0)."""
+        src = code("store.js")
+        block = src[src.index("function encounter(fields)"):src.index("function pendingBottle")]
+        self.assertRegex(block, r"E-\$\{stamp\(\)\}-\$\{rand4\(\)\}")
+
+    def test_the_card_names_the_encounter_by_uid(self):
+        """The scorecard scores a spirit object, not a code, because a bar pour has no code yet.
+        asSpirit puts the uid in `code`, and submitCard sends that as spirit_id."""
+        self.assertRegex(code("store.js"), r"code:\s*e\.encounter_uid")
+        self.assertIn("spirit_id: d.spirit.code", code("app.js"))
+
+    def test_age_and_proof_are_stored_as_numbers(self):
+        """A text field hands back a string, and a string sorts as text wherever the PC lists
+        it - 9 after 18 - which nobody notices until the table looks wrong months later."""
+        block = code("app.js")
+        block = block[block.index("function startBarPour"):]
+        block = block[:block.index("\n}")]
+        self.assertIn("age: num(", block)
+        self.assertIn("proof: num(", block)
+        self.assertIn("Number.isFinite", block)
+
+    def test_a_pour_stays_visible_on_the_phone(self):
+        """The PC does not publish encounters back, so if the list only showed the snapshot a
+        pour would vanish the moment it was submitted."""
+        src = code("app.js")
+        self.assertIn("Store.encounters().map(Store.asSpirit)", src)
+        self.assertIn("knownSpirits()", src)
+
+    def test_scoring_it_needs_no_connection(self):
+        """The bar is the whole point: the encounter and the card are both stored before either
+        is uploaded, and flush() is a separate, retryable step."""
+        src = code("store.js")
+        block = src[src.index("function submitEncounter"):src.index("function submitPending")]
+        self.assertIn("addEncounter(rec)", block)
+        self.assertIn("enqueue(", block)
+
+
 class TestCollectionList(unittest.TestCase):
     """Two faults that only appear once a real collection is behind the screen."""
 

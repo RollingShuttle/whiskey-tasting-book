@@ -748,6 +748,56 @@ class TestPageAndHealth(AppCase):
         self.assertIn("journal", h["journal_root"])
 
 
+class TestBarPours(AppCase):
+    """A pour at a bar is scored on the phone before it has a code — X- numbers are handed out
+    here, afterwards — so the card names the encounter by its uid and can never be rewritten to
+    say anything else. If the two are not put back together the score simply disappears: the
+    encounter shows on the table unscored, and the card belongs to a spirit that does not exist."""
+
+    def journal(self):
+        return store_mod.Journal(self.tmp / "journal", rubric_mod.load_rubric()).ensure()
+
+    def bar_pour(self, name="Something From The Back Bar", pours=1, **fields):
+        """Exactly what the phone uploads: an encounter file, then cards naming it by uid."""
+        j = self.journal()
+        enc = j.write_encounter(name=name, entered_from="phone", **fields)
+        for _ in range(pours):
+            j.write_tasting(spirit_id=enc["encounter_uid"], scores=dict(EXAMPLE_CARD),
+                            entered_from="phone", venue=fields.get("venue"))
+        return enc
+
+    def test_the_score_reaches_the_encounter(self):
+        self.bar_pour(distillery="A Distillery", type="Bourbon", venue="A Bar")
+        rows = self.c.get("/api/table/collection").get_json()["rows"]
+        pours = [r for r in rows if r["source"] == "Encounter"]
+        self.assertEqual(len(pours), 1, "the bar pour is missing from the table")
+        self.assertEqual(pours[0]["n"], 1, "the card did not attach to the encounter")
+        self.assertIsNotNone(pours[0]["career_score"])
+        self.assertTrue(str(pours[0]["code"]).startswith("X-"))
+
+    def test_it_is_not_owned(self):
+        """The point of the distinction: "have I had this" is not "do I own this"."""
+        self.bar_pour()
+        row = [r for r in self.c.get("/api/table/collection").get_json()["rows"]
+               if r["source"] == "Encounter"][0]
+        self.assertFalse(row["owned"])
+
+    def test_a_card_by_uid_is_not_left_stranded(self):
+        """Before this was joined up the card grouped under its own uid, which matches no spirit
+        at all, so the sitting existed and counted towards nothing."""
+        self.bar_pour()
+        rows = self.c.get("/api/table/tastings").get_json()["rows"]
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(str(rows[0]["code"]).startswith("X-"),
+                        "the sitting still names the raw uid: %r" % (rows[0]["code"],))
+
+    def test_two_pours_of_the_same_thing_average(self):
+        self.bar_pour(name="Twice", pours=2)
+        row = [r for r in self.c.get("/api/table/collection").get_json()["rows"]
+               if r["source"] == "Encounter"][0]
+        self.assertEqual(row["n"], 2)
+
+
 class TestNothingIsSilentlyTruncated(unittest.TestCase):
     """A `.slice(0, n)` in a picker hides bottles the collection really has. On a 375-bottle
     collection the score list simply ended at B-60 and the compare list at 25, with nothing on

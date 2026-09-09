@@ -15,6 +15,7 @@ const Store = (() => {
     rubric: "wtb.rubric",
     queue: "wtb.queue",
     cards: "wtb.cards",
+    encounters: "wtb.encounters",
     meta: "wtb.meta",
   };
 
@@ -99,6 +100,34 @@ const Store = (() => {
     return { rec, path: `tastings/${id}-r1.json` };
   }
 
+  /** A spirit tasted but never owned — a pour at a bar. Shaped exactly as store.py writes one.
+
+      `code` stays null on purpose: the human-facing X- number is handed out on the PC, in order
+      of first tasting, and this phone cannot know what it will be. The uid is the identity the
+      scorecard refers to, and the PC translates one to the other when it reads. */
+  function encounter(fields) {
+    const uid = `E-${stamp()}-${rand4()}`;
+    return {
+      rec: {
+        encounter_uid: uid,
+        code: null,
+        name: fields.name,
+        distillery: fields.distillery ?? null,
+        type: fields.type ?? null,
+        region: fields.region ?? null,
+        age: fields.age ?? null,
+        proof: fields.proof ?? null,
+        venue: fields.venue ?? null,
+        notes: fields.notes ?? null,
+        linked_bottle_code: null,
+        entered_from: "phone",
+        first_tasted: nowIso(),
+        created_at: nowIso(),
+      },
+      path: `encounters/${uid}.json`,
+    };
+  }
+
   function pendingBottle(sheet, fields) {
     const uid = `P-${stamp()}-${rand4()}`;
     return {
@@ -130,6 +159,28 @@ const Store = (() => {
   /** Every locally-known sitting for one spirit, newest first. */
   const cardsFor = (code) => cards().filter((c) => c.spirit_id === code);
 
+  // -- bar pours this phone knows about -------------------------------------
+  // Kept locally because the PC does not publish encounters back: without this a pour would
+  // vanish from the phone the moment it was submitted, which is no way to run a flight at a bar.
+  const encounters = () => read(K.encounters, []);
+  function addEncounter(rec) {
+    write(K.encounters, [rec, ...encounters().filter((e) => e.encounter_uid !== rec.encounter_uid)]);
+  }
+  /** In the shape the collection list and the scorecard expect of a spirit. */
+  const asSpirit = (e) => ({
+    code: e.encounter_uid,
+    display_name: [e.distillery, e.name].filter(Boolean).join(" ") || e.name,
+    name: e.name,
+    distillery: e.distillery,
+    type: e.type,
+    region: e.region,
+    age: e.age,
+    proof: e.proof,
+    venue: e.venue,
+    _sheet: "Encounter",
+    _encounter: true,
+  });
+
   // -- connection notes -----------------------------------------------------
   const meta = () => read(K.meta, {});
   const setMeta = (patch) => write(K.meta, { ...meta(), ...patch });
@@ -140,6 +191,15 @@ const Store = (() => {
     addCard(rec, path);
     enqueue({ path, kind: "tasting", body: rec, created_at: nowIso() });
     return { rec, path };
+  }
+
+  /** Start a bar pour: remember it here, queue the encounter, and hand back the spirit-shaped
+      object the scorecard scores against. The card follows separately when it is submitted. */
+  function submitEncounter(fields) {
+    const { rec, path } = encounter(fields);
+    addEncounter(rec);
+    enqueue({ path, kind: "encounter", body: rec, created_at: nowIso() });
+    return { rec, spirit: asSpirit(rec) };
   }
 
   function submitPending(sheet, fields) {
@@ -153,7 +213,8 @@ const Store = (() => {
     queue, enqueue, drop, queueCount,
     cards, cardsFor, addCard, markSent,
     meta, setMeta,
-    submitScorecard, submitPending,
+    submitScorecard, submitPending, submitEncounter,
+    encounters, addEncounter, asSpirit,
     stamp, rand4, medalFor,
   };
 })();
