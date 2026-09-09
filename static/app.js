@@ -1135,6 +1135,42 @@ function showSaved() {
     hour: "2-digit", minute: "2-digit" })}`;
 }
 
+/** Put an existing sitting back on the sheet, ready to correct. It arrives already submitted and
+    carrying its tasting_id, so pressing Edit and submitting writes revision n+1 of this card. */
+function loadTastingIntoSheet(t) {
+  const spirit = state.spirits.find((s) => s.code === t.spirit_id)
+    || { code: t.spirit_id, display_name: t.spirit_id, name: t.spirit_id };
+  const notes = { ...(t.notes || {}) };
+  const overall = notes.overall || "";
+  delete notes.overall;
+
+  const p = newPour(spirit);
+  p.scores = Object.fromEntries(state.config.rubric.categories
+    .map((c) => [c.key, t.scores?.[c.key] ?? null]));
+  p.notes = notes;
+  p.overall = overall;
+  p.context = {
+    date: t.date || today(),
+    venue: t.venue || "",
+    pour_price: t.pour_price ?? "",
+    pour_size_oz: t.pour_size_oz ?? "",
+  };
+  p.blind = false;                   // it has been submitted; there is nothing left to hide
+  p.submitted = true;
+  p.tasting = t;
+  p.tasting_id = t.tasting_id;
+
+  state.mode = "single";
+  state.session = null;
+  state.pours = [p];
+  state.active = 0;
+  autosavedAs = "";
+  document.getElementById("picker").hidden = true;
+  renderSheet();
+  showStatus("ok", "Opened for correction. Edit, then Submit — that saves a new revision and "
+                 + "leaves the earlier one in the journal.");
+}
+
 /** Reopen a submitted card. It keeps its tasting_id, so finishing it again writes revision n+1
     of the same sitting rather than a second one beside it. */
 function editCard() {

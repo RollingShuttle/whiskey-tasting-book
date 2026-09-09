@@ -1188,6 +1188,61 @@ class TestReviseAndDelete(AppCase):
         self.assertEqual(row["n"], 1, "promoting a draft should make it count exactly once")
 
 
+class TestAnOldSittingCanBeReached(AppCase):
+    """Edit and Delete existed but only on the card still on screen, which meant they were
+    reachable for about as long as it took to press Score another. The list of sittings is the
+    only list of individual cards there is, so that is where they belong."""
+
+    def card(self, **over):
+        r = self._post({"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD), **over})
+        self.assertIn(r.status_code, (200, 201), r.get_json())
+        return r.get_json()["tasting"]
+
+    def test_one_sitting_can_be_fetched_by_id(self):
+        """The table hands the id to the sheet; without this there is no way to load it back."""
+        made = self.card()
+        got = self.c.get("/api/tasting/%s" % made["tasting_id"])
+        self.assertEqual(got.status_code, 200)
+        self.assertEqual(got.get_json()["tasting"]["tasting_id"], made["tasting_id"])
+
+    def test_fetching_gives_the_latest_revision(self):
+        made = self.card()
+        self.card(tasting_id=made["tasting_id"], scores=dict(EXAMPLE_CARD, flavor=3))
+        got = self.c.get("/api/tasting/%s" % made["tasting_id"]).get_json()["tasting"]
+        self.assertEqual(got["revision"], 2)
+        self.assertEqual(got["scores"]["flavor"], 3)
+
+    def test_a_deleted_sitting_cannot_be_fetched(self):
+        made = self.card()
+        self.c.delete("/api/tasting/%s" % made["tasting_id"])
+        self.assertEqual(self.c.get("/api/tasting/%s" % made["tasting_id"]).status_code, 404)
+
+    def test_an_unknown_id_is_not_found(self):
+        self.assertEqual(self.c.get("/api/tasting/T-nope").status_code, 404)
+
+    def test_the_sittings_table_carries_the_id_the_actions_need(self):
+        self.card()
+        rows = self.c.get("/api/table/tastings").get_json()["rows"]
+        self.assertTrue(all(r.get("tasting_id") for r in rows))
+
+    def test_every_sitting_is_published_for_the_phone(self):
+        """The phone can only act on what it can see, and a collection scored at a desk leaves it
+        nothing of its own."""
+        import collection as collection_mod
+        made = self.card()
+        stub = types.SimpleNamespace(errors=[], rows={"Bottle": FIXTURE_SNAPSHOT["spirits"]},
+                                     snapshot=lambda: FIXTURE_SNAPSHOT)
+        with mock.patch.object(collection_mod, "load", return_value=stub):
+            self.assertEqual(self.c.post("/api/refresh").status_code, 200)
+        published = json.loads((self.tmp / "journal" / "snapshot" / "careers.json")
+                               .read_text(encoding="utf-8"))
+        sittings = published["sittings"]["B-18"]
+        self.assertEqual(len(sittings), 1)
+        self.assertEqual(sittings[0]["tasting_id"], made["tasting_id"])
+        self.assertEqual(sittings[0]["scores"], dict(EXAMPLE_CARD))
+        self.assertIn("revision", sittings[0], "without this the phone cannot write the next one")
+
+
 class TestThePickersIdentifyTheRelease(unittest.TestCase):
     """A picker is where you choose *between* bottles, so it needs what tells them apart more than
     any finished view does. Three here are called George T. Stagg; the proof and the release year

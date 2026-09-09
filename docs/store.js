@@ -17,6 +17,7 @@ const Store = (() => {
     cards: "wtb.cards",
     encounters: "wtb.encounters",
     careers: "wtb.careers",
+    buried: "wtb.buried",
     meta: "wtb.meta",
   };
 
@@ -78,10 +79,12 @@ const Store = (() => {
   /* Careers used to live only in memory, so closing the app threw away every score the PC had
      reconciled and the collection went blank until the next sync — which needs a connection, the
      one thing this app is built not to need. */
-  const careers = () => read(K.careers, { careers: {}, calibration: [], generatedAt: "" });
+  const careers = () => read(K.careers,
+    { careers: {}, calibration: [], sittings: {}, generatedAt: "" });
   const setCareers = (data) => write(K.careers, {
     careers: (data && data.careers) || {},
     calibration: (data && data.calibration) || [],
+    sittings: (data && data.sittings) || {},
     generatedAt: (data && data.generated_at) || "",
   });
 
@@ -260,9 +263,15 @@ const Store = (() => {
     };
     const path = `tastings/${rec.tasting_id}-r${revision}.json`;
     write(K.cards, cards().filter((c) => c.tasting_id !== rec.tasting_id));
+    // A card scored on the PC has no local copy to drop, so the tombstone is also remembered
+    // here — otherwise the published list would keep showing it until the PC next refreshed.
+    write(K.buried, [rec.tasting_id, ...buried().filter((id) => id !== rec.tasting_id)].slice(0, 500));
     enqueue({ path, kind: "tasting", body: rec, created_at: nowIso() });
     return { rec, path };
   }
+
+  /** Sittings this phone has deleted but the PC has not yet reconciled away. */
+  const buried = () => read(K.buried, []);
 
   /** Save the card, queue the upload, and tell the caller it is safe — in that order. */
   function submitScorecard(fields) {
@@ -290,7 +299,7 @@ const Store = (() => {
   return {
     snapshot, setSnapshot, spirits, rubric, setRubric, careers, setCareers,
     queue, enqueue, drop, queueCount,
-    cards, cardsFor, addCard, markSent, reviseCard, deleteCard,
+    cards, cardsFor, addCard, markSent, reviseCard, deleteCard, buried,
     meta, setMeta,
     submitScorecard, submitPending, submitEncounter,
     encounters, addEncounter, asSpirit,

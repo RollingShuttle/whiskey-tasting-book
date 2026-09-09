@@ -253,6 +253,35 @@ const TableView = (() => {
           } }), c.label)));
   }
 
+  /** Load an old sitting back into the judging sheet so it can be corrected. Submitting there
+      writes revision n+1 of this same card, never a second one beside it. */
+  async function editSitting(row) {
+    try {
+      const t = await api(`/api/tasting/${encodeURIComponent(row.tasting_id)}`);
+      showView("score");
+      loadTastingIntoSheet(t.tasting);
+    } catch (e) {
+      showStatus("err", `Could not open that sitting: ${e.body?.error || e.message}`);
+    }
+  }
+
+  async function removeSitting(row) {
+    const what = `${row.display_name} on ${row.date}`;
+    if (!window.confirm(`Delete the sitting of ${what}?\n\n`
+        + "It stops counting and stops being listed. The record stays in the journal as a "
+        + "tombstone, so nothing is actually destroyed.")) return;
+    try {
+      await api(`/api/tasting/${encodeURIComponent(row.tasting_id)}`, { method: "DELETE" });
+      invalidate(); CompareView.invalidate(); AnalysisView.invalidate();
+      await load(true);
+      await loadHealth();
+      render();
+      showStatus("ok", `Deleted the sitting of ${what}.`);
+    } catch (e) {
+      showStatus("err", `Could not delete: ${e.body?.error || e.message}`);
+    }
+  }
+
   function tableEl(list) {
     const shown = cols().filter((c) => isVisible(c.key));
     const { key: sortKey, dir } = T.sort[T.mode];
@@ -272,12 +301,27 @@ const TableView = (() => {
          active ? el("span", { class: "t-arrow" }, dir === "asc" ? "▲" : "▼") : null);
     }));
 
-    const body = el("tbody", {}, ...list.map((r) =>
-      el("tr", {}, ...shown.map((c) => cell(r, c)))));
+    // One row per sitting is the only list of individual cards there is, so it is the only place
+    // an old one can be corrected or removed. Without this, Edit and Delete existed but were
+    // reachable for about as long as the card stayed on screen after being submitted.
+    const actions = T.mode === "tastings";
+    if (actions) head.append(el("th", { class: "t-actions" }, ""));
+
+    const body = el("tbody", {}, ...list.map((r) => {
+      const tr = el("tr", {}, ...shown.map((c) => cell(r, c)));
+      if (actions) {
+        tr.append(el("td", { class: "t-actions" },
+          el("button", { class: "linkish", type: "button",
+                         onclick: (e) => { e.stopPropagation(); editSitting(r); } }, "Edit"),
+          el("button", { class: "linkish danger", type: "button",
+                         onclick: (e) => { e.stopPropagation(); removeSitting(r); } }, "Delete")));
+      }
+      return tr;
+    }));
 
     if (!list.length) {
-      body.append(el("tr", {}, el("td", { class: "t-null", colspan: String(shown.length) },
-        "Nothing matches those filters.")));
+      body.append(el("tr", {}, el("td", { class: "t-null",
+        colspan: String(shown.length + (actions ? 1 : 0)) }, "Nothing matches those filters.")));
     }
     return el("div", { class: "t-scroll" }, el("table", { class: "t-table" },
       el("thead", {}, head), body));

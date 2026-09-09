@@ -123,16 +123,26 @@ You do not have to remember to press Submit for the work to survive. A few secon
 typing, the card is written into the journal as a **draft** — the footer says "Draft saved" with the
 time. A draft never counts towards a score, so an unfinished card cannot move an average.
 
-**Submit** is still what marks it as counted. After that:
+**Submit** is still what marks it as counted.
 
-- **Edit** reopens the card. Submitting again saves a *new revision* — the earlier one stays in the
-  journal, so nothing you wrote is ever lost.
-- **Delete** stops it counting and stops it being listed. It writes a tombstone rather than
-  removing anything; the record is still there.
+### Changing or removing a score afterwards
 
-Both are on the phone too, under each sitting on a bottle's page. The phone can edit and delete the
-sittings it holds itself — the ones you scored on it — and works offline, queueing the change like
-any other upload.
+**On the PC:** open the **Table**, switch it to **one row per tasting**, and every sitting has
+**Edit** and **Delete** at the end of its row. Edit loads that card back onto the Score sheet;
+Delete removes it after asking.
+
+**On the phone:** open the bottle from Collection or Table. Its sittings are listed at the bottom
+of that page, each with **Edit** and **Delete**.
+
+Either way, nothing is destroyed. A correction is saved as a *new revision* and the earlier one
+stays in the journal; a deletion writes a tombstone, so the card stops counting and stops being
+listed but the record remains. The phone can do both with no signal — the change queues like any
+other upload.
+
+One thing you may notice on the phone: after deleting a sitting that was scored on the PC, the
+score above it does not change straight away. That number is the PC's, and it still counts the
+deleted sitting until the PC has read the tombstone. The page says so underneath. Press Refresh on
+the PC and it settles.
 
 ### Where your data goes
 

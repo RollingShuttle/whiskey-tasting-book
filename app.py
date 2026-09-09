@@ -411,9 +411,21 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
             json.dumps(coll.snapshot(), ensure_ascii=False), encoding="utf-8")
         out.joinpath("rubric.json").write_text(
             json.dumps(rubric.as_config(), ensure_ascii=False), encoding="utf-8")
-        careers, months = {}, {}
+        careers, months, sittings = {}, {}, {}
         for code, sits in _group_tastings(journal).items():
             bits = _career_bits(rubric, sits)
+            # The individual cards, so the phone can list and correct a sitting it did not take
+            # itself. Without these it can only act on what it scored, which for a collection
+            # scored mostly at a desk is nothing at all. Ten small numbers and a date each.
+            sittings[code] = [{
+                "tasting_id": t["tasting_id"], "revision": t.get("revision", 1),
+                "spirit_id": t["spirit_id"], "date": t.get("date"),
+                "total": t.get("total"), "medal": t.get("medal"),
+                "venue": t.get("venue"), "scores": t.get("scores") or {},
+                "notes": t.get("notes") or {},
+                "include_in_average": t.get("include_in_average", True),
+                "entered_from": t.get("entered_from"),
+            } for t in sits]
             if bits["n"]:
                 careers[code] = {
                     "score": bits["career_score"], "medal": bits["medal"], "n": bits["n"],
@@ -439,7 +451,7 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
         # without a cutoff it cannot tell a card the PC has already counted from one it has not —
         # so every sitting scored on the phone was counted twice once the PC caught up.
         out.joinpath("careers.json").write_text(
-            json.dumps({"careers": careers, "calibration": calibration,
+            json.dumps({"careers": careers, "calibration": calibration, "sittings": sittings,
                         "generated_at": datetime.now(timezone.utc).isoformat()},
                        ensure_ascii=False),
             encoding="utf-8")
@@ -483,6 +495,15 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
         career.pop("sittings", None)                   # the sittings ride in their own key
         return jsonify({"spirit": sp, "career": _json_safe(career),
                         "sittings": journal.career(code)["sittings"]})
+
+    @app.get("/api/tasting/<tasting_id>")
+    def api_get_tasting(tasting_id):
+        """One sitting, resolved to its latest revision — what the table hands to the sheet when
+        an old card is opened for correction."""
+        for t in journal.tastings():
+            if t["tasting_id"] == tasting_id:
+                return jsonify({"tasting": t})
+        return jsonify({"error": f"no such tasting {tasting_id}"}), 404
 
     @app.delete("/api/tasting/<tasting_id>")
     def api_delete_tasting(tasting_id):

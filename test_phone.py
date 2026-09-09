@@ -359,6 +359,40 @@ class TestAnalysisAndCompare(unittest.TestCase):
         self.assertIn("pc.categories", shared)
 
 
+class TestRemovingASittingFromThePhone(unittest.TestCase):
+    """Listing only the phone's own cards meant a collection scored at a desk showed none, so
+    nothing could be corrected or removed from here at all."""
+
+    def test_the_detail_lists_the_published_sittings_too(self):
+        src = code("app.js")
+        self.assertIn("function sittingsFor(", src)
+        block = src[src.index("function sittingsFor("):src.index("function openDetail(")]
+        self.assertIn("Store.cardsFor(code)", block)
+        self.assertIn("Store.careers().sittings", block)
+
+    def test_a_local_copy_wins_over_the_published_one(self):
+        """The phone's is the newer of the two whenever it has scored since the PC last summed."""
+        src = code("app.js")
+        block = src[src.index("function sittingsFor("):src.index("function openDetail(")]
+        self.assertIn("seen.has(t.tasting_id)", block)
+
+    def test_deleting_one_it_never_held_still_takes_effect_here(self):
+        """A card scored on the PC has no local copy to drop, so the tombstone is remembered
+        separately — otherwise the published list would show it again on the next reload."""
+        store = code("store.js")
+        self.assertIn('buried: "wtb.buried"', store)
+        block = store[store.index("function deleteCard("):]
+        self.assertIn("K.buried", block[:900])
+        app_src = code("app.js")
+        self.assertIn("Store.buried()", app_src)
+
+    def test_the_score_says_why_it_has_not_moved_yet(self):
+        """It is the PC's figure and still counts the deleted sitting until the PC reads the
+        tombstone. Silence there looks like the deletion did not work."""
+        self.assertIn("function buriedHere(", code("app.js"))
+        self.assertIn("still counted", code("app.js"))
+
+
 class TestTheRankingLens(unittest.TestCase):
     """Aesthetics is the bottle and value is the price, so "which is the better whiskey" is a
     different question from "which was the better buy". The desktop table can ask either; the

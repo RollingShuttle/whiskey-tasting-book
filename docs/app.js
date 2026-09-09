@@ -275,11 +275,32 @@ function paintRows() {
 }
 
 // ---------------------------------------------------------------- detail
+/** Every sitting of this spirit the phone can act on: the ones it scored itself and the ones the
+    PC published. Listing only its own meant a collection scored at a desk showed none at all, and
+    nothing could be corrected or removed from here. Local copies win — they are the newer of the
+    two whenever the phone has scored since the PC last did its sums. */
+function sittingsFor(code) {
+  const mine = Store.cardsFor(code);
+  const seen = new Set(mine.map((c) => c.tasting_id));
+  const gone = new Set(Store.buried());
+  const published = ((Store.careers().sittings || {})[code] || [])
+    .filter((t) => !gone.has(t.tasting_id));
+  return mine.concat(published.filter((t) => !seen.has(t.tasting_id)))
+    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+}
+
+/** How many of this spirit's sittings have been deleted here but not yet reconciled away. */
+function buriedHere(code) {
+  const gone = new Set(Store.buried());
+  if (!gone.size) return 0;
+  return ((Store.careers().sittings || {})[code] || []).filter((t) => gone.has(t.tasting_id)).length;
+}
+
 function openDetail(code) {
   const s = findSpirit(code);
   if (!s) return;
   const career = careerFor(code);
-  const sittings = Store.cardsFor(code);
+  const sittings = sittingsFor(code);
   const meta = [s.type, s.region, s.age ? `${s.age} yr` : s.age_label,
                 s.proof ? `${s.proof} proof` : null,
                 s.release_year ? `released ${Math.round(s.release_year)}` : null]
@@ -297,7 +318,14 @@ function openDetail(code) {
             el("span", { class: "total-of" }, `/ 100 · n=${career.n}`),
             career.medal ? el("span", { class: "medal",
               style: `--m:${MEDAL_COLORS[career.medal] || "#9A9086"}` }, career.medal) : null)
-        : el("div", { class: "muted", style: "margin-top:10px" }, "Not scored yet.")),
+        : el("div", { class: "muted", style: "margin-top:10px" }, "Not scored yet."),
+      // The score above is the PC's, and it still counts anything deleted here until the PC has
+      // read the tombstone. Saying so beats looking like the deletion did not take.
+      buriedHere(code)
+        ? el("div", { class: "muted", style: "margin-top:8px" },
+            `${buriedHere(code)} deleted sitting${buriedHere(code) === 1 ? "" : "s"} still counted `
+            + "above — the score updates once the PC has read it.")
+        : null),
 
     el("button", { class: "btn wide", type: "button", onclick: () => openScore(code) },
       "Score a pour"),
@@ -305,11 +333,11 @@ function openDetail(code) {
     sittings.length
       ? el("div", { class: "card", style: "margin-top:12px" },
           el("div", { class: "muted", style: "margin-bottom:8px" },
-            `${sittings.length} sitting${sittings.length === 1 ? "" : "s"} on this phone`),
+            `${sittings.length} sitting${sittings.length === 1 ? "" : "s"}`),
           ...sittings.map((c) => el("div", { class: "qrow sitting" },
             el("span", {}, c.date),
             el("span", { class: "when" },
-              `${c.total}${c._sent ? "" : " · waiting"}`),
+              `${c.total}${c._path && !c._sent ? " · waiting" : ""}`),
             el("button", { class: "linkish", type: "button",
                            onclick: () => editSitting(c) }, "Edit"),
             el("button", { class: "linkish danger", type: "button",
@@ -339,6 +367,8 @@ function editSitting(card) {
 }
 
 function removeSitting(card, spirit) {
+  // Works for a card scored on the PC as well: the tombstone is a file named after the tasting
+  // and its next revision, and the phone has both from the published list.
   const name = spirit.name || spirit.display_name || card.spirit_id;
   if (!window.confirm(`Delete this sitting of ${name}?\n\nIt stops counting. The record stays `
       + "in the journal as a tombstone, so nothing is actually destroyed.")) return;
