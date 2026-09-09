@@ -423,6 +423,41 @@ class TestRemovingASittingFromThePhone(unittest.TestCase):
         self.assertIn("still counted", code("app.js"))
 
 
+class TestAnOlderPcOverwritingTheData(unittest.TestCase):
+    """Two computers share the OneDrive folder, so whichever refreshed last wins — and an older
+    copy of the app wins by *removing* fields the phone is looking for. That is silent: the phone
+    finds nothing where the sittings were and has no way to say why."""
+
+    def test_the_published_file_carries_a_version(self):
+        import app as app_mod
+        self.assertGreaterEqual(app_mod.PUBLISHED_VERSION, 2)
+
+    def test_the_phone_knows_which_version_it_needs(self):
+        src = code("app.js")
+        self.assertIn("NEEDS_PUBLISHED_VERSION", src)
+        self.assertIn("function staleSource", src.replace("const staleSource", "function staleSource"))
+
+    def test_the_two_numbers_agree(self):
+        """If the phone asks for a version the PC never publishes, every screen says the PC is
+        out of date for ever."""
+        import app as app_mod
+        m = re.search(r"NEEDS_PUBLISHED_VERSION = (\d+)", code("app.js"))
+        self.assertIsNotNone(m)
+        self.assertLessEqual(int(m.group(1)), app_mod.PUBLISHED_VERSION)
+
+    def test_an_empty_sitting_list_explains_itself(self):
+        """Rendering nothing is indistinguishable from a screen that failed to draw."""
+        src = code("app.js")
+        self.assertIn("sittings.length ? null :", src)
+        self.assertIn("staleSource()", src)
+
+    def test_the_sync_screen_says_what_it_holds(self):
+        """So an empty screen elsewhere can be traced rather than guessed at."""
+        src = code("app.js")
+        self.assertIn("scored ·", src.replace("` · ", "` · "))
+        self.assertIn("sittings`", src)
+
+
 class TestTheRankingLens(unittest.TestCase):
     """Aesthetics is the bottle and value is the price, so "which is the better whiskey" is a
     different question from "which was the better buy". The desktop table can ask either; the

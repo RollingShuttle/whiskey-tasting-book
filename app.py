@@ -54,6 +54,12 @@ MEDAL_COLORS = {
 
 # Column contracts for the table view (SPEC.md §4.3). The front end builds its column chooser and
 # its CSV straight from these, so adding a column is a one-line change here.
+# What shape careers.json is in. Two computers share this folder, and an older copy of the app
+# republishing over a newer one is silent otherwise: the phone simply finds nothing where the
+# sittings used to be and has no way to say why. Raise this whenever a field is added that the
+# phone depends on, and teach the phone the same number.
+PUBLISHED_VERSION = 2
+
 COLLECTION_COLUMNS = [
     {"key": "code",             "label": "Code",     "type": "code",  "default": True},
     {"key": "career_score",     "label": "Score",    "type": "score1", "default": True},
@@ -451,7 +457,8 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
         # without a cutoff it cannot tell a card the PC has already counted from one it has not —
         # so every sitting scored on the phone was counted twice once the PC caught up.
         out.joinpath("careers.json").write_text(
-            json.dumps({"careers": careers, "calibration": calibration, "sittings": sittings,
+            json.dumps({"version": PUBLISHED_VERSION,
+                        "careers": careers, "calibration": calibration, "sittings": sittings,
                         "generated_at": datetime.now(timezone.utc).isoformat()},
                        ensure_ascii=False),
             encoding="utf-8")

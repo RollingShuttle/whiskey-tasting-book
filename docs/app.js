@@ -291,6 +291,12 @@ function sittingsFor(code) {
 }
 
 /** How many of this spirit's sittings have been deleted here but not yet reconciled away. */
+/** True when the figures on this phone were published by an app older than the one that wrote
+    this page. Two computers share the folder, so the one that refreshed last wins — and an old
+    one wins by removing things the phone is looking for. */
+const NEEDS_PUBLISHED_VERSION = 2;
+const staleSource = () => (Store.careers().version || 0) < NEEDS_PUBLISHED_VERSION;
+
 function buriedHere(code) {
   const gone = new Set(Store.buried());
   if (!gone.size) return 0;
@@ -333,6 +339,18 @@ function openDetail(code, { push = true } = {}) {
 
     el("button", { class: "btn wide", type: "button", onclick: () => openScore(code) },
       "Score a pour"),
+
+    // An empty list used to render nothing at all, which is indistinguishable from a screen that
+    // failed to draw. It has one cause worth naming and one worth ruling out.
+    sittings.length ? null : el("div", { class: "card", style: "margin-top:12px" },
+      careerFor(code)
+        ? notice("warn", staleSource()
+            ? "This bottle has been scored, but the sittings did not come through. The PC that "
+              + "last refreshed is running an older version of the app — update it there, press "
+              + "Refresh, then Sync here."
+            : "This bottle has been scored, but the sittings are not on this phone yet. "
+              + "Open Sync and refresh.")
+        : el("div", { class: "muted" }, "No sittings yet. Score a pour and it appears here.")),
 
     sittings.length
       ? el("div", { class: "card", style: "margin-top:12px" },
@@ -710,6 +728,18 @@ function renderSync() {
       el("div", { class: "muted" },
         m.lastSync ? `Last sync ${Store.localTime(m.lastSync)}`
                    : "Never synced on this phone"),
+      // What actually came down, so an empty screen elsewhere can be traced from here rather
+      // than guessed at.
+      el("div", { class: "muted" }, (() => {
+        const k = Store.careers();
+        const scored = Object.keys(k.careers || {}).length;
+        const sittings = Object.values(k.sittings || {}).reduce((a, v) => a + v.length, 0);
+        return `${Store.spirits().length} spirits · ${scored} scored · ${sittings} sittings`;
+      })()),
+      staleSource()
+        ? notice("warn", "The PC that last refreshed is running an older version of the app, so "
+            + "some of what this phone needs was not published. Update it there and press Refresh.")
+        : null,
       el("div", { class: "actions" },
         Graph.configured() && !signedIn
           ? el("button", { class: "btn", type: "button", onclick: () => Graph.signIn() }, "Sign in")

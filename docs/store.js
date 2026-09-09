@@ -80,8 +80,9 @@ const Store = (() => {
      reconciled and the collection went blank until the next sync — which needs a connection, the
      one thing this app is built not to need. */
   const careers = () => read(K.careers,
-    { careers: {}, calibration: [], sittings: {}, generatedAt: "" });
+    { version: 0, careers: {}, calibration: [], sittings: {}, generatedAt: "" });
   const setCareers = (data) => write(K.careers, {
+    version: (data && data.version) || 1,
     careers: (data && data.careers) || {},
     calibration: (data && data.calibration) || [],
     sittings: (data && data.sittings) || {},
