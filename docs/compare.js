@@ -149,7 +149,9 @@ const CompareView = (() => {
     const totals = el("div", { class: "cmp-totals" },
       ...items.map((it) => el("div", { class: "cmp-col" },
         el("div", { class: "cmp-name", style: "border-bottom-color:" + accentFor(it.spirit.type) },
-          it.spirit.name || it.spirit.display_name || it.code),
+          it.spirit.name || it.spirit.display_name || it.code,
+          el("span", { class: "cmp-sub" },
+            [it.spirit.distillery, it.code].filter(Boolean).join(" · "))),
         el("div", { class: "cmp-score" }, it.career.score.toFixed(1)),
         it.career.medal
           ? el("span", { class: "medal", style: "--m:" + (MEDAL_COLORS[it.career.medal] || "#9A9086") },
@@ -184,8 +186,8 @@ const CompareView = (() => {
       }
     } else {
       rows.append(el("div", { class: "muted chart-empty" },
-        "Only totals are available for these. Open Sync and refresh to pull the per-category "
-        + "figures the PC works out."));
+        "Only the totals came through. The per-category figures are worked out on the PC: press "
+        + "Refresh there first, then Sync here. Refreshing here alone cannot produce them."));
     }
 
     fill(host, head, el("div", { class: "card" }, totals), el("div", { class: "card" }, rows));

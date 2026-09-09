@@ -275,9 +275,13 @@ label.field > span { color: var(--muted); font-size: 0.78rem; }
 .cmp-totals { display: flex; gap: 10px; }
 .cmp-col { flex: 1 1 0; min-width: 0; text-align: center; }
 .cmp-name {
-  font-family: var(--serif); font-size: 0.9rem; line-height: 1.2; min-height: 2.4em;
+  font-family: var(--serif); font-size: 0.9rem; line-height: 1.2; min-height: 3.4em;
   border-bottom: 2px solid var(--line); padding-bottom: 6px; margin-bottom: 8px;
   overflow: hidden;
+}
+.cmp-sub {
+  display: block; color: var(--muted); font-size: 0.68rem; font-weight: 400;
+  margin-top: 2px; font-family: var(--sans);
 }
 .cmp-score { font-family: var(--serif); font-size: 1.5rem; }
 .cmp-drop {

@@ -18,6 +18,7 @@ const CompareView = (() => {
     data: null,
     search: "",
     picking: false,
+    scored: null,          // codes that actually have a career score; null until fetched
   };
   const MAX = 4;
   const host = () => document.getElementById("compare-view");
@@ -26,6 +27,7 @@ const CompareView = (() => {
     if (opts.session) { C.mode = "flight"; C.sessionId = opts.session; }
     host().hidden = false;
     try { C.sessions = (await api("/api/sessions")).sessions || []; } catch { C.sessions = []; }
+    await loadScored();
     await refresh();
   }
 
@@ -54,7 +56,19 @@ const CompareView = (() => {
     showView("compare");
   }
 
-  function invalidate() { C.data = null; }
+  /** Which spirits have a score at all. Comparing an unscored bottle produces an empty column,
+      so offering all 375 in the picker is offering 370 dead ends. /api/analysis is exactly this
+      list — one point per scored spirit — so nothing new has to be computed for it. */
+  async function loadScored() {
+    try {
+      const a = await api("/api/analysis");
+      C.scored = new Set((a.points || []).map((p) => p.code));
+    } catch {
+      C.scored = null;     // on failure show everything rather than an empty picker
+    }
+  }
+
+  function invalidate() { C.data = null; C.scored = null; }
 
   // ------------------------------------------------------------- selection
   function addCode(code) {
@@ -125,12 +139,19 @@ const CompareView = (() => {
 
   function results() {
     const terms = C.search.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    let list = state.spirits.filter((s) => !C.codes.includes(s.code));
+    let list = state.spirits.filter((s) => !C.codes.includes(s.code)
+                                           && (!C.scored || C.scored.has(s.code)));
     if (terms.length) {
       list = list.filter((s) => {
         const hay = `${s.code} ${s.display_name} ${s.type || ""}`.toLowerCase();
         return terms.every((t) => hay.includes(t));
       });
+    }
+    if (!list.length) {
+      return [el("li", { class: "pr-empty" },
+        C.scored && C.scored.size === 0
+          ? "Nothing has been scored yet — score a pour and it becomes comparable."
+          : "No scored spirit matches.")];
     }
     return list.map((s) => el("li", {
       role: "option", style: `border-left-color:${accentFor(s.type)}`,
@@ -161,8 +182,11 @@ const CompareView = (() => {
     for (const it of items) {
       grid.append(el("div", { class: "cmp-head", style: `border-top-color:${accentFor(it.type)}` },
         el("div", { class: "cmp-name" }, it.label),
-        el("div", { class: "cmp-sub" }, it.mode === "career"
-          ? `career · n=${it.n}` : (it.date || "one sitting")),
+        // The code, because three bottles here really are called George T. Stagg and two columns
+        // under the same heading is precisely the moment you need to tell them apart.
+        el("div", { class: "cmp-sub" },
+          [it.code, it.mode === "career" ? `career · n=${it.n}` : (it.date || "one sitting")]
+            .filter(Boolean).join("  ·  ")),
         el("div", { class: "cmp-total" },
           it.total === null || it.total === undefined ? "—"
             : (it.mode === "career" ? Number(it.total).toFixed(1) : String(it.total)),

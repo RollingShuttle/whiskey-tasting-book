@@ -250,6 +250,19 @@ class TestAnalysisAndCompare(unittest.TestCase):
         self.assertIn("app.careers[code] || {}).categories", src)
         self.assertIn("Store.cardsFor(code)", src)
 
+    def test_a_compare_column_is_identified_beyond_its_name(self):
+        """Two different bottles can carry the same name; the column has to say which is which."""
+        src = code("compare.js")
+        self.assertIn("cmp-sub", src)
+        self.assertIn("it.spirit.distillery, it.code", src)
+
+    def test_it_does_not_send_you_to_the_wrong_refresh(self):
+        """Per-category figures are computed on the PC. Telling the user to refresh the phone
+        sends them round a loop that cannot end, because refreshing here cannot produce them."""
+        src = code("compare.js")
+        block = src[src.index("Only the totals"):]
+        self.assertIn("Refresh there first", block[:300])
+
     def test_each_axis_is_drawn_against_its_own_maximum(self):
         """Otherwise Flavor out of 20 looks twice as good as Balance out of 10 (SPEC.md 4.2)."""
         self.assertIn("cat.max) * 100", code("compare.js"))

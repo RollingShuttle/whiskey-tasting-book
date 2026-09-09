@@ -1104,6 +1104,36 @@ class TestASubmittedCardIsNotADeadEnd(unittest.TestCase):
         self.assertIn("onclick: backToPicker", block[:200])
 
 
+class TestCompareOffersOnlyWhatCanBeCompared(unittest.TestCase):
+    """Comparing an unscored bottle produces an empty column, so offering the whole collection is
+    offering hundreds of dead ends."""
+
+    def source(self, name="compare.js"):
+        src = (Path(__file__).resolve().parent / "static" / name).read_text(encoding="utf-8")
+        src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
+        return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
+
+    def test_the_picker_is_limited_to_scored_spirits(self):
+        src = self.source()
+        self.assertIn("C.scored.has(s.code)", src)
+
+    def test_it_shows_everything_if_that_list_cannot_be_fetched(self):
+        """Failing closed here would leave an empty picker and no way to compare at all."""
+        src = self.source()
+        block = src[src.index("async function loadScored"):]
+        self.assertIn("C.scored = null", block[:400])
+        self.assertIn("!C.scored ||", src)
+
+    def test_the_scored_list_is_refetched_after_a_refresh(self):
+        block = self.source()
+        self.assertIn("C.data = null; C.scored = null;", block)
+
+    def test_a_column_names_the_code_as_well_as_the_bottle(self):
+        """Three bottles in this collection are called George T. Stagg. Two columns under the
+        same heading is exactly when you need to tell them apart."""
+        self.assertIn("it.code", self.source())
+
+
 class TestNothingIsSilentlyTruncated(unittest.TestCase):
     """A `.slice(0, n)` in a picker hides bottles the collection really has. On a 375-bottle
     collection the score list simply ended at B-60 and the compare list at 25, with nothing on
