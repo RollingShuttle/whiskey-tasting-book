@@ -236,6 +236,29 @@ because both read and write the same OneDrive folder — the same way the phone 
    python make_shortcut.py
    ```
 
+### Keeping a machine up to date
+
+**Double-click `update.bat`** in the project folder. That is the whole thing, on either computer.
+
+It fetches the latest version, reinstalls anything new it needs, closes the app if it is running,
+rebuilds it and refreshes the Desktop icon. Run it whenever you like: if there is nothing new it
+says so and stops in a second.
+
+Two things it will not do:
+
+- It will not overwrite changes you have made yourself to the project's own files. If you have any
+  it stops and names them. (`config.yaml`, `data/` and your workbooks are not part of the project,
+  so they are never touched.)
+- It will not report success after a failed build. If something goes wrong the window stays open
+  with the reason.
+
+Closing the app first matters more than it sounds: the running app holds its own program file open,
+so a rebuild cannot replace it, and skipping that step is how you end up still running last week's
+copy with nothing on screen to say so. `update.bat` handles that for you.
+
+Afterwards, open the app and press **Refresh** once, so the phone gets anything new the PC has
+started publishing.
+
 ### What works on both, and what to keep on one
 
 **Everything about scoring works on both.** Score, browse, the table, compare, analysis. Scores

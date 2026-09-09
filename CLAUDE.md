@@ -165,6 +165,12 @@ being squeezed. Proof and release year are shown on the score sheet, both tables
 views, because three bottles in this collection are called George T. Stagg and those two fields are
 what separate one release from the next.
 
+`update.py` / `update.bat` (+ `test_update.py`) is the updater: fast-forward pull, reinstall only
+if requirements.txt changed, stop the app (it holds its own exe open, so a build cannot replace it),
+rebuild, refresh the shortcut. It refuses to run over local changes to tracked files and it skips
+the twenty-second rebuild when nothing came down. Its build flags must stay in step with
+`build_exe.bat` — a test asserts that, because a silently different build is the worst outcome here.
+
 `setup_machine.py` (+ `test_setup_machine.py`) writes `config.yaml` for a new computer by finding
 OneDrive and the workbook itself — config.yaml is gitignored because its paths carry a username, so
 it is the only thing stopping a fresh clone from starting. **More than one PC may share the
