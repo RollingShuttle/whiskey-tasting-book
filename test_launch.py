@@ -13,6 +13,7 @@ import time
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import launch
 
@@ -153,6 +154,44 @@ class TestLifecycle(unittest.TestCase):
         """Only a leak guard: without it a crashed window would leave the port held forever."""
         state = {"last": time.monotonic() - 10, "closing": None}
         self.assertEqual(launch.wait_until_closed(state, grace=5, idle=1.0), 0)
+
+
+class TestTray(unittest.TestCase):
+    """Once the window is no longer the way out, the tray menu is the contract: it is the only
+    thing standing between the user and Task Manager."""
+
+    def test_the_menu_offers_open_and_quit(self):
+        icon = launch.build_tray("http://127.0.0.1:8765")
+        self.assertEqual([str(i.text) for i in icon.menu], ["Open", "Quit"])
+
+    def test_opening_is_the_default_action(self):
+        """Double-clicking the tray icon is what people try first; it should bring the window back."""
+        icon = launch.build_tray("http://x")
+        self.assertEqual([str(i.text) for i in icon.menu if i.default], ["Open"])
+
+    def test_it_wears_the_app_icon(self):
+        self.assertGreaterEqual(min(launch.tray_image().size), 16)
+
+    def test_the_window_closing_does_not_end_it(self):
+        """The whole point: a closed window leaves the server up behind the tray icon."""
+        ran = []
+        icon = mock.Mock(run=lambda: ran.append("ran"))
+        with mock.patch.object(launch, "build_tray", return_value=icon):
+            closed = {"last": 0.0, "closing": 0.0}      # a window shut long ago
+            self.assertEqual(launch.wait_for_exit(closed, "http://x", tray=True), 0)
+        self.assertEqual(ran, ["ran"], "it waited on the window instead of the tray")
+
+    def test_without_a_tray_it_still_closes_with_the_window(self):
+        """A resident app with no way to quit would be worse than one that quits too eagerly."""
+        gone = {"last": time.monotonic(), "closing": time.monotonic() - 99}   # window already shut
+        with mock.patch.object(launch, "build_tray", side_effect=RuntimeError("no tray here")):
+            self.assertEqual(launch.wait_for_exit(gone, "http://x", tray=True), 0)
+
+    def test_no_tray_asked_for_skips_it_entirely(self):
+        gone = {"last": time.monotonic(), "closing": time.monotonic() - 99}
+        with mock.patch.object(launch, "build_tray") as built:
+            self.assertEqual(launch.wait_for_exit(gone, "http://x", tray=False), 0)
+        built.assert_not_called()
 
 
 class TestServesInThread(unittest.TestCase):

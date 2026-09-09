@@ -3,7 +3,8 @@
 Read `SPEC.md` before changing anything. It is the build spec and it is current.
 `SETUP.md` covers the one-time Microsoft account setup. `RUNNING.md` is the plain-language
 guide to installing and starting both halves (the PC app opens via `launch.py`, not `app.py`, and
-ships as a console-free exe built by `build_exe.bat`) — keep it accurate when behaviour changes.
+ships as a console-free exe built by `build_exe.bat`, staying resident in the notification area
+when its window closes) — keep it accurate when behaviour changes.
 
 ## Non-negotiable
 
@@ -30,7 +31,7 @@ a matching `test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -p "test_*.py"     # 244 tests, all passing
+python -m unittest discover -p "test_*.py"     # 250 tests, all passing
 python verify_gate.py                          # SPEC §7 shipping gate (reads the master)
 python collection.py                           # health report, writes nothing
 ```
@@ -46,7 +47,7 @@ Done and tested — `collection.py` (loader), `rubric.py` (scoring), `store.py` 
 Web front end — **in progress.** `app.py` (Flask server at `127.0.0.1:8765`), the judging sheet,
 the flight/session view, the table view and compare (`static/index.html`, `app.js`, `table.js`,
 `compare.js`, `style.css`) are done and tested — SPEC.md build order steps 3, 4, 5 and 6.
-Covered by `test_app.py` (244 tests total). `GET /api/compare` takes `codes` (career scores,
+Covered by `test_app.py` (250 tests total). `GET /api/compare` takes `codes` (career scores,
 the default), or `session` / `tastings` to pin single sittings; it returns per-axis leaders and
 spreads, and every axis carries its own max so the view draws each bar against it.
 

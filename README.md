@@ -33,11 +33,11 @@ total, and a medal band: Diamond 90+, Gold 80+, Silver 70+, Bronze 60+.
 | `quickentry.py` | drains the Quick Entry sheet into draft tastings | `test_quickentry.py` |
 | `master_write.py` | the only code that adds a row to the master workbook | `test_master_write.py` |
 | `app.py` | local server + JSON API at `127.0.0.1:8765` | `test_app.py` |
-| `launch.py` | starts the app and opens it in its own window; packaged by `build_exe.bat` | `test_launch.py` |
+| `launch.py` | starts the app, opens its window, and keeps it resident in the tray; packaged by `build_exe.bat` | `test_launch.py` |
 | `static/` | the PC front end — `app.js` (sheet + flights), `table.js`, `compare.js`, `analysis.js` | — |
 | `docs/` | the iPhone client — offline-first, syncs through OneDrive | `test_phone.py` |
 
-244 tests, all passing. `python verify_gate.py` runs the SPEC §7 shipping gate.
+250 tests, all passing. `python verify_gate.py` runs the SPEC §7 shipping gate.
 
 ## Views
 

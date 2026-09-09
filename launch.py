@@ -3,13 +3,19 @@ launch.py — start the app and open it in its own window.
 
 `python app.py` leaves you with a console and an address to type. This does the same job but
 behaves like a desktop program: it starts the server, waits until it is actually answering, and
-opens it in a browser window with no address bar, no tabs and no bookmarks — just the app. Closing
-that window shuts the server down with it, so there is one thing to open and one thing to close.
+opens it in a browser window with no address bar, no tabs and no bookmarks — just the app.
 
-Three details worth knowing:
+Closing that window does **not** stop it. The app keeps running in the notification area, so the
+next window opens instantly and anything the phone uploads still lands while you are not looking
+at it. Quit from the tray icon when you actually want it to stop.
+
+Four details worth knowing:
 
   * The server runs in a thread of *this* process rather than a separate one, so it cannot outlive
     the launcher and leave a port held by an invisible program.
+  * The tray icon is not decoration. Once the window is no longer the way out, it is the only way
+    to stop the app short of Task Manager — so if a tray cannot be created, the app deliberately
+    goes back to closing with its window rather than becoming unstoppable.
   * The browser process cannot be waited on. Edge hands off to a background process and the one
     we started exits within a moment, even with its own profile — waiting on it shut the server
     down while the window was still on screen, showing a dead page. So the *page* tells us when
@@ -19,6 +25,7 @@ Three details worth knowing:
 
     python launch.py                 start it and open the window
     python launch.py --no-window     start it and print the address (the old behaviour)
+    python launch.py --no-tray       stop when the window closes, instead of staying resident
 """
 from __future__ import annotations
 
@@ -169,6 +176,50 @@ def open_window(url):
     return True
 
 
+def tray_image():
+    """The tray wants a picture, and the one the page already uses is bundled beside it."""
+    from PIL import Image
+    return Image.open(app_mod.STATIC_DIR / "icon.ico")
+
+
+def build_tray(url):
+    """Open is the default action, so double-clicking the tray icon puts the window back — which
+    is what people try first."""
+    import pystray
+    return pystray.Icon("whiskey_tasting_book", tray_image(), "Whiskey Tasting Book", pystray.Menu(
+        pystray.MenuItem("Open", lambda icon, item: open_window(url), default=True),
+        pystray.MenuItem("Quit", lambda icon, item: icon.stop()),
+    ))
+
+
+def wait_in_tray(url):
+    """Blocks until Quit is chosen. None means no tray could be created — the caller then needs
+    something that can still be stopped."""
+    try:
+        icon = build_tray(url)
+    except Exception:                          # noqa: BLE001 — any failure here means "no tray"
+        return None
+    try:
+        icon.run()
+    except Exception:                          # noqa: BLE001
+        return None
+    return 0
+
+
+def wait_for_exit(state, url, tray=True):
+    """Closing the window is no longer the end of the program. The server stays up behind the
+    tray icon; Quit there ends it.
+
+    The fallback matters more than the tray does. A windowless app with no way to quit is worse
+    than one that closes too eagerly, so if the tray will not start we go back to stopping when
+    the window goes."""
+    if tray:
+        done = wait_in_tray(url)
+        if done is not None:
+            return done
+    return wait_until_closed(state)
+
+
 def wait_until_closed(state, grace=15.0, idle=3600.0):
     """Stay up while the window is open. `grace` covers a reload; `idle` is only a leak guard for
     the case where the goodbye never arrives at all."""
@@ -190,6 +241,8 @@ def main(argv=None):
     ap.add_argument("--port", type=int)
     ap.add_argument("--no-window", action="store_true",
                     help="start the server and print the address instead of opening a window")
+    ap.add_argument("--no-tray", action="store_true",
+                    help="stop when the window closes instead of staying in the notification area")
     a = ap.parse_args(argv)
 
     # Relative paths in config.yaml (./data, ./data/backups) are meant to be relative
@@ -232,7 +285,7 @@ def main(argv=None):
             return 0
 
     open_window(url)
-    return wait_until_closed(state)
+    return wait_for_exit(state, url, tray=not a.no_tray)
 
 
 if __name__ == "__main__":

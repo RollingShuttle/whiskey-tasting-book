@@ -67,8 +67,12 @@ and no black console window behind it. It looks and behaves like an ordinary pro
 - **Resize it** by dragging any edge or corner, or maximise it with the button in the title bar.
 - **Minimise it** and it keeps running in the background. Click it in the taskbar to come back;
   nothing is lost and nothing needs restarting.
-- **To stop it, close the window.** The app shuts down with it. There is nothing else to quit and
-  nothing left running afterwards.
+- **Closing the window does not stop it.** The app carries on quietly in the background, which is
+  what you want: the next window opens instantly, and anything the phone uploaded still gets
+  picked up. To bring the window back, double-click the Desktop icon again.
+- **To actually quit**, find the small round app icon in the notification area — the arrow at the
+  right-hand end of the taskbar, next to the clock — and **right-click it → Quit**. Double-clicking
+  that same icon reopens the window.
 
 The first time you open it, the window may take a second or two to appear. It is waiting until the
 app is genuinely ready, rather than showing you an error page.
@@ -254,6 +258,9 @@ Your collection appears under the Collection tab. You are done.
 
 ### Things that are normal, not faults
 
+- **The app is still in the notification area after you close its window.** That is deliberate,
+  not a leak. It uses almost nothing while it sits there. Quit it from that icon when you want it
+  gone, or leave it — it stops when you shut the computer down either way.
 - **The phone asks you to sign in about once a day.** Microsoft limits how long a browser app can
   stay signed in, and it is not adjustable. It never stops you scoring — only uploading.
 - **Scores you entered on the PC do not instantly appear on the phone.** The phone sees them after
@@ -265,7 +272,9 @@ Your collection appears under the Collection tab. You are done.
 | What you see | What to do |
 |---|---|
 | The window closes at once, or never appears | Read `error.log` in the project folder — the reason is written there. |
-| You closed the app but want it back | Double-click the icon again. |
+| You closed the app but want it back | Double-click the icon again — or double-click the app icon in the notification area by the clock. |
+| You want it fully stopped | Right-click the app icon in the notification area → **Quit**. |
+| A window says "The app has been closed" | It is a leftover window from a copy you quit. Close it and open the app again. |
 | "No collection yet" on the phone | Start the PC app and press Refresh, then Refresh on the phone. |
 | "Workbook open in Excel" | Close `Whiskey Tastings.xlsx` (or the collection workbook) in Excel and try again. This is deliberate — writing while Excel has it open would create a conflicting copy. |
 | Sign-in fails on the phone | Check you used the personal Microsoft account, and that the address in Step C matches exactly, trailing slash included. |

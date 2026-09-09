@@ -14,6 +14,7 @@ python -m PyInstaller --noconfirm --clean --windowed --onefile ^
   --name "Whiskey Tasting Book" ^
   --icon "%~dp0icon.ico" ^
   --add-data "%~dp0static;static" ^
+  --hidden-import pystray._win32 ^
   --distpath "%~dp0." ^
   --workpath "%~dp0build" ^
   --specpath "%~dp0build" ^

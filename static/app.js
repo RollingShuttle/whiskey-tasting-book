@@ -86,12 +86,26 @@ const isBlind = (p) => (state.mode === "session" ? !!state.session?.blind : !!p.
    A reload fires pagehide too, so the launcher waits a few seconds before acting and any heartbeat
    cancels it. Run under `python app.py` these simply 404 and are ignored. */
 function watchWindow() {
-  const beat = () => fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
+  // Quitting from the tray leaves this window on screen with nothing behind it, so the page has
+  // to notice. Two missed beats is ten seconds: past a hiccup, short enough to still be useful.
+  let missed = 0;
+  const beat = () => fetch("/api/heartbeat", { method: "POST" })
+    .then(() => { missed = 0; })
+    .catch(() => { if (++missed >= 2) showStopped(); });
   beat();
   setInterval(beat, 5000);
   window.addEventListener("pagehide", () => {
     try { navigator.sendBeacon("/api/goodbye"); } catch { /* closing anyway */ }
   });
+}
+
+function showStopped() {
+  if (document.getElementById("stopped")) return;
+  document.body.append(el("div", { id: "stopped", class: "stopped" },
+    el("div", { class: "stopped-card" },
+      el("div", { class: "stopped-title" }, "The app has been closed"),
+      el("div", { class: "stopped-note" },
+        "You can close this window. Open it again from the Desktop or the Start menu."))));
 }
 
 // ---------------------------------------------------------------- boot

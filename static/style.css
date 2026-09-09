@@ -105,6 +105,14 @@ button.ghost:hover { color: var(--text); border-color: var(--brass); }
 .pr-code { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .pr-empty { color: var(--muted); padding: 14px 4px; }
 
+.stopped {
+  position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;
+  background: rgba(18, 16, 14, 0.93);
+}
+.stopped-card { text-align: center; padding: 30px 36px; }
+.stopped-title { font-family: var(--serif); font-size: 22px; margin-bottom: 8px; }
+.stopped-note { color: var(--muted); font-size: 14px; }
+
 /* ---------------------------------------------------------------- sheet header */
 .sheet { border-left: 3px solid var(--muted); }
 .sheet-head { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 4px; }
