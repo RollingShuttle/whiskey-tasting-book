@@ -33,10 +33,11 @@ total, and a medal band: Diamond 90+, Gold 80+, Silver 70+, Bronze 60+.
 | `quickentry.py` | drains the Quick Entry sheet into draft tastings | `test_quickentry.py` |
 | `master_write.py` | the only code that adds a row to the master workbook | `test_master_write.py` |
 | `app.py` | local server + JSON API at `127.0.0.1:8765` | `test_app.py` |
+| `launch.py` | starts the app and opens it in its own window | `test_launch.py` |
 | `static/` | the PC front end — `app.js` (sheet + flights), `table.js`, `compare.js`, `analysis.js` | — |
 | `docs/` | the iPhone client — offline-first, syncs through OneDrive | `test_phone.py` |
 
-221 tests, all passing. `python verify_gate.py` runs the SPEC §7 shipping gate.
+233 tests, all passing. `python verify_gate.py` runs the SPEC §7 shipping gate.
 
 ## Views
 
@@ -77,9 +78,9 @@ Pages URL as an SPA redirect URI, and enable Pages on the `docs/` folder.
 ```
 pip install -r requirements.txt
 cp config.example.yaml config.yaml   # then edit the paths for your machine
-python collection.py          # health report on the master workbook
+python make_shortcut.py       # a Desktop / Start menu icon (Windows)
 python -m unittest discover -p "test_*.py"
-python app.py                 # the local app at http://127.0.0.1:8765
+python launch.py              # start it and open its own window
 ```
 
 **`RUNNING.md` is the step-by-step guide to installing and starting both halves** — start there.

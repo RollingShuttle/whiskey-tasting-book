@@ -55,24 +55,32 @@ For reference, or if you ever move to a new computer:
 
 ### Starting it, every time
 
-Double-click **`run.bat`** in the project folder.
+**Double-click the "Whiskey Tasting Book" icon** on your Desktop, or find it in the Start menu.
 
-A black console window opens and prints something like:
+The app opens in its own window - no address bar, no tabs, no bookmarks bar. It looks and behaves
+like an ordinary program. There is nothing to type.
+
+**To stop it, close that window.** The app shuts down with it. There is nothing else to quit.
+
+Two small things you may notice:
+
+- A console window appears **minimised** in the taskbar while the app is open. Ignore it; it closes
+  by itself when you close the app window. It only exists so that if something ever goes wrong, the
+  reason is visible instead of the app silently failing to appear.
+- The first time, the window may take a second or two to appear. It is waiting until the app is
+  genuinely ready rather than showing you an error page.
+
+If you ever want the old behaviour - a plain console and an address you open yourself - run
+`python launch.py --no-window`, or `python app.py`.
+
+If the shortcuts are ever lost, recreate them with:
 
 ```
-Whiskey Tasting Book  →  http://127.0.0.1:8765
-  journal : C:\Users\<you>\OneDrive\Apps\Whiskey Tasting Book
+python make_shortcut.py
 ```
 
-Then open **http://127.0.0.1:8765** in your browser.
-
-Two things to know about that console window:
-
-- **Leave it open.** It *is* the app. Closing it stops the app, and the browser page will stop
-  working.
-- Nothing useful appears in it. It is just where the program lives.
-
-To stop the app: close the console window, or click in it and press `Ctrl+C`.
+They are ordinary Windows shortcuts. Delete them like any others; nothing is installed or
+registered anywhere.
 
 ### The very first time you start it
 
@@ -250,7 +258,8 @@ Your collection appears under the Collection tab. You are done.
 
 | What you see | What to do |
 |---|---|
-| Browser says the page cannot be reached | The console window is closed. Double-click `run.bat` again. |
+| The window closes at once, or never appears | Open a terminal in the project folder and run `python launch.py` - the reason will be printed. |
+| You closed the app but want it back | Double-click the icon again. |
 | "No collection yet" on the phone | Start the PC app and press Refresh, then Refresh on the phone. |
 | "Workbook open in Excel" | Close `Whiskey Tastings.xlsx` (or the collection workbook) in Excel and try again. This is deliberate — writing while Excel has it open would create a conflicting copy. |
 | Sign-in fails on the phone | Check you used the personal Microsoft account, and that the address in Step C matches exactly, trailing slash included. |
