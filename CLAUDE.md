@@ -30,7 +30,7 @@ a matching `test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -p "test_*.py"     # 233 tests, all passing
+python -m unittest discover -p "test_*.py"     # 238 tests, all passing
 python verify_gate.py                          # SPEC §7 shipping gate (reads the master)
 python collection.py                           # health report, writes nothing
 ```
@@ -46,7 +46,7 @@ Done and tested — `collection.py` (loader), `rubric.py` (scoring), `store.py` 
 Web front end — **in progress.** `app.py` (Flask server at `127.0.0.1:8765`), the judging sheet,
 the flight/session view, the table view and compare (`static/index.html`, `app.js`, `table.js`,
 `compare.js`, `style.css`) are done and tested — SPEC.md build order steps 3, 4, 5 and 6.
-Covered by `test_app.py` (233 tests total). `GET /api/compare` takes `codes` (career scores,
+Covered by `test_app.py` (238 tests total). `GET /api/compare` takes `codes` (career scores,
 the default), or `session` / `tastings` to pin single sittings; it returns per-axis leaders and
 spreads, and every axis carries its own max so the view draws each bar against it.
 
