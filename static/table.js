@@ -158,10 +158,37 @@ const TableView = (() => {
   }
 
   // ------------------------------------------------------------- render
+  /* Typing in the filter re-renders the whole view, which replaces the very box being typed in:
+     the element holding the caret is destroyed and a fresh one put in its place, so focus is lost
+     after every character. Rather than make the filter a special case — the next control added
+     here would hit the same wall — whatever was focused is put back afterwards, caret and
+     selection included. Anything inside the view with an id survives a render. */
   function render() {
     const host = document.getElementById("table-view");
-    const list = visibleRows();
+    const was = focusedWithin(host);
+    const list = visibleRows();          // once: it filters and sorts every row in the collection
     host.replaceChildren(toolbar(list), tableEl(list), footer(list));
+    restoreFocus(was);
+  }
+
+  function focusedWithin(host) {
+    const node = document.activeElement;
+    if (!node || !node.id || !host.contains(node)) return null;
+    const keep = { id: node.id, start: null, end: null };
+    try {                                   // selectionStart throws on inputs that have no text
+      keep.start = node.selectionStart;
+      keep.end = node.selectionEnd;
+    } catch { /* a checkbox or a select; focus alone is enough */ }
+    return keep;
+  }
+
+  function restoreFocus(keep) {
+    if (!keep) return;
+    const node = document.getElementById(keep.id);
+    if (!node) return;
+    node.focus();
+    if (keep.start === null) return;
+    try { node.setSelectionRange(keep.start, keep.end); } catch { /* not a text field */ }
   }
 
   // ------------------------------------------------------------- the ranking lens
@@ -219,7 +246,7 @@ const TableView = (() => {
 
     const controls = el("div", { class: "t-controls" },
       el("input", { class: "t-search", type: "text", placeholder: "Filter…", value: f.q,
-                    "aria-label": "Filter rows",
+                    id: "t-filter", "aria-label": "Filter rows",
                     oninput: (e) => { f.q = e.target.value; render(); } }),
       ...FACETS.map(facetSelect).filter(Boolean),
       T.mode === "collection"

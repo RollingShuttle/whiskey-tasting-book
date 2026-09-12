@@ -1223,6 +1223,49 @@ class TestFilteringByKindOfSpirit(AppCase):
         self.assertNotIn('T.mode === "collection" ? FACETS.map', src)
 
 
+class TestTypingInTheFilterSurvivesTheRender(unittest.TestCase):
+    """Every keystroke re-renders the table, which replaces the box being typed in — the element
+    holding the caret is destroyed and a fresh one put in its place. One character per click into
+    the box, which is unusable."""
+
+    def source(self):
+        src = (Path(__file__).resolve().parent / "static" / "table.js").read_text(encoding="utf-8")
+        src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
+        return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
+
+    def test_focus_is_carried_across_a_render(self):
+        src = self.source()
+        block = src[src.index("function render()"):src.index("function focusedWithin(")]
+        self.assertIn("focusedWithin(host)", block)
+        self.assertIn("restoreFocus(", block)
+
+    def test_the_caret_goes_back_where_it_was(self):
+        """Putting focus back but not the caret sends every character to the end, which breaks
+        editing a word you have already typed."""
+        src = self.source()
+        self.assertIn("selectionStart", src)
+        self.assertIn("setSelectionRange", src)
+
+    def test_the_filter_box_can_be_found_again(self):
+        """It is restored by id, so without one it is a fresh anonymous element every time."""
+        self.assertIn('id: "t-filter"', self.source())
+
+    def test_it_is_not_a_special_case_for_that_one_box(self):
+        """Anything focused inside the view is restored, so the next control added here does not
+        have to rediscover this."""
+        src = self.source()
+        block = src[src.index("function focusedWithin("):src.index("function restoreFocus(")]
+        self.assertIn("document.activeElement", block)
+        self.assertNotIn("t-filter", block)
+
+    def test_the_rows_are_worked_out_once_per_render(self):
+        """It filters and sorts every row in the collection; three times a keystroke is three
+        times the work for the same answer."""
+        src = self.source()
+        block = src[src.index("function render()"):src.index("function focusedWithin(")]
+        self.assertEqual(block.count("visibleRows()"), 1)
+
+
 class TestTheReviewControlsAreOnScreen(unittest.TestCase):
     """The table is wider than the window and scrolls sideways, so the last column is off the
     right edge. A control put there is present, documented and invisible — which is what happened
