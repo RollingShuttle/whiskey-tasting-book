@@ -577,3 +577,11 @@ input:disabled, textarea:disabled { color: var(--text); opacity: .8; cursor: def
 /* A collection row with reviews behind it opens them. */
 .t-table tbody tr.openable { cursor: pointer; }
 .t-table tbody tr.openable:hover { background: color-mix(in srgb, var(--brass) 8%, transparent); }
+
+/* Amending a flight, beside the one you have chosen. */
+.cmp-editflight {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+  margin-top: 12px; padding: 12px 14px;
+  background: var(--surface-2); border-radius: 10px;
+}
+.cmp-editflight .field { min-width: 160px; }

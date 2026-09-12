@@ -18,9 +18,12 @@ const CompareView = (() => {
     data: null,
     search: "",
     picking: false,
+    editing: false,        // the flight details form is open
     scored: null,          // codes that actually have a career score; null until fetched
   };
-  const MAX = 4;
+  // The desktop grid gives each card its own column and scrolls, so the only reason to stop is
+  // legibility. A flight is not bound by this at all: it has the pours it has.
+  const MAX = 12;
   const host = () => document.getElementById("compare-view");
 
   async function open(opts = {}) {
@@ -29,6 +32,55 @@ const CompareView = (() => {
     try { C.sessions = (await api("/api/sessions")).sessions || []; } catch { C.sessions = []; }
     await loadScored();
     await refresh();
+  }
+
+  /** Amend a flight. POST /api/session with its id writes a new revision rather than editing in
+      place, so the evening as first recorded is still in the journal. */
+  function flightForm() {
+    const s = C.sessions.find((x) => x.session_id === C.sessionId);
+    if (!s) return null;
+    const draft = { title: s.title || "", date: s.date || "", location: s.location || "",
+                    company: s.company || "" };
+    const field = (key, label, type = "text") =>
+      el("label", { class: "field" }, el("span", {}, label),
+        el("input", { type, value: draft[key],
+                      oninput: (e) => { draft[key] = e.target.value; } }));
+
+    return el("div", { class: "cmp-editflight" },
+      field("title", "Title"), field("date", "Date", "date"),
+      field("location", "Location"), field("company", "Company"),
+      el("button", { class: "btn", type: "button", onclick: async () => {
+        try {
+          await postJSON("/api/session", { session_id: C.sessionId, ...draft });
+          C.sessions = (await api("/api/sessions")).sessions || [];
+          C.editing = false;
+          render();
+          showStatus("ok", "Flight updated. The earlier version stays in the journal.");
+        } catch (e) {
+          showStatus("err", `Could not save the flight: ${e.body?.error || e.message}`);
+        }
+      } }, "Save"));
+  }
+
+  async function deleteFlight() {
+    const s = C.sessions.find((x) => x.session_id === C.sessionId);
+    if (!s) return;
+    const name = `${s.title || "Untitled flight"} — ${s.date}`;
+    if (!window.confirm(`Delete the flight "${name}"?\n\n`
+        + `Its ${s.pours} pour${s.pours === 1 ? "" : "s"} are kept: they are sittings that `
+        + "happened, and only the evening that grouped them is being taken off the books.")) return;
+    try {
+      await api(`/api/session/${encodeURIComponent(C.sessionId)}`, { method: "DELETE" });
+      C.sessions = (await api("/api/sessions")).sessions || [];
+      C.sessionId = null;
+      C.editing = false;
+      C.data = null;
+      TableView.invalidate(); AnalysisView.invalidate();
+      render();
+      showStatus("ok", `Deleted the flight "${name}". Its pours are still in your reviews.`);
+    } catch (e) {
+      showStatus("err", `Could not delete the flight: ${e.body?.error || e.message}`);
+    }
   }
 
   function query() {
@@ -99,7 +151,19 @@ const CompareView = (() => {
         ...C.sessions.map((s) => el("option", { value: s.session_id },
           `${s.title || "Untitled flight"} — ${s.date} (${s.pours} pour${s.pours === 1 ? "" : "s"})`)));
       sel.value = C.sessionId || "";
-      bar.append(el("div", { class: "cmp-picks" }, sel));
+      const picks = el("div", { class: "cmp-picks" }, sel);
+      if (C.sessionId) {
+        // A flight is a record like any other: it can be corrected, and it can be taken off the
+        // books. Here, beside the one you have chosen, is the only place it is ever named.
+        picks.append(
+          el("button", { class: "ghost", type: "button",
+                         onclick: () => { C.editing = !C.editing; render(); } },
+             C.editing ? "Close" : "Edit flight"),
+          el("button", { class: "ghost danger", type: "button", onclick: deleteFlight },
+             "Delete flight"));
+      }
+      bar.append(picks);
+      if (C.editing && C.sessionId) bar.append(flightForm());
       return bar;
     }
 

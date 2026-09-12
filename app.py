@@ -58,6 +58,10 @@ MEDAL_COLORS = {
 # depends on, and teach the phone the same number.
 PUBLISHED_VERSION = 2
 
+# How many cards a single comparison may hold. Four was the old limit and it made a flight of five
+# impossible to look at — the one case where the number is not chosen by hand.
+COMPARE_MAX = 12
+
 # Column contracts for the table view (SPEC.md §4.3). The front end builds its column chooser and
 # its CSV straight from these, so adding a column is a one-line change here.
 COLLECTION_COLUMNS = [
@@ -503,6 +507,18 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
         return jsonify({"spirit": sp, "career": _json_safe(career),
                         "sittings": journal.career(code)["sittings"]})
 
+    @app.delete("/api/session/<session_id>")
+    def api_delete_session(session_id):
+        """Remove a flight. A tombstone, so the record survives — and the pours survive with it:
+        they are sittings that happened, and only the evening that grouped them is being taken
+        off the books."""
+        try:
+            rec = journal.delete_session(session_id, reason=_clean(
+                (request.get_json(silent=True) or {}).get("reason")))
+        except KeyError:
+            return jsonify({"error": f"no such session {session_id}"}), 404
+        return jsonify({"ok": True, "session_id": session_id, "revision": rec["revision"]})
+
     @app.get("/api/tasting/<tasting_id>")
     def api_get_tasting(tasting_id):
         """One sitting, resolved to its latest revision — what the table hands to the sheet when
@@ -776,8 +792,12 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
 
         if not items:
             return jsonify({"error": "nothing to compare"}), 400
-        if len(items) > 4:
-            return jsonify({"error": "compare takes at most 4 cards"}), 400
+        # A flight is however many pours it had, and refusing to show a five-pour evening is
+        # refusing the thing the flight was for. The grid makes a column each and scrolls, so the
+        # only reason to cap at all is to keep a stray request from drawing something unreadable.
+        if len(items) > COMPARE_MAX:
+            return jsonify({"error": f"compare takes at most {COMPARE_MAX} cards, "
+                                     f"and this has {len(items)}"}), 400
 
         return jsonify({"categories": rubric.as_config()["categories"],
                         "items": items, "axes": _axes(rubric, items)})

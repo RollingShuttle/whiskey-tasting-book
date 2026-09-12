@@ -272,8 +272,10 @@ label.field > span { color: var(--muted); font-size: 0.78rem; }
 /* ---------------------------------------------------------------- compare */
 .cmp-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
 .btn.small { min-height: 34px; padding: 6px 14px; font-size: 0.85rem; }
-.cmp-totals { display: flex; gap: 10px; }
-.cmp-col { flex: 1 1 0; min-width: 0; text-align: center; }
+.cmp-totals { display: flex; gap: 10px; overflow-x: auto; }
+/* A fixed basis rather than an equal share: past three or four, equal shares are too
+   narrow to read a name in, so the row scrolls instead of squeezing. */
+.cmp-col { flex: 1 0 5.4rem; min-width: 0; text-align: center; }
 .cmp-name {
   font-family: var(--serif); font-size: 0.9rem; line-height: 1.2; min-height: 3.4em;
   border-bottom: 2px solid var(--line); padding-bottom: 6px; margin-bottom: 8px;

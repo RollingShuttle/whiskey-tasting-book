@@ -365,8 +365,30 @@ class TestCompare(AppCase):
         self.assertIsNone(axes["aroma"]["leader"], "a tied axis has no leader")
         self.assertEqual(axes["aroma"]["spread"], 0)
 
-    def test_at_most_four_cards(self):
-        self.assertEqual(self._cmp("codes=B-18,S-1,B-18,S-1,B-18")[0], 400)
+    def test_five_cards_are_fine(self):
+        """Four was the old limit, and it made a flight of five impossible to look at — the one
+        case where the number of cards is not chosen by hand."""
+        self.assertEqual(self._cmp("codes=B-18,S-1,B-18,S-1,B-18")[0], 200)
+
+    def test_there_is_still_an_upper_bound(self):
+        """Not to protect the answer, but to stop a stray request drawing something unreadable."""
+        import app as app_mod
+        too_many = ",".join(["B-18"] * (app_mod.COMPARE_MAX + 1))
+        status, body = self._cmp("codes=" + too_many)
+        self.assertEqual(status, 400)
+        self.assertIn(str(app_mod.COMPARE_MAX), body["error"])
+
+    def test_a_flight_of_six_can_be_compared(self):
+        """The case this was blocking. A flight is however many pours it had."""
+        j = store_mod.Journal(self.tmp / "journal", rubric_mod.load_rubric()).ensure()
+        sess = j.write_session(title="Six", date="2026-09-12")
+        for i in range(6):
+            j.write_tasting(spirit_id="B-18" if i % 2 else "S-1",
+                            session_id=sess["session_id"], flight_pos=i + 1,
+                            scores=dict(EXAMPLE_CARD))
+        status, body = self._cmp("session=" + sess["session_id"])
+        self.assertEqual(status, 200, body)
+        self.assertEqual(len(body["items"]), 6)
 
     def test_nothing_to_compare_is_rejected(self):
         self.assertEqual(self._cmp("")[0], 400)
@@ -1221,6 +1243,70 @@ class TestFilteringByKindOfSpirit(AppCase):
         src = self.source_js()
         self.assertIn("...FACETS.map(facetSelect).filter(Boolean),", src)
         self.assertNotIn('T.mode === "collection" ? FACETS.map', src)
+
+
+class TestAFlightCanBeAmendedOrRemoved(AppCase):
+    """A flight is a record like any other. It was the only one that could be created and never
+    corrected or taken back."""
+
+    def journal(self):
+        return store_mod.Journal(self.tmp / "journal", rubric_mod.load_rubric()).ensure()
+
+    def flight(self, pours=2, **fields):
+        j = self.journal()
+        s = j.write_session(**{"title": "A night", "date": "2026-09-12", **fields})
+        for i in range(pours):
+            j.write_tasting(spirit_id="B-18", session_id=s["session_id"], flight_pos=i + 1,
+                            scores=dict(EXAMPLE_CARD))
+        return s
+
+    def test_amending_writes_a_revision(self):
+        made = self.flight()
+        r = self.c.post("/api/session", json={"session_id": made["session_id"],
+                                              "title": "A better night"})
+        self.assertIn(r.status_code, (200, 201), r.get_json())
+        live = self.c.get("/api/sessions").get_json()["sessions"]
+        self.assertEqual(len(live), 1, "a revision must not read as a second flight")
+        self.assertEqual(live[0]["title"], "A better night")
+        self.assertEqual(live[0]["revision"], 2)
+
+    def test_the_first_version_is_still_on_disk(self):
+        made = self.flight()
+        self.c.post("/api/session", json={"session_id": made["session_id"], "title": "Changed"})
+        files = list((self.tmp / "journal" / "sessions").glob("*.json"))
+        self.assertEqual(len(files), 2)
+
+    def test_deleting_writes_a_tombstone(self):
+        made = self.flight()
+        r = self.c.delete("/api/session/%s" % made["session_id"])
+        self.assertEqual(r.status_code, 200, r.get_json())
+        self.assertEqual(self.c.get("/api/sessions").get_json()["sessions"], [])
+        self.assertEqual(len(list((self.tmp / "journal" / "sessions").glob("*.json"))), 2)
+
+    def test_the_pours_survive_the_flight(self):
+        """A flight is a grouping. The sittings in it happened whether or not the evening that
+        gathered them is still on the books."""
+        made = self.flight(pours=3)
+        self.c.delete("/api/session/%s" % made["session_id"])
+        rows = self.c.get("/api/table/tastings").get_json()["rows"]
+        self.assertEqual(len(rows), 3)
+
+    def test_deleting_one_that_is_not_there(self):
+        self.assertEqual(self.c.delete("/api/session/F-nope").status_code, 404)
+
+    def test_a_deleted_flight_cannot_be_compared(self):
+        made = self.flight()
+        self.c.delete("/api/session/%s" % made["session_id"])
+        self.assertEqual(
+            self.c.get("/api/compare?session=%s" % made["session_id"]).status_code, 404)
+
+    def test_the_view_offers_both(self):
+        src = (Path(__file__).resolve().parent / "static" / "compare.js").read_text(encoding="utf-8")
+        src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
+        src = re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
+        self.assertIn("Edit flight", src)
+        self.assertIn("Delete flight", src)
+        self.assertIn('method: "DELETE"', src)
 
 
 class TestTypingInTheFilterSurvivesTheRender(unittest.TestCase):

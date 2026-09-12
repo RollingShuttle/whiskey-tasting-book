@@ -17,7 +17,9 @@ const CompareView = (() => {
   let picking = false;
   let query = "";
 
-  const MAX = 4;
+  // Wider than four, but not the desktop's dozen: the totals sit side by side across 375
+  // points, and past six they are too narrow to read. The per-category bars stack, so they cope.
+  const MAX = 6;
 
   /** Shared with the table, so a comparison and a ranking cannot disagree about the same
       spirit — and so both fold in this phone's own cards the same way. */

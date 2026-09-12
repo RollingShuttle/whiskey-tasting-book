@@ -210,6 +210,18 @@ class Journal:
     def _highest_session_revision(self, session_id):
         return max((rev for _, sid, rev in self._session_files() if sid == session_id), default=0)
 
+    def delete_session(self, session_id, reason=None):
+        """A tombstone, the same as for a tasting. The pours are not touched: a flight is a
+        grouping, and the sittings in it are real sittings that happened whether or not the
+        evening they belonged to is still on the books."""
+        rev = self._highest_session_revision(session_id) + 1
+        if rev == 1:
+            raise KeyError(f"no such session {session_id}")
+        rec = {"session_id": session_id, "revision": rev, "deleted": True,
+               "reason": reason, "created_at": _now_iso()}
+        _atomic_write_json(self._dir("sessions") / f"{session_id}-r{rev}.json", rec)
+        return rec
+
     def sessions(self):
         """Resolved view: highest revision wins, tombstones drop the record. Newest first."""
         best = {}

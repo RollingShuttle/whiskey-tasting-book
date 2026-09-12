@@ -114,7 +114,7 @@ changed something in Excel, or when you want the phone to see new bottles.
 | **Score** | The judging sheet. Pick a spirit, score the ten categories, submit. |
 | **New flight** | Several pours in one sitting, with a switcher along the top. Blind mode hides each bottle until its card is submitted. |
 | **Table** | Every spirit or every tasting, sortable and filterable. This is the "easy sorting" the whole project was for. |
-| **Compare** | Two to four things side by side. |
+| **Compare** | Several things side by side — up to twelve, and a flight brings however many pours it had. Choosing a flight also lets you rename or delete it. |
 | **Analysis** | Score against age, price, proof; by type and region; and whether your own scoring is drifting over time. |
 
 ### Your scores are saved as you go
