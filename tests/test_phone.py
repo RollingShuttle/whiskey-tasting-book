@@ -1,7 +1,7 @@
 """
 test_phone.py — the iPhone bundle in docs/, checked from Python.
 
-    python test_phone.py
+    python tests/test_phone.py
 
 The screens themselves need a phone to judge, but plenty about this bundle is checkable without
 one: that every file the service worker promises to cache exists, that the iOS rules in SPEC.md
@@ -10,16 +10,25 @@ matches the one the PC scores with, and that no client ID has been committed by 
 
 These are the failures that would only show up on a phone, in a bar, with no signal.
 """
+
+# Run straight from the shell, only tests/ is on the path; discovered from the repo root, only
+# the root is. Put all three where imports can find them so both ways of running behave alike.
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+sys.path[:0] = [str(HERE), str(ROOT), str(ROOT / "tools")]
+
 import io
 import json
 import re
 import struct
 import unittest
-from pathlib import Path
 
 import rubric as rubric_mod
 
-DOCS = Path(__file__).resolve().parent / "docs"
+DOCS = ROOT / "docs"
 REQUIRED = ["index.html", "style.css", "app.js", "store.js", "graph.js", "config.js",
             "analysis.js", "compare.js", "table.js",
             "sw.js", "manifest.webmanifest", "rubric.json", "icon-180.png"]

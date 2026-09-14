@@ -17,27 +17,39 @@ total, and a medal band: Diamond 90+, Gold 80+, Silver 70+, Bronze 60+.
 
 1. `Whiskey Collection.xlsx` holds 198 bottle photos as Excel rich values. openpyxl cannot
    round-trip them, so **nothing ever calls `.save()` on it.** New rows are written by a
-   zip-level surgical append (SPEC.md §8), verified afterwards, with automatic rollback.
+   zip-level surgical append (SPEC §8), verified afterwards, with automatic rollback.
 2. The phone reaches OneDrive with the `Files.ReadWrite.AppFolder` scope only. The collection
    workbook is not merely off-limits to it — it is invisible.
 3. Journal files are immutable. Corrections are new revisions; deletions are tombstones.
+
+## Layout
+
+```
+*.py                    the app: server, launcher, and the modules underneath them
+static/                 the PC front end, bundled into the exe
+docs/                   the iPhone client (GitHub Pages will only serve / or /docs)
+tests/                  one file per module — python -m unittest discover -s tests
+tools/                  scripts run by hand: update, first-time setup, shortcut, gate
+guide/                  SPEC.md, RUNNING.md, SETUP.md
+run.bat update.bat build_exe.bat        the three things you double-click
+```
 
 ## Modules
 
 | File | What it does | Tests |
 |---|---|---|
-| `collection.py` | read-only loader for the master workbook | `test_collection.py` |
-| `rubric.py` | scoring, medals, career aggregation | `test_rubric.py` |
-| `store.py` | the tasting journal — tastings, flights, encounters, pending bottles | `test_store.py` |
-| `rollup.py` | regenerates `Whiskey Tastings.xlsx` from the journal | `test_rollup.py` |
-| `quickentry.py` | drains the Quick Entry sheet into draft tastings | `test_quickentry.py` |
-| `master_write.py` | the only code that adds a row to the master workbook | `test_master_write.py` |
-| `app.py` | local server + JSON API at `127.0.0.1:8765` | `test_app.py` |
-| `launch.py` | starts the app, opens its window, and keeps it resident in the tray; packaged by `build_exe.bat` | `test_launch.py` |
+| `collection.py` | read-only loader for the master workbook | `tests/test_collection.py` |
+| `rubric.py` | scoring, medals, career aggregation | `tests/test_rubric.py` |
+| `store.py` | the tasting journal — tastings, flights, encounters, pending bottles | `tests/test_store.py` |
+| `rollup.py` | regenerates `Whiskey Tastings.xlsx` from the journal | `tests/test_rollup.py` |
+| `quickentry.py` | drains the Quick Entry sheet into draft tastings | `tests/test_quickentry.py` |
+| `master_write.py` | the only code that adds a row to the master workbook | `tests/test_master_write.py` |
+| `app.py` | local server + JSON API at `127.0.0.1:8765` | `tests/test_app.py` |
+| `launch.py` | starts the app, opens its window, and keeps it resident in the tray; packaged by `build_exe.bat` | `tests/test_launch.py` |
 | `static/` | the PC front end — `app.js` (sheet + flights), `table.js`, `compare.js`, `analysis.js` | — |
-| `docs/` | the iPhone client — offline-first, syncs through OneDrive | `test_phone.py` |
+| `docs/` | the iPhone client — offline-first, syncs through OneDrive | `tests/test_phone.py` |
 
-264 tests, all passing. `python verify_gate.py` runs the SPEC §7 shipping gate.
+439 tests, all passing. `python tools/verify_gate.py` runs the shipping gate in [guide/SPEC.md](guide/SPEC.md) §7.
 
 ## Views
 
@@ -78,7 +90,7 @@ Pages URL as an SPA redirect URI, and enable Pages on the `docs/` folder.
 ```
 pip install -r requirements.txt
 cp config.example.yaml config.yaml   # then edit the paths for your machine
-python -m unittest discover -p "test_*.py"
+python -m unittest discover -s tests
 python launch.py              # start it and open its own window
 ```
 
@@ -86,12 +98,14 @@ For the desktop version, build it once and make an icon for it:
 
 ```
 build_exe.bat                 # -> "Whiskey Tasting Book.exe", no console window
-python make_shortcut.py       # Desktop / Start menu icon, pointing at the exe
+python tools/make_shortcut.py # Desktop / Start menu icon, pointing at the exe
 ```
 
 The exe is gitignored — it is 27 MB of build output. It reads `config.yaml`, `data/` and the
 workbooks from the folder it sits in, which is why it builds here rather than into `dist/`.
 
-**`RUNNING.md` is the step-by-step guide to installing and starting both halves** — start there.
-`config.yaml` is gitignored (its file paths contain a local username); `config.example.yaml` is
-the template. `SPEC.md` is the build spec. `SETUP.md` is the one-time Microsoft account setup.
+**[guide/RUNNING.md](guide/RUNNING.md) is the step-by-step guide to installing and starting
+both halves** — start there. [guide/SPEC.md](guide/SPEC.md) is the build spec and
+[guide/SETUP.md](guide/SETUP.md) is the one-time Microsoft account setup.
+`config.yaml` is gitignored (its file paths contain a local username);
+`config.example.yaml` is the template.

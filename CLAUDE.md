@@ -1,10 +1,27 @@
 # Whiskey Tasting Book — project context
 
-Read `SPEC.md` before changing anything. It is the build spec and it is current.
-`SETUP.md` covers the one-time Microsoft account setup. `RUNNING.md` is the plain-language
+Read `guide/SPEC.md` before changing anything. It is the build spec and it is current.
+`guide/SETUP.md` covers the one-time Microsoft account setup. `guide/RUNNING.md` is the plain-language
 guide to installing and starting both halves (the PC app opens via `launch.py`, not `app.py`, and
 ships as a console-free exe built by `build_exe.bat`, staying resident in the notification area
 when its window closes) — keep it accurate when behaviour changes.
+
+## Where things are
+
+The eight app modules, the three `.bat` files and `config.yaml` stay at the root: the exe reads
+`config.yaml` and `data/` from the folder it sits in, and the `.bat` files are what gets
+double-clicked. Everything else has a folder — `tests/`, `tools/` (scripts run by hand),
+`guide/` (the three documents above), `static/` (the PC front end, bundled into the exe) and
+`docs/`.
+
+Two of those names are fixed by something outside this repo and **cannot be renamed**: GitHub
+Pages serves only `/` or `/docs`, so the phone client has to be `docs/` however much it looks
+like documentation; and `static/` is what `build_exe.bat` copies in with
+`--add-data "%~dp0static;static"`, which `app.py` then resolves under `sys._MEIPASS`.
+
+Anything under `tools/` or `tests/` resolves the project root as `Path(__file__).parent.parent`.
+The tests put `tests/`, the root and `tools/` on `sys.path` themselves, so each still runs
+standalone (`python tests/test_app.py`) as well as under discovery.
 
 ## Non-negotiable
 
@@ -27,16 +44,16 @@ when its window closes) — keep it accurate when behaviour changes.
 ## Working style
 
 Save each step as it is finished, and run its tests before starting the next. Every module here has
-a matching `test_*.py` that runs standalone.
+a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -p "test_*.py"     # 264 tests, all passing
-python verify_gate.py                          # SPEC §7 shipping gate (reads the master)
-python collection.py                           # health report, writes nothing
+python -m unittest discover -s tests    # 439 tests, all passing
+python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
+python collection.py                    # health report, writes nothing
 ```
 
-`test_collection.py` SHA-256s the master workbook before and after loading. If that test ever
+`tests/test_collection.py` SHA-256s the master workbook before and after loading. If that test ever
 fails, stop everything.
 
 ## State as of 8 Sep 2026
@@ -47,7 +64,7 @@ Done and tested — `collection.py` (loader), `rubric.py` (scoring), `store.py` 
 Web front end — **in progress.** `app.py` (Flask server at `127.0.0.1:8765`), the judging sheet,
 the flight/session view, the table view and compare (`static/index.html`, `app.js`, `table.js`,
 `compare.js`, `style.css`) are done and tested — SPEC.md build order steps 3, 4, 5 and 6.
-Covered by `test_app.py` (264 tests total). `GET /api/compare` takes `codes` (career scores,
+Covered by `tests/test_app.py` (264 tests total). `GET /api/compare` takes `codes` (career scores,
 the default), or `session` / `tastings` to pin single sittings; it returns per-axis leaders and
 spreads, and every axis carries its own max so the view draws each bar against it.
 
@@ -66,7 +83,7 @@ The rubric now carries per-category `question` text (config.yaml) for the `?` to
 overall note is stored under `notes["overall"]` so `store.py` keeps its single notes dict. Flask
 is the chosen framework (SPEC.md §6 sanctioned FastAPI or Flask); added to requirements.txt.
 
-Quick Entry (SPEC.md §7 step 7) is done: `quickentry.py` + `test_quickentry.py`. The phone types
+Quick Entry (SPEC.md §7 step 7) is done: `quickentry.py` + `tests/test_quickentry.py`. The phone types
 into the `Quick Entry` sheet of the rollup workbook; `POST /api/quickentry/drain` files each
 matchable row as an **unscored draft** and rewrites the workbook so the sheet is clear.
 Two rules hold it together — a name that is not unique is refused rather than guessed at
@@ -87,7 +104,7 @@ it keeps working offline and adds nothing to the bundle the phone will load. The
 `have` count so a scatter over three points cannot pose as a finding, and the medal thresholds
 are drawn on every score axis.
 
-The §8 write path is done: `master_write.py` + `test_master_write.py`, plus the approval gate
+The §8 write path is done: `master_write.py` + `tests/test_master_write.py`, plus the approval gate
 (`POST /api/pending/<uid>/approve|reject`) and its review panel. **Read `master_write.py`'s
 docstring before touching it.** It never opens the master for writing — it rebuilds the zip
 copying every entry byte-for-byte except the one worksheet part, and edits that part as *text*
@@ -97,7 +114,7 @@ list that no longer resolves — which is what makes Excel offer to "repair" a f
 takes a backup first and runs the §8.4 verification after; a failed assertion restores the
 backup. Codes are assigned at approval time on the PC, never on the phone.
 
-`verify_gate.py` is the SPEC §7 shipping gate: a full round trip against the real master, then
+`tools/verify_gate.py` is the SPEC §7 shipping gate: a full round trip against the real master, then
 a SHA-256 comparison. It passed on 8 Sep 2026 — 198 photos and 5 richData parts intact.
 Re-run it after anything that touches collection.py or master_write.py.
 
@@ -113,13 +130,13 @@ calibration: [...]}` and is **persisted to localStorage**; it used to live only 
 closing the app blanked every published score until the next sync.
 **Bump `sw.js` VERSION whenever anything in `docs/` changes**, or an installed phone serves the
 cached old bundle for ever.
-Guarded by `test_phone.py`, which checks the §9.2 rules that only fail on a phone: safe-area
+Guarded by `tests/test_phone.py`, which checks the §9.2 rules that only fail on a phone: safe-area
 insets on every edge, 100dvh not 100vh, 16 px inputs, a 44 px score strip with
 `touch-action: none`, the tab bar hiding for the keyboard, and every precached file existing.
 
 The phone scores offline by design: a card is written to localStorage **and then** queued, so
 losing signal changes nothing. `docs/rubric.json` is a copy of `rubric.as_config()` because
-the phone computes its own totals and medals — `test_phone.py` fails if it drifts from
+the phone computes its own totals and medals — `tests/test_phone.py` fails if it drifts from
 config.yaml, so **regenerate it whenever the rubric changes**. The PC publishes what the
 phone reads into `snapshot/` in the app folder (collection, rubric, careers) on
 `POST /api/refresh`; careers are published rather than derived so the phone never downloads
@@ -165,13 +182,13 @@ being squeezed. Proof and release year are shown on the score sheet, both tables
 views, because three bottles in this collection are called George T. Stagg and those two fields are
 what separate one release from the next.
 
-`update.py` / `update.bat` (+ `test_update.py`) is the updater: fast-forward pull, reinstall only
+`tools/update.py` / `update.bat` (+ `tests/test_update.py`) is the updater: fast-forward pull, reinstall only
 if requirements.txt changed, stop the app (it holds its own exe open, so a build cannot replace it),
 rebuild, refresh the shortcut. It refuses to run over local changes to tracked files and it skips
 the twenty-second rebuild when nothing came down. Its build flags must stay in step with
 `build_exe.bat` — a test asserts that, because a silently different build is the worst outcome here.
 
-`setup_machine.py` (+ `test_setup_machine.py`) writes `config.yaml` for a new computer by finding
+`tools/setup_machine.py` (+ `tests/test_setup_machine.py`) writes `config.yaml` for a new computer by finding
 OneDrive and the workbook itself — config.yaml is gitignored because its paths carry a username, so
 it is the only thing stopping a fresh clone from starting. **More than one PC may share the
 journal**: cards are per-file with unique names and merge safely, but `meta/high_water.json`,

@@ -164,7 +164,7 @@ venue · first_tasted · linked_bottle_code · notes`.
    `tastings/T-20260908-183012-B-18-9f3a-r1.json`.
    **The random suffix is load-bearing.** Timestamps are second-resolution, so without it two
    cards for the same spirit in the same second share an id, share a filename, and the second
-   write silently destroys the first. Found by `test_store.py` on its first run. `write_tasting`
+   write silently destroys the first. Found by `tests/test_store.py` on its first run. `write_tasting`
    additionally refuses to overwrite any existing revision file.
 3. Writes are idempotent — a retry after a dropped connection overwrites the same bytes at the same
    path, so a failed upload can always simply be repeated.
@@ -315,7 +315,7 @@ else is the average.
 - Per-category display is the **mean of that category across counted sittings**, also to one decimal,
   shown with its **range** (Aroma 8.7, range 8–9). A category that never moves and one that swings by
   two points are different facts, and the range is what tells them apart.
-- **CORRECTED 8 Sep 2026 (found by `test_rubric.py`).** An earlier draft said the per-category means
+- **CORRECTED 8 Sep 2026 (found by `tests/test_rubric.py`).** An earlier draft said the per-category means
   always add up to the headline. That holds for the *unrounded* means only. Rounding ten categories
   to one decimal each can drift by up to 0.5, and it really does: counting all four sittings of the
   example set, the displayed category figures sum to **86.0** while the true mean of totals is
@@ -414,22 +414,25 @@ better phone experience than typing into Excel. The `Quick Entry` tab stays as t
 fallback for tasting away from home.
 
 ```
-E:\Claude Code\whiskey-tasting\
-  SPEC.md                 this file
+whiskey-tasting/
   app.py                  server, routes
+  launch.py               starts the server, opens the window, holds the tray icon
   collection.py           read-only loader for Whiskey Collection.xlsx
-  store.py                read/write Whiskey Tastings.xlsx + tastings.json mirror
+  store.py                the immutable journal
   rubric.py               scoring, driven by config.yaml
-  config.yaml             paths, rubric, LAN flag, port
+  rollup.py               regenerates Whiskey Tastings.xlsx from the journal
+  quickentry.py           drains the Quick Entry sheet
+  master_write.py         the only writer of the collection workbook
+  config.yaml             paths, rubric, LAN flag, port          (gitignored)
   requirements.txt
-  static/
-    index.html  app.js  style.css
-  data/
-    tastings.json         local mirror
-    backups/              timestamped copies of the tastings workbook
-  run.bat
-  build_exe.bat
-  SETUP.md
+  run.bat  update.bat  build_exe.bat
+  static/                 the PC front end, bundled into the exe
+    index.html  style.css  app.js  table.js  compare.js  analysis.js
+  docs/                   the iPhone client - GitHub Pages serves only / or /docs
+  tests/                  one file per module
+  tools/                  update, first-time setup, shortcut, verify_gate
+  guide/                  SPEC.md (this file), RUNNING.md, SETUP.md
+  data/                   local mirror and backups               (gitignored)
 ```
 
 Config carries both file paths so nothing is hard-coded, and a `read_only_master: true`

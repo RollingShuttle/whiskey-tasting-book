@@ -1,22 +1,29 @@
 """
 test_setup_machine.py — the second-machine setup.
 
-    python test_setup_machine.py
+    python tests/test_setup_machine.py
 
 config.yaml is the one file that cannot be shared between computers, so this is the only thing
 standing between a fresh clone and an app that will not start. The parts worth checking are the
 ones that would go wrong quietly: writing a config that points at the wrong folder, or overwriting
 a config that already works.
 """
+
+# Run straight from the shell, only tests/ is on the path; discovered from the repo root, only
+# the root is. Put all three where imports can find them so both ways of running behave alike.
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+sys.path[:0] = [str(HERE), str(ROOT), str(ROOT / "tools")]
+
 import os
 import tempfile
 import unittest
-from pathlib import Path
 
 import setup_machine as sm
 import yaml
-
-HERE = Path(__file__).resolve().parent
 
 
 class TestPathFormatting(unittest.TestCase):
@@ -98,11 +105,12 @@ class TestItRefusesToClobber(unittest.TestCase):
             (work / sm.TEMPLATE).write_text("paths:\n  app_folder: \"x\"\n", encoding="utf-8")
             existing = work / sm.TARGET
             existing.write_text("mine\n", encoding="utf-8")
-            here, sm.__file__ = sm.__file__, str(work / "setup_machine.py")
+            # setup_machine lives in tools/ and takes the project folder as its parent.
+            was, sm.__file__ = sm.__file__, str(work / "tools" / "setup_machine.py")
             try:
                 self.assertEqual(sm.main(), 0)
             finally:
-                sm.__file__ = here
+                sm.__file__ = was
             self.assertEqual(existing.read_text(encoding="utf-8"), "mine\n")
 
 
@@ -110,15 +118,15 @@ class TestTheTemplateItStartsFrom(unittest.TestCase):
     def test_the_template_carries_the_keys_it_rewrites(self):
         """If a key were renamed in the template this would write a config missing it, and the
         app would fail somewhere far away from the cause."""
-        text = (HERE / sm.TEMPLATE).read_text(encoding="utf-8")
+        text = (ROOT / sm.TEMPLATE).read_text(encoding="utf-8")
         for key in ("master_workbook", "rollup_workbook", "app_folder"):
             self.assertIn(key + ":", text)
 
     def test_the_template_is_committed_and_the_config_is_not(self):
         """The template is the shareable half; config.yaml holds a username."""
-        ignored = (HERE / ".gitignore").read_text(encoding="utf-8")
+        ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
         self.assertIn("config.yaml", ignored)
-        self.assertTrue((HERE / sm.TEMPLATE).exists())
+        self.assertTrue((ROOT / sm.TEMPLATE).exists())
 
 
 if __name__ == "__main__":

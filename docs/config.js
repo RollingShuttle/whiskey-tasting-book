@@ -1,6 +1,6 @@
 /* Whiskey Tasting Book — phone client configuration.
 
-   CLIENT_ID is the Application (client) ID from the Entra app registration in SETUP.md Part 3.
+   CLIENT_ID is the Application (client) ID from the Entra app registration in guide/SETUP.md Part 3.
    It is a public identifier, not a secret: any browser-based Microsoft sign-in ships it in plain
    JavaScript, and it is useless on its own — the registration is locked to the
    Files.ReadWrite.AppFolder scope, to personal accounts, and to its own redirect URIs.

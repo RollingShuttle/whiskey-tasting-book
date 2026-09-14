@@ -2,13 +2,22 @@
 test_store.py — the journal, in isolation. Runs entirely in a temp directory; touches no
 OneDrive folder and no workbook.
 
-    python test_store.py
+    python tests/test_store.py
 """
+
+# Run straight from the shell, only tests/ is on the path; discovered from the repo root, only
+# the root is. Put all three where imports can find them so both ways of running behave alike.
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+sys.path[:0] = [str(HERE), str(ROOT), str(ROOT / "tools")]
+
 import json
 import shutil
 import tempfile
 import unittest
-from pathlib import Path
 
 import rubric as rubric_mod
 import store

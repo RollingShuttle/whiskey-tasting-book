@@ -1,20 +1,29 @@
 """
 test_app.py — the local server, in isolation.
 
-    python test_app.py
+    python tests/test_app.py
 
 Runs against Flask's test client. The journal is a throwaway temp directory and the collection is
 a tiny fixture snapshot, so this touches no OneDrive folder and never opens the 147 MB master. The
 snapshot-only hot path is proven by pointing the master override at a path that does not exist and
 confirming the spirit list still loads.
 """
+
+# Run straight from the shell, only tests/ is on the path; discovered from the repo root, only
+# the root is. Put all three where imports can find them so both ways of running behave alike.
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+sys.path[:0] = [str(HERE), str(ROOT), str(ROOT / "tools")]
+
 import json
 import re
 import shutil
 import tempfile
 import types
 import unittest
-from pathlib import Path
 from unittest import mock
 
 import app as app_mod
@@ -1064,7 +1073,7 @@ class TestScoringSheetIdentifiesTheBottle(unittest.TestCase):
     without the distillery beside it, and the sheet used to show only that."""
 
     def source(self, name="app.js"):
-        src = (Path(__file__).resolve().parent / "static" / name).read_text(encoding="utf-8")
+        src = (ROOT / "static" / name).read_text(encoding="utf-8")
         src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
         return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
 
@@ -1105,7 +1114,7 @@ class TestASubmittedCardIsNotADeadEnd(unittest.TestCase):
     ended with a finished sheet and no way onward — the only escape was the top navigation."""
 
     def source(self):
-        src = (Path(__file__).resolve().parent / "static" / "app.js").read_text(encoding="utf-8")
+        src = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
         src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
         return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
 
@@ -1216,7 +1225,7 @@ class TestFilteringByKindOfSpirit(AppCase):
     anything."""
 
     def source_js(self):
-        src = (Path(__file__).resolve().parent / "static" / "table.js").read_text(encoding="utf-8")
+        src = (ROOT / "static" / "table.js").read_text(encoding="utf-8")
         src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
         return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
 
@@ -1301,7 +1310,7 @@ class TestAFlightCanBeAmendedOrRemoved(AppCase):
             self.c.get("/api/compare?session=%s" % made["session_id"]).status_code, 404)
 
     def test_the_view_offers_both(self):
-        src = (Path(__file__).resolve().parent / "static" / "compare.js").read_text(encoding="utf-8")
+        src = (ROOT / "static" / "compare.js").read_text(encoding="utf-8")
         src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
         src = re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
         self.assertIn("Edit flight", src)
@@ -1315,7 +1324,7 @@ class TestTypingInTheFilterSurvivesTheRender(unittest.TestCase):
     the box, which is unusable."""
 
     def source(self):
-        src = (Path(__file__).resolve().parent / "static" / "table.js").read_text(encoding="utf-8")
+        src = (ROOT / "static" / "table.js").read_text(encoding="utf-8")
         src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
         return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
 
@@ -1358,7 +1367,7 @@ class TestTheReviewControlsAreOnScreen(unittest.TestCase):
     to the score, and then to these."""
 
     def source(self):
-        src = (Path(__file__).resolve().parent / "static" / "table.js").read_text(encoding="utf-8")
+        src = (ROOT / "static" / "table.js").read_text(encoding="utf-8")
         src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
         return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
 
@@ -1396,9 +1405,8 @@ class TestSearchIsCaseInsensitiveEverywhere(unittest.TestCase):
     empty result rather than an error. This was found once on the phone and was still here."""
 
     def sources(self):
-        base = Path(__file__).resolve().parent
         for folder in ("static", "docs"):
-            for path in sorted((base / folder).glob("*.js")):
+            for path in sorted((ROOT / folder).glob("*.js")):
                 src = path.read_text(encoding="utf-8")
                 src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
                 yield path, re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
@@ -1476,7 +1484,7 @@ class TestThePickersIdentifyTheRelease(unittest.TestCase):
     are the only things that separate them."""
 
     def source(self, name):
-        src = (Path(__file__).resolve().parent / "static" / name).read_text(encoding="utf-8")
+        src = (ROOT / "static" / name).read_text(encoding="utf-8")
         src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
         return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
 
@@ -1503,7 +1511,7 @@ class TestAutosaveOnTheDesktop(unittest.TestCase):
     itself, as a draft, which is the thing that actually survives."""
 
     def source(self, name="app.js"):
-        src = (Path(__file__).resolve().parent / "static" / name).read_text(encoding="utf-8")
+        src = (ROOT / "static" / name).read_text(encoding="utf-8")
         src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
         return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
 
@@ -1543,7 +1551,7 @@ class TestCompareOffersOnlyWhatCanBeCompared(unittest.TestCase):
     offering hundreds of dead ends."""
 
     def source(self, name="compare.js"):
-        src = (Path(__file__).resolve().parent / "static" / name).read_text(encoding="utf-8")
+        src = (ROOT / "static" / name).read_text(encoding="utf-8")
         src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
         return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
 
@@ -1574,7 +1582,7 @@ class TestNothingIsSilentlyTruncated(unittest.TestCase):
     screen to say either had stopped early."""
 
     def source(self, name):
-        src = (Path(__file__).resolve().parent / "static" / name).read_text(encoding="utf-8")
+        src = (ROOT / "static" / name).read_text(encoding="utf-8")
         src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
         return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
 

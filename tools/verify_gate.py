@@ -5,7 +5,7 @@ Does a full round trip against the REAL master workbook — import the bottles, 
 three pours through the server, submit them, regenerate the rollup, reopen — and then proves the
 master is byte-identical to how it started.
 
-    python verify_gate.py
+    python tools/verify_gate.py
 
 The point is not that the code intends to leave the master alone. It is that after everything the
 app actually does in a session, the 147 MB file and all 198 photos are provably untouched. A
@@ -24,6 +24,11 @@ import zipfile
 from pathlib import Path
 
 import yaml
+
+# The modules and config.yaml live one level up; this script sits in tools/.
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+CONFIG = ROOT / "config.yaml"
 
 import app as app_mod
 import collection as collection_mod
@@ -50,7 +55,7 @@ def parts_inventory(path):
 
 
 def main():
-    cfg = yaml.safe_load(open("config.yaml", encoding="utf-8"))
+    cfg = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
     master = collection_mod.resolve_master(cfg)
     if not master.exists():
         print(f"FAIL  master workbook not found: {master}")
@@ -71,7 +76,7 @@ def main():
     steps = []
     try:
         # 1 — import the bottles, exactly as the app does on a health check
-        coll = collection_mod.load("config.yaml")
+        coll = collection_mod.load(CONFIG)
         counts = {s: len(r) for s, r in coll.rows.items()}
         steps.append(f"loaded the collection: {counts}")
         if coll.errors:
@@ -81,7 +86,7 @@ def main():
 
         # 2 — a full session of three pours through the real server code
         application = app_mod.create_app(
-            "config.yaml",
+            CONFIG,
             app_folder=str(tmp / "journal"),
             snapshot_path=str(Path(cfg["paths"]["local_data"]) / "collection.json"),
             rollup=str(tmp / "Whiskey Tastings.xlsx"),
@@ -110,7 +115,7 @@ def main():
         steps.append(f"drained Quick Entry: {drain['counts']}")
 
         # 4 — reopen everything, the way the next run would
-        reopened = collection_mod.load("config.yaml")
+        reopened = collection_mod.load(CONFIG)
         assert {s: len(r) for s, r in reopened.rows.items()} == counts
         pours = c.get(f"/api/session/{sid}").get_json()["pours"]
         assert len(pours) == 3, pours

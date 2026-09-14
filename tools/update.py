@@ -1,7 +1,7 @@
 """
 update.py — bring this machine up to date.
 
-    python update.py          (or double-click update.bat)
+    python tools/update.py    (or double-click update.bat)
 
 Fetches the latest code, reinstalls the libraries if they changed, and rebuilds the app. Meant to
 be the only thing you run: doing it by hand means remembering to quit the app first, and forgetting
@@ -28,15 +28,15 @@ import sys
 import time
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-EXE = HERE / "Whiskey Tasting Book.exe"
-REQUIREMENTS = HERE / "requirements.txt"
+ROOT = Path(__file__).resolve().parent.parent  # this script lives in tools/
+EXE = ROOT / "Whiskey Tasting Book.exe"
+REQUIREMENTS = ROOT / "requirements.txt"
 
 
 def run(args, **kw):
     """Run a command in the project folder and hand back (ok, output)."""
     try:
-        done = subprocess.run(args, cwd=HERE, capture_output=True, text=True,
+        done = subprocess.run(args, cwd=ROOT, capture_output=True, text=True,
                               encoding="utf-8", errors="replace", **kw)
     except FileNotFoundError:
         return False, f"{args[0]} is not installed, or not on the PATH."
@@ -140,13 +140,13 @@ def rebuild():
     ok, out = run([
         sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed", "--onefile",
         "--name", "Whiskey Tasting Book",
-        "--icon", str(HERE / "icon.ico"),
-        "--add-data", f"{HERE / 'static'};static",
+        "--icon", str(ROOT / "icon.ico"),
+        "--add-data", f"{ROOT / 'static'};static",
         "--hidden-import", "pystray._win32",
-        "--distpath", str(HERE),
-        "--workpath", str(HERE / "build"),
-        "--specpath", str(HERE / "build"),
-        str(HERE / "launch.py"),
+        "--distpath", str(ROOT),
+        "--workpath", str(ROOT / "build"),
+        "--specpath", str(ROOT / "build"),
+        str(ROOT / "launch.py"),
     ])
     if not ok:
         print("  the build failed:")
@@ -183,7 +183,13 @@ def main():
     if not rebuild():
         return 1
 
-    ok, _ = run([sys.executable, str(HERE / "make_shortcut.py")])
+    # Said out loud rather than swallowed: the shortcut is how the app gets opened, and a
+    # silent failure here would leave "Done." standing over an icon pointing at nothing.
+    ok, out = run([sys.executable, str(ROOT / "tools" / "make_shortcut.py")])
+    if not ok:
+        print("  the Desktop icon could not be refreshed:")
+        print("  " + out.strip()[-300:].replace("\n", "\n  "))
+        print("  the app itself is built and fine — run tools/make_shortcut.py by hand.")
     print()
     print("Done. Open it from the Desktop icon.")
     print("Press Refresh once inside, so the phone gets anything new the PC now publishes.")

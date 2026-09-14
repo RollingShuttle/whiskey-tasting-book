@@ -1,7 +1,7 @@
 """
 setup_machine.py — get the app running on another computer.
 
-    python setup_machine.py
+    python tools/setup_machine.py
 
 config.yaml is the one file that cannot be shared between machines: it holds absolute paths, and
 those paths contain a username. That is why it is gitignored, and why a fresh clone has everything
@@ -69,14 +69,14 @@ def as_yaml_path(p):
 
 
 def main():
-    here = Path(__file__).resolve().parent
-    target = here / TARGET
+    root = Path(__file__).resolve().parent.parent  # this script lives in tools/
+    target = root / TARGET
     if target.exists():
         print(f"{TARGET} already exists here — leaving it alone.")
         print("Delete it first if you want this to build a new one.")
         return 0
 
-    template = here / TEMPLATE
+    template = root / TEMPLATE
     if not template.exists():
         print(f"{TEMPLATE} is missing; this needs to be run inside the project folder.")
         return 1
@@ -141,8 +141,8 @@ def main():
     print()
     print("Next:")
     print("  pip install -r requirements.txt")
-    print("  python -m unittest discover -p \"test_*.py\"")
-    print("  build_exe.bat            (then: python make_shortcut.py)")
+    print("  python -m unittest discover -s tests")
+    print("  build_exe.bat            (then: python tools/make_shortcut.py)")
     return 0
 
 

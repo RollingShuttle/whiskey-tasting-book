@@ -55,7 +55,7 @@ For reference, or if you ever move to a new computer:
 4. **The app itself** — `Whiskey Tasting Book.exe`, built once by double-clicking `build_exe.bat`.
    It bundles Python and the pages into a single file so there is no console window. It is not in
    the repository (27 MB of build output does not belong there), so on a new machine, or after the
-   code changes, run `build_exe.bat` again and then `python make_shortcut.py`.
+   code changes, run `build_exe.bat` again and then `python tools/make_shortcut.py`.
 
 ### Starting it, every time
 
@@ -86,7 +86,7 @@ If you ever want a plain console and an address you open yourself, run `python l
 If the shortcuts are ever lost, recreate them with:
 
 ```
-python make_shortcut.py
+python tools/make_shortcut.py
 ```
 
 They are ordinary Windows shortcuts. Delete them like any others; nothing is installed or
@@ -204,7 +204,7 @@ be seen at all.
 If you ever want reassurance that the app has not touched your collection workbook:
 
 ```
-python verify_gate.py
+python tools/verify_gate.py
 ```
 
 It does a complete round trip and then compares the workbook against itself, byte for byte. It
@@ -227,11 +227,11 @@ because both read and write the same OneDrive folder — the same way the phone 
    ```
    git clone https://github.com/RollingShuttle/whiskey-tasting-book.git
    cd whiskey-tasting-book
-   python setup_machine.py
+   python tools/setup_machine.py
    pip install -r requirements.txt
    ```
 
-   `setup_machine.py` writes `config.yaml` for that machine. It finds OneDrive and fills in the
+   `tools/setup_machine.py` writes `config.yaml` for that machine. It finds OneDrive and fills in the
    paths itself, because those paths contain your username and so cannot be shared between
    computers — that is the only reason a fresh copy will not start on its own.
 
@@ -239,7 +239,7 @@ because both read and write the same OneDrive folder — the same way the phone 
 
    ```
    build_exe.bat
-   python make_shortcut.py
+   python tools/make_shortcut.py
    ```
 
 ### Keeping a machine up to date
@@ -280,7 +280,7 @@ Both touch the 147 MB workbook. Doing them from two machines at once is how OneD
 a *conflicted copy* of it, and that file is the one thing in this project that cannot be
 regenerated.
 
-The laptop does not need the collection workbook at all. If it is not there, `setup_machine.py`
+The laptop does not need the collection workbook at all. If it is not there, `tools/setup_machine.py`
 says so and carries on: the app still shows all 375 bottles and every score, because it reads the
 same published summary the phone does. Only Refresh and approvals need the workbook itself.
 
@@ -428,7 +428,7 @@ Your collection appears under the Collection tab. You are done.
 | "No collection yet" on the phone | Start the PC app and press Refresh, then Refresh on the phone. |
 | "Workbook open in Excel" | Close `Whiskey Tastings.xlsx` (or the collection workbook) in Excel and try again. This is deliberate — writing while Excel has it open would create a conflicting copy. |
 | Sign-in fails on the phone | Check you used the personal Microsoft account, and that the address in Step C matches exactly, trailing slash included. |
-| You want to be sure nothing broke | Run `python verify_gate.py`. |
+| You want to be sure nothing broke | Run `python tools/verify_gate.py`. |
 
 ---
 

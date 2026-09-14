@@ -1,19 +1,28 @@
 """
 test_collection.py — proves step 1 works on its own, against the real workbook.
 
-    python test_collection.py
+    python tests/test_collection.py
     WHISKEY_MASTER="/some/path/Whiskey Collection.xlsx" python test_collection.py
 
 The most important test here is test_master_is_never_modified: it SHA-256s the 147 MB workbook
 before and after a full load. If that ever fails, stop and do not run anything else in this
 project — 198 bottle photos are at stake.
 """
+
+# Run straight from the shell, only tests/ is on the path; discovered from the repo root, only
+# the root is. Put all three where imports can find them so both ways of running behave alike.
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+sys.path[:0] = [str(HERE), str(ROOT), str(ROOT / "tools")]
+
 import hashlib
 import json
 import os
 import tempfile
 import unittest
-from pathlib import Path
 
 import collection as C
 

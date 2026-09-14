@@ -20,7 +20,7 @@ paths:
   backup_keep: 30
 
 # Microsoft Graph — phone client only. The PC app reads the synced folder directly and needs none
-# of this. The client ID is a public identifier from your own Entra app registration (SETUP.md
+# of this. The client ID is a public identifier from your own Entra app registration (guide/SETUP.md
 # Part 3), not a secret — but fill in your own here rather than committing it.
 auth:
   client_id: "YOUR_CLIENT_ID"

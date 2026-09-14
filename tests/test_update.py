@@ -1,19 +1,26 @@
 """
 test_update.py — the updater.
 
-    python test_update.py
+    python tests/test_update.py
 
 This is the one script that runs unattended on a machine that is not this one, so what matters is
 the paths it must NOT take: overwriting work you have not committed, rebuilding while the app is
 holding its own executable open, or reporting success after a failed build.
 """
-import unittest
+
+# Run straight from the shell, only tests/ is on the path; discovered from the repo root, only
+# the root is. Put all three where imports can find them so both ways of running behave alike.
+import sys
 from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+sys.path[:0] = [str(HERE), str(ROOT), str(ROOT / "tools")]
+
+import unittest
 from unittest import mock
 
 import update
-
-HERE = Path(__file__).resolve().parent
 
 
 def fake_run(script):
@@ -88,7 +95,7 @@ class TestTheOrderOfOperations(unittest.TestCase):
         """The build takes twenty seconds and would otherwise run on every launch for nothing."""
         with mock.patch.object(update, "check_repo", return_value=True), \
              mock.patch.object(update, "pull", return_value=(True, False)), \
-             mock.patch.object(update, "EXE", HERE / "test_update.py"), \
+             mock.patch.object(update, "EXE", ROOT / "tools" / "update.py"), \
              mock.patch.object(update, "rebuild") as built, \
              mock.patch.object(update, "stop_app") as stopped:
             self.assertEqual(update.main(), 0)
@@ -99,7 +106,7 @@ class TestTheOrderOfOperations(unittest.TestCase):
         """A fresh clone has the code and no executable."""
         with mock.patch.object(update, "check_repo", return_value=True), \
              mock.patch.object(update, "pull", return_value=(True, False)), \
-             mock.patch.object(update, "EXE", HERE / "no-such-app.exe"), \
+             mock.patch.object(update, "EXE", ROOT / "no-such-app.exe"), \
              mock.patch.object(update, "stop_app", return_value=True), \
              mock.patch.object(update, "rebuild", return_value=True) as built, \
              mock.patch.object(update, "run", fake_run({})):
@@ -156,31 +163,50 @@ class TestTheOrderOfOperations(unittest.TestCase):
         installed.assert_called_once()
 
 
+class TestTheShortcutStep(unittest.TestCase):
+    """It runs a script by path, so moving that script would break it — quietly, because the
+    update is finished by then and the icon it leaves behind still opens the old build."""
+
+    def test_the_script_it_runs_is_where_it_says_it_is(self):
+        self.assertTrue((update.ROOT / "tools" / "make_shortcut.py").exists())
+
+    def test_a_failed_shortcut_is_said_out_loud(self):
+        with mock.patch.object(update, "check_repo", return_value=True), \
+             mock.patch.object(update, "pull", return_value=(True, True)), \
+             mock.patch.object(update, "stop_app", return_value=True), \
+             mock.patch.object(update, "rebuild", return_value=True), \
+             mock.patch.object(update, "run", return_value=(False, "no python")), \
+             mock.patch("builtins.print") as said:
+            self.assertEqual(update.main(), 0)
+        spoken = " ".join(str(c.args[0]) for c in said.call_args_list if c.args)
+        self.assertIn("make_shortcut.py", spoken)
+
+
 class TestTheBuildMatchesBuildExeBat(unittest.TestCase):
     """The rebuild has to produce the same app build_exe.bat does, or updating would quietly
     change how it behaves."""
 
     def test_it_carries_the_flags_the_app_depends_on(self):
-        bat = (HERE / "build_exe.bat").read_text(encoding="utf-8")
-        src = (HERE / "update.py").read_text(encoding="utf-8")
+        bat = (ROOT / "build_exe.bat").read_text(encoding="utf-8")
+        src = (ROOT / "tools" / "update.py").read_text(encoding="utf-8")
         for flag in ("--windowed", "--onefile", "--hidden-import", "pystray._win32"):
             self.assertIn(flag, bat)
             self.assertIn(flag, src, f"update.py builds without {flag}")
 
     def test_it_builds_beside_config_not_into_dist(self):
         """The app reads config.yaml and data/ from the folder it sits in."""
-        self.assertIn("--distpath", (HERE / "update.py").read_text(encoding="utf-8"))
+        self.assertIn("--distpath", (ROOT / "tools" / "update.py").read_text(encoding="utf-8"))
 
 
 class TestTheLauncher(unittest.TestCase):
     def test_the_batch_file_waits_so_the_message_can_be_read(self):
         """Double-clicked, the window closes the moment it finishes."""
-        bat = (HERE / "update.bat").read_text(encoding="utf-8")
+        bat = (ROOT / "update.bat").read_text(encoding="utf-8")
         self.assertIn("pause", bat)
         self.assertIn("update.py", bat)
 
     def test_it_runs_in_its_own_folder(self):
-        self.assertIn('cd /d "%~dp0"', (HERE / "update.bat").read_text(encoding="utf-8"))
+        self.assertIn('cd /d "%~dp0"', (ROOT / "update.bat").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

@@ -1,16 +1,25 @@
 """
 test_quickentry.py — the phone lane, in isolation.
 
-    python test_quickentry.py
+    python tests/test_quickentry.py
 
 Builds a small workbook with a Quick Entry sheet, drains it, and checks what lands in the journal.
 Temp dirs only; the master collection workbook is never opened by this module or its tests.
 """
+
+# Run straight from the shell, only tests/ is on the path; discovered from the repo root, only
+# the root is. Put all three where imports can find them so both ways of running behave alike.
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+sys.path[:0] = [str(HERE), str(ROOT), str(ROOT / "tools")]
+
 import shutil
 import tempfile
 import unittest
 from datetime import datetime
-from pathlib import Path
 
 from openpyxl import Workbook
 

@@ -1,11 +1,21 @@
 """
 test_rubric.py — scoring engine, in isolation. No workbook, no filesystem, no network.
 
-    python test_rubric.py
+    python tests/test_rubric.py
 
 Fixtures are two example cards from SPEC.md: a single scorecard (66, Bronze) and a four-sitting
 set (mean 89.0, Gold, one excluded).
 """
+
+# Run straight from the shell, only tests/ is on the path; discovered from the repo root, only
+# the root is. Put all three where imports can find them so both ways of running behave alike.
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+sys.path[:0] = [str(HERE), str(ROOT), str(ROOT / "tools")]
+
 import unittest
 
 from rubric import Rubric, half_up, load_rubric

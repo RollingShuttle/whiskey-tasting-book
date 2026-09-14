@@ -1,7 +1,7 @@
 """
 make_shortcut.py — put "Whiskey Tasting Book" on the Desktop and in the Start menu.
 
-    python make_shortcut.py
+    python tools/make_shortcut.py
 
 Creates ordinary Windows shortcuts with the app icon, pointing at the packaged
 "Whiskey Tasting Book.exe" when it has been built and at run.bat otherwise. Delete them like any
@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent  # this script lives in tools/
 EXE = ROOT / "Whiskey Tasting Book.exe"
 BAT = ROOT / "run.bat"
 ICON = ROOT / "icon.ico"

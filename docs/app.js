@@ -713,7 +713,7 @@ function renderSync() {
   fill(screens.sync,
     !Graph.configured()
       ? notice("warn", "Sign-in is not configured yet. Add the Application (client) ID from "
-          + "SETUP.md Part 3 to config.js and redeploy. Scoring works without it — cards queue "
+          + "guide/SETUP.md Part 3 to config.js and redeploy. Scoring works without it — cards queue "
           + "on this phone until there is somewhere to send them.")
       : null,
 

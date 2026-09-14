@@ -1,18 +1,27 @@
 """
 test_launch.py — the launcher's moving parts.
 
-    python test_launch.py
+    python tests/test_launch.py
 
 Opening a real browser window is not something a test should do, so what is checked here is
 everything around it: finding a browser, knowing whether the port is already answering, and
 building a command line that actually produces an application window rather than a tab.
 """
+
+# Run straight from the shell, only tests/ is on the path; discovered from the repo root, only
+# the root is. Put all three where imports can find them so both ways of running behave alike.
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+sys.path[:0] = [str(HERE), str(ROOT), str(ROOT / "tools")]
+
 import socket
 import tempfile
 import time
 import threading
 import unittest
-from pathlib import Path
 from unittest import mock
 
 import launch
@@ -49,8 +58,7 @@ class TestWindowCommand(unittest.TestCase):
         self.assertIn("--no-default-browser-check", cmd)
 
     def test_the_profile_lives_outside_the_project(self):
-        here = Path(__file__).resolve().parent
-        self.assertNotIn(here, launch.profile_path().parents)
+        self.assertNotIn(ROOT, launch.profile_path().parents)
 
 
 class TestPortProbe(unittest.TestCase):

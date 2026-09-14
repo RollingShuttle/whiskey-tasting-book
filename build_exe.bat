@@ -23,7 +23,7 @@ if errorlevel 1 goto :fail
 
 echo.
 echo Built: "Whiskey Tasting Book.exe"
-echo Run  python make_shortcut.py  to point the Desktop icon at it.
+echo Run  python tools\make_shortcut.py  to point the Desktop icon at it.
 pause
 exit /b 0
 

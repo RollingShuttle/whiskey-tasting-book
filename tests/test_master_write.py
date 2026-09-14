@@ -1,7 +1,7 @@
 """
 test_master_write.py — the surgical append, in isolation.
 
-    python test_master_write.py
+    python tests/test_master_write.py
 
 Builds a small workbook shaped like the real master — a table defined over a range far larger than
 its data, ABV as a filled-down formula — and injects fake `xl/media/` and `xl/richData/` parts plus
@@ -9,12 +9,21 @@ a calcChain, so that preserving them is something the tests can actually prove.
 
 The real `Whiskey Collection.xlsx` is never opened by this module or its tests.
 """
+
+# Run straight from the shell, only tests/ is on the path; discovered from the repo root, only
+# the root is. Put all three where imports can find them so both ways of running behave alike.
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+sys.path[:0] = [str(HERE), str(ROOT), str(ROOT / "tools")]
+
 import hashlib
 import shutil
 import tempfile
 import unittest
 import zipfile
-from pathlib import Path
 
 from openpyxl import Workbook
 from openpyxl.worksheet.table import Table
