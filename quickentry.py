@@ -28,6 +28,8 @@ from pathlib import Path
 
 import openpyxl
 
+from collection import is_gone
+
 SHEET = "Quick Entry"
 HEADERS = ["date", "display_name", "barrel_id", "nose", "palate", "finish", "notes"]
 CODE_RE = re.compile(r"^[BMSX]-\d+$", re.IGNORECASE)
@@ -135,6 +137,14 @@ def drain(workbook_path, journal, spirits):
 
     for row in rows:
         code, problem = match_spirit(row.get("display_name"), spirits)
+        if not problem:
+            # Matched, but to a bottle that has left the shelf. The row stays on the sheet with
+            # the reason (§1.2) rather than becoming a draft against something that cannot be
+            # poured again — the usual cause is a name shared with the bottle that replaced it.
+            spirit = next((s for s in spirits if s["code"] == code), {})
+            if is_gone(spirit.get("status")):
+                problem = (f"{code} is marked {str(spirit['status']).strip()} — "
+                           "nothing left to score")
         if problem:
             unmatched.append(dict(row, problem=problem))
             continue

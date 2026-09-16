@@ -99,6 +99,9 @@ function setTab(tab) {
     the screen the moment it was submitted. */
 const knownSpirits = () => Store.spirits().concat(Store.encounters().map(Store.asSpirit));
 const findSpirit = (code) => knownSpirits().find((x) => x.code === code);
+/** Marked Finished or Removed in the workbook: a row still, a bottle no longer. Read from the
+    status and not from `owned` alone — a bar pour is not owned either, and is scored all the time. */
+const goneSpirit = (s) => s.owned === false && !!s.status;
 
 // ---------------------------------------------------------------- helpers
 /* The PC's figures plus this phone's own cards. The cutoff is the whole difficulty: the PC counts
@@ -220,7 +223,7 @@ function renderCollection() {
   const chips = el("div", { class: "chips" },
     ...[["all", "All"], ["instock", "In stock"], ["Bottle", "Bottles"],
         ["Miniature", "Minis"], ["Sample", "Samples"], ["Encounter", "Bar"],
-        ["scored", "Scored"]].map(([id, label]) =>
+        ["scored", "Scored"], ["gone", "Finished"]].map(([id, label]) =>
       el("button", { type: "button", class: `chip${app.filter === id ? " active" : ""}`,
         onclick: () => { app.filter = id; renderCollection(); } }, label)));
 
@@ -236,10 +239,18 @@ function paintRows() {
   const list = document.getElementById("rows");
   if (!list) return;
   const terms = app.query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  // A Finished or Removed bottle is not offered: nothing can be poured from it, so nothing can
+  // be scored. The ones scored while they lasted keep a place under their own chip, because the
+  // sittings outlive the bottle; the ones never scored have nothing to show and are not listed.
   let spirits = knownSpirits();
-  if (app.filter === "scored") spirits = spirits.filter((s) => careerFor(s.code));
-  else if (app.filter === "instock") spirits = spirits.filter((s) => s.owned !== false);
-  else if (app.filter !== "all") spirits = spirits.filter((s) => s._sheet === app.filter);
+  if (app.filter === "gone") {
+    spirits = spirits.filter((s) => goneSpirit(s) && sittingsFor(s.code).length);
+  } else {
+    spirits = spirits.filter((s) => !goneSpirit(s));
+    if (app.filter === "scored") spirits = spirits.filter((s) => careerFor(s.code));
+    else if (app.filter === "instock") spirits = spirits.filter((s) => s.owned !== false);
+    else if (app.filter !== "all") spirits = spirits.filter((s) => s._sheet === app.filter);
+  }
   if (terms.length) {
     spirits = spirits.filter((s) => {
       // The parentheses matter: `a + b.toLowerCase()` lowercases only b, so every name and
@@ -252,7 +263,9 @@ function paintRows() {
 
   list.replaceChildren();
   if (!spirits.length) {
-    list.append(el("li", { class: "empty" }, "Nothing matches."));
+    list.append(el("li", { class: "empty" },
+      app.filter === "gone" && !terms.length
+        ? "No finished bottle was scored while it lasted." : "Nothing matches."));
     return;
   }
   for (const s of spirits) {
@@ -260,7 +273,7 @@ function paintRows() {
                   s.proof ? `${s.proof} pf` : null,
                   s.release_year ? String(Math.round(s.release_year)) : null]
       .filter(Boolean).join(" · ");
-    const gone = s.owned === false && s.status;
+    const gone = goneSpirit(s);
     list.append(el("li", {
       class: `row${s.owned === false ? " gone" : ""}`,
       style: `border-left-color:${accentFor(s.type)}`,
@@ -337,8 +350,12 @@ function openDetail(code, { push = true } = {}) {
             + "above — the score updates once the PC has read it.")
         : null),
 
-    el("button", { class: "btn wide", type: "button", onclick: () => openScore(code) },
-      "Score a pour"),
+    // An empty bottle takes no new scores; what it has is listed below, and can still be corrected.
+    goneSpirit(s)
+      ? el("div", { class: "card muted", style: "margin-top:12px" },
+          `${s.status} — no more pours to score from this one. Its sittings stay on the books.`)
+      : el("button", { class: "btn wide", type: "button", onclick: () => openScore(code) },
+          "Score a pour"),
 
     // An empty list used to render nothing at all, which is indistinguishable from a screen that
     // failed to draw. It has one cause worth naming and one worth ruling out.
@@ -350,7 +367,9 @@ function openDetail(code, { push = true } = {}) {
               + "Refresh, then Sync here."
             : "This bottle has been scored, but the sittings are not on this phone yet. "
               + "Open Sync and refresh.")
-        : el("div", { class: "muted" }, "No sittings yet. Score a pour and it appears here.")),
+        : el("div", { class: "muted" }, goneSpirit(s)
+            ? "Nothing was scored while it lasted."
+            : "No sittings yet. Score a pour and it appears here.")),
 
     sittings.length
       ? el("div", { class: "card", style: "margin-top:12px" },
@@ -469,7 +488,12 @@ function removeSitting(card, spirit) {
 // ---------------------------------------------------------------- scorecard
 function openScore(code) {
   const s = findSpirit(code);
-  if (s) openScoreFor(s, s.venue || "");
+  if (!s) return;
+  if (goneSpirit(s)) {             // the detail screen says why; there is nothing to score
+    openDetail(code, { push: currentScreen() !== "detail" });
+    return;
+  }
+  openScoreFor(s, s.venue || "");
 }
 
 /** Takes the spirit itself rather than a code, because a bar pour has no code yet — the X- number

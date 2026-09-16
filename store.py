@@ -370,6 +370,13 @@ class Journal:
     def _highest_revision(self, tasting_id):
         return max((rev for _, tid, rev in self._tasting_files() if tid == tasting_id), default=0)
 
+    def has_tasting(self, tasting_id):
+        """Whether any revision of this sitting is on file — a tombstone included, since a write
+        against a known id is a correction to the record either way. The app asks this to tell a
+        first card from a revision: the id arrives on both, because the desktop mints it before
+        the first autosave, so its presence alone says nothing."""
+        return bool(tasting_id) and self._highest_revision(tasting_id) > 0
+
     def tastings(self, include_deleted=False):
         """Resolved view: highest revision wins, tombstones drop the record."""
         best = {}

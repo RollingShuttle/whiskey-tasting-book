@@ -100,6 +100,7 @@ button.ghost.back:hover {
 #picker-input:focus { outline: 2px solid var(--brass-bright); outline-offset: 0; border-color: transparent; }
 
 .picker-filters { display: flex; gap: 6px; }
+.picker-filters .chip-gone { margin-left: auto; }   /* set apart: it is not a source, it is an absence */
 .chip {
   background: var(--surface-2); border: 1px solid var(--line); color: var(--muted);
   border-radius: 999px; padding: 6px 13px; font-size: 13px;
@@ -118,6 +119,14 @@ button.ghost.back:hover {
 .pr-meta { margin-left: auto; color: var(--muted); font-size: 12px; }
 .pr-code { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .pr-empty { color: var(--muted); padding: 14px 4px; }
+
+/* A finished bottle in the list: legible, visibly not a live one, and tagged with the word the
+   workbook used. Its row opens the record rather than a card. */
+.picker-results li.gone .pr-name, .picker-results li.gone .pr-dist { opacity: .62; }
+.pr-tag {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; white-space: nowrap;
+}
 
 .stopped {
   position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;

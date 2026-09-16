@@ -467,6 +467,35 @@ class TestAnOlderPcOverwritingTheData(unittest.TestCase):
         self.assertIn("sittings`", src)
 
 
+class TestFinishedBottlesOnThePhone(unittest.TestCase):
+    """The desktop's rule, held here too: an empty bottle is not offered for scoring, the ones
+    scored while they lasted sit under a Finished chip, and the rest are not listed at all."""
+
+    def block(self, start):
+        src = code("app.js")
+        block = src[src.index(start):]
+        return block[:block.index("\nfunction ")]
+
+    def test_the_ordinary_lists_leave_finished_bottles_out(self):
+        self.assertIn("spirits.filter((s) => !goneSpirit(s))", self.block("function paintRows()"))
+
+    def test_the_finished_chip_needs_a_sitting(self):
+        self.assertIn("goneSpirit(s) && sittingsFor(s.code).length",
+                      self.block("function paintRows()"))
+        self.assertIn('["gone", "Finished"]', code("app.js"))
+
+    def test_the_detail_screen_offers_no_card_for_one(self):
+        block = self.block("function openDetail(")
+        i = block.index('"Score a pour"')
+        self.assertIn("goneSpirit(s)", block[max(0, i - 400):i],
+                      "the Score button is offered unconditionally")
+
+    def test_opening_a_card_for_one_is_turned_back(self):
+        block = self.block("function openScore(")
+        self.assertIn("goneSpirit(s)", block)
+        self.assertLess(block.index("goneSpirit(s)"), block.index("openScoreFor("))
+
+
 class TestTheRankingLens(unittest.TestCase):
     """Aesthetics is the bottle and value is the price, so "which is the better whiskey" is a
     different question from "which was the better buy". The desktop table can ask either; the

@@ -290,6 +290,9 @@ def _enrich(sp: dict) -> dict:
     """Add the derived fields the sheet needs without duplicating them in the snapshot."""
     out = dict(sp)
     out["display_name"] = _display_name(sp)
+    # A snapshot written before the loader derived `owned` does not carry it. The status is still
+    # there, so read it — an older snapshot must not count every empty bottle as held.
+    out.setdefault("owned", not collection_status_gone(sp.get("status")))
     oz = _size_oz(sp)
     out["size_oz"] = round(oz, 2) if oz else None
     paid = sp.get("paid")
@@ -490,11 +493,17 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
     def api_spirits():
         if catalog_error and len(catalog) == 0:
             return jsonify({"error": catalog_error, "spirits": []}), 503
+        # How many sittings each spirit has on record — drafts included, tombstones not. The picker
+        # needs it for one decision: a Finished bottle with sittings is still listed, under its own
+        # heading, because the reviews outlive the bottle; one without has nothing to show.
+        sittings = {}
+        for t in journal.tastings():
+            sittings[t["spirit_id"]] = sittings.get(t["spirit_id"], 0) + 1
         return jsonify({
             "count": len(catalog),
             "generated_from": catalog.generated_from,
             "next_code": catalog.next_code,
-            "spirits": catalog.all(),
+            "spirits": [dict(sp, sittings=sittings.get(sp["code"], 0)) for sp in catalog.all()],
         })
 
     @app.get("/api/spirit/<code>")
@@ -549,6 +558,21 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
         spirit_id = (body.get("spirit_id") or "").strip()
         if not spirit_id:
             return jsonify({"error": "spirit_id is required"}), 400
+
+        # An empty bottle takes no new scores. A revision is different — correcting what was
+        # written while it was still on the shelf is exactly what the journal is for — so the
+        # test is not "does the card carry an id" (the desktop mints one before its first
+        # autosave) but "is that id already on file". A bar pour has no catalog row and is
+        # untouched by this.
+        sp = catalog.get(spirit_id)
+        if sp is not None and collection_status_gone(sp.get("status")) \
+                and not journal.has_tasting(body.get("tasting_id")):
+            spirit_status = str(sp.get("status")).strip()
+            return jsonify({
+                "error": f"{spirit_id} is marked {spirit_status} — an empty bottle takes no new "
+                         "scores. Its earlier sittings can still be corrected.",
+                "spirit_status": spirit_status,
+            }), 409
 
         raw_scores = body.get("scores") or {}
         try:                                           # keep real ints; reject 8.5, "8", True

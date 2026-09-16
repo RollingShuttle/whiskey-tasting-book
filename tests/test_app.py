@@ -892,10 +892,8 @@ class TestWhatThePhoneIsGiven(AppCase):
         self.assertTrue(all(m["n"] >= 1 for m in series))
 
 
-class TestStatus(AppCase):
-    """All three sheets carry a Status column. Finished and Removed mean the spirit has left the
-    collection; Opened and Unopened mean it is still there. Marking a row is better than deleting
-    it — the reviews keep something to belong to — so the app has to read the difference."""
+class StatusCase(AppCase):
+    """Serve from a snapshot in which one spirit carries a given Status."""
 
     def journal(self):
         return store_mod.Journal(self.tmp / "journal", rubric_mod.load_rubric()).ensure()
@@ -913,6 +911,79 @@ class TestStatus(AppCase):
     def row(self, client, code="B-18"):
         return next(r for r in client.get("/api/table/collection").get_json()["rows"]
                     if r["code"] == code)
+
+
+class TestAFinishedBottleTakesNoNewScores(StatusCase):
+    """Nothing can be poured from an empty bottle, so nothing can be scored against it. What was
+    scored while it lasted is a different matter: those sittings stay, and stay correctable."""
+
+    def test_a_new_card_is_refused_and_says_why(self):
+        for status in ("Finished", "Removed"):
+            c = self.with_status(status)
+            r = c.post("/api/tasting", json={"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD)})
+            self.assertEqual(r.status_code, 409, status)
+            self.assertIn(status, r.get_json()["error"])
+            self.assertEqual(r.get_json()["spirit_status"], status)
+        self.assertEqual(self.journal().tastings(), [], "nothing reached the journal")
+
+    def test_the_first_autosave_is_a_new_card_even_though_it_carries_an_id(self):
+        """The desktop mints the tasting_id before its first draft goes up, so an id alone cannot
+        be what tells a correction from a fresh card."""
+        c = self.with_status("Finished")
+        r = c.post("/api/tasting", json={"spirit_id": "B-18", "status": "draft",
+                                         "tasting_id": "T-fresh-B-18-0000",
+                                         "scores": {"aroma": 7}})
+        self.assertEqual(r.status_code, 409)
+
+    def test_a_sitting_from_when_it_was_full_can_still_be_corrected(self):
+        old = self.journal().write_tasting(spirit_id="B-18", scores=dict(EXAMPLE_CARD))
+        c = self.with_status("Finished")
+        r = c.post("/api/tasting", json={"spirit_id": "B-18", "tasting_id": old["tasting_id"],
+                                         "scores": dict(EXAMPLE_CARD, aroma=7)})
+        self.assertEqual(r.status_code, 201, r.get_json())
+        self.assertEqual(r.get_json()["tasting"]["revision"], 2)
+
+    def test_held_and_unmarked_bottles_are_untouched(self):
+        for status in ("Opened", "Unopened", ""):
+            c = self.with_status(status)
+            r = c.post("/api/tasting", json={"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD)})
+            self.assertEqual(r.status_code, 201, status or "blank")
+
+    def test_a_bar_pour_has_no_row_to_be_finished(self):
+        """Encounters are scored by uid before they have a code; there is no status to read."""
+        r = self._post({"spirit_id": "E-20260916-somewhere-0001", "scores": dict(EXAMPLE_CARD)})
+        self.assertEqual(r.status_code, 201)
+
+
+class TestTheSpiritListCountsSittings(AppCase):
+    """The picker keeps a finished bottle only if it was scored, so the list has to say."""
+
+    def spirit(self, code):
+        return next(s for s in self.c.get("/api/spirits").get_json()["spirits"]
+                    if s["code"] == code)
+
+    def test_none_then_one_then_none_again(self):
+        self.assertEqual(self.spirit("B-18")["sittings"], 0)
+        made = self._post({"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD)}).get_json()["tasting"]
+        self.assertEqual(self.spirit("B-18")["sittings"], 1)
+        self.c.delete(f"/api/tasting/{made['tasting_id']}")
+        self.assertEqual(self.spirit("B-18")["sittings"], 0, "a tombstone is not a sitting")
+
+    def test_a_draft_counts(self):
+        """A card half-written before the bottle was finished is still a record of it."""
+        self._post({"spirit_id": "B-18", "status": "draft", "scores": {"aroma": 6}})
+        self.assertEqual(self.spirit("B-18")["sittings"], 1)
+
+    def test_owned_is_derived_when_the_snapshot_did_not_carry_it(self):
+        """The fixture predates the column, as the snapshot on an un-refreshed machine may."""
+        self.assertTrue(self.spirit("B-18")["owned"])
+        self.assertTrue(self.spirit("S-1")["owned"])
+
+
+class TestStatus(StatusCase):
+    """All three sheets carry a Status column. Finished and Removed mean the spirit has left the
+    collection; Opened and Unopened mean it is still there. Marking a row is better than deleting
+    it — the reviews keep something to belong to — so the app has to read the difference."""
 
     def test_finished_is_not_owned(self):
         self.assertFalse(self.row(self.with_status("Finished"))["owned"])
@@ -1133,6 +1204,48 @@ class TestThePickerKeepsWhatYouTyped(unittest.TestCase):
         self.assertIn("query:", block[:block.index("\n};")])
         block = src[src.index("function renderResults()"):]
         self.assertIn("state.query", block[:400])
+
+
+class TestFinishedBottlesInThePicker(unittest.TestCase):
+    """A Finished or Removed bottle is not offered for scoring. One that was scored while it
+    lasted is listed under its own chip and opens its record; one that never was appears
+    nowhere, because there is nothing to show."""
+
+    def source(self, name="app.js"):
+        src = (ROOT / "static" / name).read_text(encoding="utf-8")
+        src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
+        return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
+
+    def block(self, start, name="app.js"):
+        src = self.source(name)
+        block = src[src.index(start):]
+        return block[:block.index("\nfunction ")]
+
+    def test_the_ordinary_lists_leave_finished_bottles_out(self):
+        self.assertIn("state.spirits.filter((s) => !goneSpirit(s))",
+                      self.block("function renderResults()"))
+
+    def test_the_finished_chip_needs_a_sitting_to_list_one(self):
+        self.assertIn("goneSpirit(s) && s.sittings > 0", self.block("function renderResults()"))
+        html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('data-source="gone"', html)
+
+    def test_a_finished_row_opens_the_record_not_a_card(self):
+        self.assertIn("gone ? showSittingsFor(s.code) : addPour(s.code)",
+                      self.block("function renderResults()"))
+        self.assertIn("focusTastings", self.source("table.js")[self.source("table.js").index("return {"):])
+
+    def test_adding_a_pour_refuses_a_finished_bottle_whatever_the_road_in(self):
+        block = self.block("function addPour(")
+        self.assertIn("if (goneSpirit(sp))", block)
+        self.assertLess(block.index("goneSpirit(sp)"), block.index("state.pours"),
+                        "the guard has to come before anything is added")
+
+    def test_the_verdict_is_read_from_the_status_not_from_owned_alone(self):
+        """A bar pour is not owned either, and is scored all the time. Both clients, one line."""
+        for folder in ("static", "docs"):
+            src = (ROOT / folder / "app.js").read_text(encoding="utf-8")
+            self.assertIn("const goneSpirit = (s) => s.owned === false && !!s.status;", src, folder)
 
 
 class TestASubmittedCardIsNotADeadEnd(unittest.TestCase):

@@ -51,6 +51,11 @@
           <button class="chip" data-source="Bottle" type="button">Bottles</button>
           <button class="chip" data-source="Miniature" type="button">Minis</button>
           <button class="chip" data-source="Sample" type="button">Samples</button>
+          <!-- Bottles marked Finished or Removed that were scored while they lasted. They are kept
+               out of the lists to the left: nothing can be poured from them, so nothing can be
+               scored — but their sittings are still on the books, and this is where to find them. -->
+          <button class="chip chip-gone" data-source="gone" type="button"
+                  title="Finished or Removed bottles that have sittings">Finished</button>
         </div>
       </div>
       <ul id="picker-results" class="picker-results" role="listbox" aria-label="Spirits"></ul>

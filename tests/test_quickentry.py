@@ -34,6 +34,9 @@ SPIRITS = [
     {"code": "B-2", "display_name": "Sample Co Test Rye", "name": "Test Rye"},
     {"code": "S-9", "display_name": "Twin Co Barrel Pick", "name": "Barrel Pick"},
     {"code": "S-10", "display_name": "Twin Co Barrel Pick", "name": "Barrel Pick"},
+    # Marked Finished in the workbook: a row still, a bottle no longer.
+    {"code": "B-3", "display_name": "Emptied House Last Drop", "name": "Last Drop",
+     "status": "Finished"},
 ]
 
 
@@ -59,6 +62,19 @@ class QuickCase(unittest.TestCase):
 
     def drain(self):
         return quickentry.drain(self.book, self.j, SPIRITS)
+
+
+class TestAFinishedBottleIsRefused(QuickCase):
+    def test_the_row_stays_on_the_sheet_with_the_reason(self):
+        """A match to an empty bottle is a mistake in the row, not a sitting — usually a name
+        shared with the bottle that replaced it. Flagged, not filed (SPEC.md §1.2)."""
+        self.write_book([{"display_name": "Emptied House Last Drop", "nose": "dust"}])
+        out = self.drain()
+        self.assertEqual(out["counts"]["drained"], 0)
+        self.assertEqual(len(out["unmatched"]), 1)
+        self.assertIn("B-3", out["unmatched"][0]["problem"])
+        self.assertIn("Finished", out["unmatched"][0]["problem"])
+        self.assertEqual(self.j.tastings(), [])
 
 
 class TestReading(QuickCase):

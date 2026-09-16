@@ -14,6 +14,11 @@ const TYPE_ACCENT = {
 };
 const accentFor = (t) => TYPE_ACCENT[t] || "var(--muted)";
 
+/** Marked Finished or Removed in the workbook: still a row, no longer a bottle. Read from the
+    status and not from `owned` alone, because a bar pour is not owned either and is scored all
+    the time. The vocabulary lives in collection.py; this only reads the verdict it derived. */
+const goneSpirit = (s) => s.owned === false && !!s.status;
+
 const state = {
   config: null,
   medalColors: {},
@@ -551,8 +556,16 @@ function renderResults() {
   if (!ul) return;
   const q = state.query.trim().toLowerCase();
   const terms = q.split(/\s+/).filter(Boolean);
-  let list = state.spirits;
-  if (state.filter !== "all") list = list.filter((s) => s._sheet === state.filter);
+  // A Finished or Removed bottle cannot be poured, so it is not offered for scoring. The ones
+  // that were scored while they lasted are listed under their own chip, where a click opens
+  // their sittings; the ones that never were have nothing to show and appear nowhere here.
+  const live = state.spirits.filter((s) => !goneSpirit(s));
+  let list;
+  if (state.filter === "gone") {
+    list = state.spirits.filter((s) => goneSpirit(s) && s.sittings > 0);
+  } else {
+    list = state.filter === "all" ? live : live.filter((s) => s._sheet === state.filter);
+  }
   if (terms.length) {
     list = list.filter((s) => {
       const hay = `${s.code} ${s.display_name} ${s.type || ""} ${s.region || ""}`.toLowerCase();
@@ -565,13 +578,16 @@ function renderResults() {
   const count = document.getElementById("picker-count");
   if (count) {
     count.textContent = !state.spirits.length ? ""
-      : list.length === state.spirits.length ? `${list.length} spirits`
-      : `${list.length} of ${state.spirits.length}`;
+      : state.filter === "gone" ? `${list.length} finished, with sittings`
+      : list.length === live.length ? `${list.length} spirits`
+      : `${list.length} of ${live.length}`;
   }
   ul.replaceChildren();
   if (!list.length) {
     ul.append(el("li", { class: "pr-empty" },
-      state.spirits.length ? "No match." : "No spirits loaded."));
+      !state.spirits.length ? "No spirits loaded."
+      : state.filter === "gone" && !terms.length ? "No finished bottle was scored while it lasted."
+      : "No match."));
     return;
   }
   for (const s of list) {
@@ -579,9 +595,13 @@ function renderResults() {
                   s.proof ? `${s.proof}pf` : null,
                   s.release_year ? String(Math.round(s.release_year)) : null]
       .filter(Boolean).join(" · ");
-    ul.append(el("li", { role: "option", style: `border-left-color:${accentFor(s.type)}`,
-                         onclick: () => addPour(s.code) },
+    const gone = goneSpirit(s);
+    ul.append(el("li", { role: "option", class: gone ? "gone" : null,
+                         style: `border-left-color:${accentFor(s.type)}`,
+                         title: gone ? `${s.status} — opens its record` : null,
+                         onclick: () => (gone ? showSittingsFor(s.code) : addPour(s.code)) },
       el("span", { class: "pr-name" }, s.name || s.display_name),
+      gone ? el("span", { class: "pr-tag" }, s.status) : null,
       el("span", { class: "pr-dist" }, s.distillery || ""),
       el("span", { class: "pr-meta" }, meta),
       el("span", { class: "pr-code" }, s.code)));
@@ -712,9 +732,26 @@ function renderSession() {
 }
 
 // ---------------------------------------------------------------- sheet
+/** A finished bottle's row leads to its record, not to a new card: the table, in tastings mode,
+    filtered to the one code — where its sittings are read, corrected or removed. */
+function showSittingsFor(code) {
+  const sp = state.spirits.find((s) => s.code === code);
+  TableView.focusTastings(code);
+  showView("table");
+  if (sp) {
+    showStatus("ok", `${sp.code} is marked ${sp.status}: nothing new can be scored against it. `
+      + `${sp.sittings === 1 ? "This is the sitting" : `These are the ${sp.sittings} sittings`} `
+      + "it had while it lasted.", true);
+  }
+}
+
 function addPour(code) {
   const sp = state.spirits.find((s) => s.code === code);
   if (!sp) return;
+  if (goneSpirit(sp)) {          // the picker never offers one; this holds for any other road in
+    showStatus("warn", `${sp.code} is marked ${sp.status} — an empty bottle takes no new scores.`);
+    return;
+  }
   hideStatus();
   if (state.mode === "session") {
     state.pours.push(newPour(sp, state.pours.length + 1));

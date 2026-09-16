@@ -488,5 +488,15 @@ const TableView = (() => {
   /** Called after a submit so the table is not stale next time it is opened. */
   function invalidate() { T.data = {}; }
 
-  return { open, invalidate };
+  /** Point the next open() at one spirit's sittings. The score picker sends a finished bottle
+      here: it has no card to open, but it has a record, and this is where the record is read,
+      corrected or removed. State only — showView() does the opening, once. */
+  function focusTastings(code) {
+    T.mode = "tastings";
+    T.picked = new Set();
+    T.filters = { ...T.filters, q: code, owned: "all", scored: false,
+                  type: "", region: "", rarity: "", status: "", source: "" };
+  }
+
+  return { open, invalidate, focusTastings };
 })();

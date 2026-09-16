@@ -48,7 +48,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 439 tests, all passing
+python -m unittest discover -s tests    # 458 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -176,6 +176,19 @@ caller asks. Editing and deleting exist on both halves: `DELETE /api/tasting/<id
 `Store.reviseCard`/`deleteCard` on the phone (which writes the revision and tombstone files
 straight into the app folder — no endpoint needed, so it works offline). The phone can only touch
 the sittings it holds; the PC can touch all of them.
+
+**A Finished or Removed bottle takes no new scores.** Nothing can be poured from it. The rule is
+enforced once, in `POST /api/tasting`: a card for a spirit whose status `is_gone` is refused with
+409 — *unless* its `tasting_id` is already on file (`journal.has_tasting`), because correcting a
+sitting from when the bottle was full is what the journal is for. The desktop mints the id before
+its first autosave, so "carries an id" is not the test; "id already on file" is. Quick Entry rows
+that match a gone bottle stay on the sheet with the reason (§1.2). Both pickers read the verdict
+through one line, `goneSpirit = (s) => s.owned === false && !!s.status` — status *and* owned,
+because a bar pour is not owned either and is scored all the time. A gone bottle is kept out of
+every ordinary list; one that was scored while it lasted sits under a **Finished** chip (the PC
+row opens its sittings in the table via `TableView.focusTastings`, the phone's detail screen
+offers no Score button), and one never scored appears nowhere, because there is nothing to show.
+`/api/spirits` carries a per-spirit `sittings` count for that decision.
 
 `docs/table.js` is the phone's table: sortable, no column chooser, scrolling sideways rather than
 being squeezed. Proof and release year are shown on the score sheet, both tables and both compare
