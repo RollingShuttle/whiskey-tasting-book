@@ -1109,6 +1109,32 @@ class TestScoringSheetIdentifiesTheBottle(unittest.TestCase):
                       "the distillery would show through blind mode")
 
 
+class TestThePickerKeepsWhatYouTyped(unittest.TestCase):
+    """Opening one bottle out of a search and coming back used to hand you an empty box, so the
+    search had to be retyped every time — over a 375-row list, once per bottle looked at."""
+
+    def source(self):
+        src = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
+        return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
+
+    def test_showing_the_picker_does_not_blank_the_search(self):
+        src = self.source()
+        block = src[src.index("function showPicker()"):]
+        block = block[:block.index("function renderResults()")]
+        self.assertNotIn('input.value = ""', block)
+        self.assertIn("input.value = state.query", block)
+
+    def test_the_search_lives_on_state_beside_the_filter_it_sits_next_to(self):
+        """The source filter already survived the trip; holding the text only in the DOM is what
+        made the two behave differently."""
+        src = self.source()
+        block = src[src.index("const state = {"):]
+        self.assertIn("query:", block[:block.index("\n};")])
+        block = src[src.index("function renderResults()"):]
+        self.assertIn("state.query", block[:400])
+
+
 class TestASubmittedCardIsNotADeadEnd(unittest.TestCase):
     """Submitting removed the Change button and put nothing in its place, so a standalone card
     ended with a finished sheet and no way onward — the only escape was the top navigation."""
@@ -1121,11 +1147,24 @@ class TestASubmittedCardIsNotADeadEnd(unittest.TestCase):
     def test_the_footer_offers_the_next_card(self):
         self.assertIn('id: "score-another"', self.source())
 
-    def test_the_header_offers_a_way_back(self):
+    def test_the_header_offers_a_way_back_whether_or_not_it_is_submitted(self):
+        """One control, one label, both states. It used to be "Change" before submitting and
+        "Back" after, which are the same trip described two ways."""
         src = self.source()
-        block = src[src.index('state.mode === "session" ? "Drop pour" : "Change"'):]
-        self.assertIn('"Back"', block[:400],
-                      "a submitted card leaves the header with no control at all")
+        block = src[src.index('const actions = el("div", { class: "sheet-actions" })'):]
+        block = block[:block.index('sheet.append(el("div", { class: "sheet-head" }')]
+        self.assertEqual(block.count("returnButton()"), 2, block)
+        self.assertNotIn('"Change"', src)
+
+    def test_the_way_back_is_not_dressed_as_a_caption(self):
+        """Muted grey on a ghost button read as a label rather than a control, and was missed."""
+        src = self.source()
+        self.assertIn('class: "ghost back"', src)
+        css = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
+        rule = css[css.index("button.ghost.back {"):]
+        rule = rule[:rule.index("}")]
+        self.assertIn("var(--text)", rule, "it is still wearing the muted colour")
+        self.assertIn("brass", rule, "nothing marks it out from a plain ghost button")
 
     def test_both_go_through_the_one_function_that_knows_how_to_leave(self):
         """backToPicker also drops an unsubmitted pour from a flight rather than leaving a ghost

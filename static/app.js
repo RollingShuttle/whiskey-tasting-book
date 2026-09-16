@@ -19,6 +19,7 @@ const state = {
   medalColors: {},
   spirits: [],
   filter: "all",
+  query: "",            // what is typed in the picker's search box — see showPicker
   view: "score",        // "score" | "table" | "compare" | "analysis"
   quick: null,          // Quick Entry rows waiting on the workbook
   pending: null,        // new-bottle requests waiting for approval
@@ -513,7 +514,10 @@ function showView(v) {
 
 // ---------------------------------------------------------------- picker
 function buildPicker() {
-  document.getElementById("picker-input").addEventListener("input", renderResults);
+  document.getElementById("picker-input").addEventListener("input", (e) => {
+    state.query = e.target.value;
+    renderResults();
+  });
   document.querySelectorAll(".picker-filters .chip").forEach((c) =>
     c.addEventListener("click", () => {
       state.filter = c.dataset.source;
@@ -531,16 +535,21 @@ function showPicker() {
     state.mode === "session"
       ? `Add pour ${state.pours.length + 1} to the flight`
       : "Score a spirit";
+  // The search survives a trip into a card and back. Blanking it here meant that looking at one
+  // bottle out of a search for "stagg" threw the search away, and the next one had to be typed
+  // again from the top of 375 rows. The source filter beside it already persisted, so the box
+  // was the odd one out. Clearing it is the typist's business, not ours.
   const input = document.getElementById("picker-input");
-  input.value = "";
+  input.value = state.query;
   renderResults();
   input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
 }
 
 function renderResults() {
   const ul = document.getElementById("picker-results");
   if (!ul) return;
-  const q = (document.getElementById("picker-input")?.value || "").trim().toLowerCase();
+  const q = state.query.trim().toLowerCase();
   const terms = q.split(/\s+/).filter(Boolean);
   let list = state.spirits;
   if (state.filter !== "all") list = list.filter((s) => s._sheet === state.filter);
@@ -720,6 +729,13 @@ function addPour(code) {
   saveDraft();
 }
 
+/** The way back to the spirit list, from a card in progress or a finished one. */
+function returnButton() {
+  return el("button", { class: "ghost back", type: "button", id: "back-to-list",
+                        onclick: backToPicker },
+            el("span", { class: "back-arrow", "aria-hidden": "true" }, "←"), "Return");
+}
+
 function backToPicker() {
   if (state.mode === "session") {
     // leaving an unsubmitted pour drops it rather than leaving a ghost in the switcher
@@ -794,12 +810,16 @@ function renderSheet() {
       el("input", { type: "checkbox", checked: p.blind,
                     onchange: (e) => { p.blind = e.target.checked; renderSheet(); } }), "Blind"));
   }
+  // "Change" described what happened after you pressed it, not what the button was for, and in
+  // muted grey it read as a caption rather than the way out. It is the same trip back to the list
+  // whether the card is finished or not, so both say so and both look like a control you can
+  // press — brass, but not the filled brass that belongs to Submit alone.
   if (!p.submitted) {
-    actions.append(el("button", { class: "ghost", type: "button", onclick: backToPicker },
-                       state.mode === "session" ? "Drop pour" : "Change"));
+    actions.append(state.mode === "session"
+      ? el("button", { class: "ghost", type: "button", onclick: backToPicker }, "Drop pour")
+      : returnButton());
   } else if (state.mode !== "session") {
-    actions.append(el("button", { class: "ghost", type: "button", onclick: backToPicker },
-                       "Back"));
+    actions.append(returnButton());
   }
   sheet.append(el("div", { class: "sheet-head" },
     el("div", { class: "sheet-title" }, nameEl, metaEl, detailEl), actions));
@@ -964,9 +984,9 @@ function buildFooter(p) {
                                onclick: editCard }, "Edit"));
     foot.append(el("button", { class: "ghost danger", type: "button", id: "delete-card",
                                onclick: deleteCard }, "Delete"));
-    // Submitting used to be the end of the road: the Change button is gone by then, so a
-    // standalone card left you looking at a finished sheet with no way onward. A flight has its
-    // pour switcher and "+ Add pour" right above, so it needs nothing here.
+    // The next card, offered where you finish reading this one — the Return button is up in the
+    // header, which is a long way from the total you just watched land. A flight has its pour
+    // switcher and "+ Add pour" right above, so it needs nothing here.
     if (state.mode !== "session") {
       foot.append(el("button", { class: "ghost", type: "button", id: "score-another",
                                  onclick: backToPicker }, "Score another"));

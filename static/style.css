@@ -62,6 +62,20 @@ button.ghost {
 }
 button.ghost:hover { color: var(--text); border-color: var(--brass); }
 
+/* The way back to the spirit list. A plain ghost button in muted grey sat in the sheet header
+   looking like a label, and it was routinely missed — this one carries full-strength text, a
+   brass edge and a tinted ground, without taking the solid brass that marks Submit. */
+button.ghost.back {
+  color: var(--text); font-weight: 600; font-size: 13.5px; padding: 7px 14px;
+  border-color: color-mix(in srgb, var(--brass) 55%, var(--line));
+  background: color-mix(in srgb, var(--brass) 10%, transparent);
+  display: inline-flex; align-items: center; gap: 7px;
+}
+button.ghost.back:hover {
+  border-color: var(--brass); background: color-mix(in srgb, var(--brass) 20%, transparent);
+}
+.back-arrow { color: var(--brass-bright); font-size: 15px; line-height: 1; }
+
 /* ---------------------------------------------------------------- layout */
 #main { max-width: 940px; margin: 0 auto; padding: 22px; }
 
