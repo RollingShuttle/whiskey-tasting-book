@@ -220,6 +220,11 @@ button.ghost.back:hover {
 }
 .seg.filled.tick::after, .seg.sel.tick::after { color: var(--bg); font-weight: 600; }
 .seg.sel { box-shadow: inset 0 0 0 1px var(--brass-bright); }
+/* The 0 cell: hollow, and lit as a ring rather than a brass block when 0 is the score, so it
+   reads as "none" and not as one point. */
+.seg.zero { box-shadow: inset 0 0 0 1px var(--line); }
+.seg.zero.filled { background: var(--surface); box-shadow: inset 0 0 0 1px var(--brass-bright); }
+.seg.zero.filled.tick::after { color: var(--brass-bright); }
 
 .cat-score {
   width: 46px; text-align: center; flex-shrink: 0;

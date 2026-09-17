@@ -519,37 +519,39 @@ function renderScore() {
 
   for (const c of app.rubric.categories) {
     const val = el("span", { class: "cat-val unset" }, "–");
+    // Cells 0..max. Zero is the bottom of every category and needs somewhere to land; it used to
+    // be reachable only within 2 % of the left edge, with nothing drawn there — on a phone, about
+    // seven points, and the strip is the only input there is. Its cell is hollow and lights only
+    // when 0 is the score, so a strip with a 6 on it does not look as though it starts at brass.
     const strip = el("div", {
       class: "strip", role: "slider", tabindex: "0",
-      style: `grid-template-columns:repeat(${c.max},1fr)`,
+      style: `grid-template-columns:repeat(${c.max + 1},1fr)`,
       "aria-label": c.label, "aria-valuemin": "0", "aria-valuemax": String(c.max),
     });
     const segs = [];
-    for (let i = 1; i <= c.max; i++) {
-      const seg = el("div", { class: "seg", "data-label": String(i) });
+    for (let i = 0; i <= c.max; i++) {
+      const seg = el("div", { class: i === 0 ? "seg zero" : "seg", "data-label": String(i) });
       segs.push(seg); strip.append(seg);
     }
     const paint = () => {
       const v = d.scores[c.key];
       const showAll = c.max <= 10;
-      segs.forEach((seg, i) => {
-        const n = i + 1;
-        seg.classList.toggle("filled", v !== null && n <= v);
+      segs.forEach((seg, n) => {
+        seg.classList.toggle("filled", v !== null && (n === 0 ? v === 0 : n <= v));
         seg.classList.toggle("sel", v !== null && n === v);
-        seg.classList.toggle("tick", showAll || n % 5 === 0 || n === v);
+        seg.classList.toggle("tick", n === 0 || showAll || n % 5 === 0 || n === v);
       });
       val.textContent = v === null ? "–" : String(v);
       val.classList.toggle("unset", v === null);
       strip.setAttribute("aria-valuenow", String(v ?? 0));
       updateTotal();
     };
-    // Ten segments across a 390 pt screen is ~33 pt each, under the 44 pt guideline, so a tap is
+    // Eleven cells across a 390 pt screen is ~30 pt each, under the 44 pt guideline, so a tap is
     // backed by a drag: press anywhere and slide to the value (SPEC.md §9.2).
     const from = (clientX) => {
       const r = strip.getBoundingClientRect();
       const frac = (clientX - r.left) / r.width;
-      if (frac <= 0.02) return 0;
-      return Math.max(0, Math.min(c.max, Math.ceil(frac * c.max)));
+      return Math.max(0, Math.min(c.max, Math.floor(frac * (c.max + 1))));   // cell under the finger
     };
     let dragging = false;
     strip.addEventListener("pointerdown", (e) => {

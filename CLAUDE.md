@@ -48,7 +48,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 458 tests, all passing
+python -m unittest discover -s tests    # 465 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -175,7 +175,9 @@ drift, and a fingerprint check stops a revision that would say nothing. Drafts m
 caller asks. Editing and deleting exist on both halves: `DELETE /api/tasting/<id>` on the PC,
 `Store.reviseCard`/`deleteCard` on the phone (which writes the revision and tombstone files
 straight into the app folder — no endpoint needed, so it works offline). The phone can only touch
-the sittings it holds; the PC can touch all of them.
+the sittings it holds; the PC can touch all of them. **Every category runs 0–max**, and both strips
+draw a hollow cell for 0 (lit as a ring only when 0 is the score). Unset is `null`, never 0 —
+nothing may read a 0 as "not scored", and the totals use `|| 0` only because a sum needs a number.
 
 **A Finished or Removed bottle takes no new scores.** Nothing can be poured from it. The rule is
 enforced once, in `POST /api/tasting`: a card for a spirit whose status `is_gone` is refused with

@@ -78,6 +78,12 @@ class TestRubricShape(unittest.TestCase):
 
 
 class TestValidation(unittest.TestCase):
+    def test_zero_is_the_bottom_of_every_category_and_minus_one_is_below_it(self):
+        r = load_rubric()
+        self.assertEqual(r.validate({k: 0 for k in EXAMPLE_CARD}), [])
+        self.assertEqual(r.total({k: 0 for k in EXAMPLE_CARD}), 0)
+        self.assertTrue(r.validate(dict(EXAMPLE_CARD, aroma=-1)))
+
     def setUp(self):
         self.r = load_rubric()
 

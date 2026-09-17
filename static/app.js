@@ -916,23 +916,27 @@ function buildRow(cat, p) {
 
 // ---------------------------------------------------------------- the score control
 function wireStrip(strip, scoreInput, cat, p) {
-  strip.style.setProperty("--n", cat.max);
+  // Cells 0..max. Zero is the bottom of every category — "none of this" is a verdict, and it
+  // needs somewhere to land. It used to be reachable only by pressing within 2 % of the left
+  // edge, with nothing drawn there to find; the phone, where the strip is the only input, could
+  // in practice never score it. Its cell is hollow and lights only when 0 is the score, so a
+  // strip with a 6 on it does not look as though it starts at brass.
+  strip.style.setProperty("--n", cat.max + 1);
   strip.setAttribute("aria-valuemax", cat.max);
   strip.setAttribute("aria-label", cat.label);
   const showAll = cat.max <= 10;
   const segs = [];
-  for (let i = 1; i <= cat.max; i++) {
-    const seg = el("div", { class: "seg", "data-index": i, "data-label": i });
+  for (let i = 0; i <= cat.max; i++) {
+    const seg = el("div", { class: i === 0 ? "seg zero" : "seg", "data-index": i, "data-label": i });
     segs.push(seg); strip.append(seg);
   }
 
   const paintSegs = () => {
     const v = p.scores[cat.key];
-    segs.forEach((seg, idx) => {
-      const n = idx + 1;
-      seg.classList.toggle("filled", v !== null && n <= v);
+    segs.forEach((seg, n) => {
+      seg.classList.toggle("filled", v !== null && (n === 0 ? v === 0 : n <= v));
       seg.classList.toggle("sel", v !== null && n === v);
-      seg.classList.toggle("tick", showAll || n % 5 === 0 || n === v);
+      seg.classList.toggle("tick", n === 0 || showAll || n % 5 === 0 || n === v);
     });
     strip.setAttribute("aria-valuenow", v ?? 0);
     strip.setAttribute("aria-valuetext", v === null ? "not scored" : `${v} of ${cat.max}`);
@@ -958,8 +962,7 @@ function wireStrip(strip, scoreInput, cat, p) {
   const valueFromX = (clientX) => {
     const r = strip.getBoundingClientRect();
     const frac = (clientX - r.left) / r.width;
-    if (frac <= 0.02) return 0;
-    return Math.max(0, Math.min(cat.max, Math.ceil(frac * cat.max)));
+    return Math.max(0, Math.min(cat.max, Math.floor(frac * (cat.max + 1))));   // cell under the pointer
   };
 
   let dragging = false;

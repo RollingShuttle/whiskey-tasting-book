@@ -148,6 +148,29 @@ class TestSubmit(AppCase):
         self.assertTrue(any("Flavor" in p for p in r.get_json()["problems"]))
         self.assertEqual(self.c.get("/api/spirit/B-18").get_json()["career"]["n"], 0)
 
+    def test_a_zero_is_a_score_not_a_gap(self):
+        """0 is the bottom of every category, not "unscored". A card carrying one is complete,
+        counts, and totals what it totals."""
+        r = self._post({"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD, aesthetics=0)})
+        self.assertEqual(r.status_code, 201, r.get_json())
+        self.assertEqual(r.get_json()["tasting"]["total"],
+                         sum(EXAMPLE_CARD.values()) - EXAMPLE_CARD["aesthetics"])
+        self.assertEqual(self.c.get("/api/spirit/B-18").get_json()["career"]["n"], 1)
+
+    def test_a_card_of_nothing_but_zeros_is_still_a_card(self):
+        r = self._post({"spirit_id": "B-18", "scores": {k: 0 for k in EXAMPLE_CARD}})
+        self.assertEqual(r.status_code, 201, r.get_json())
+        self.assertEqual(r.get_json()["tasting"]["total"], 0)
+
+    def test_a_draft_keeps_its_zeros(self):
+        """The draft path drops None so a half-filled card can be saved; 0 is not None."""
+        r = self._post({"spirit_id": "B-18", "status": "draft",
+                        "scores": {"aroma": 0, "flavor": None}})
+        self.assertEqual(r.status_code, 201, r.get_json())
+        scores = r.get_json()["tasting"]["scores"]
+        self.assertEqual(scores["aroma"], 0)
+        self.assertNotIn("flavor", scores)
+
     def test_fractional_score_is_rejected(self):
         r = self._post({"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD, aroma=8.5)})
         self.assertEqual(r.status_code, 400)
@@ -1204,6 +1227,34 @@ class TestThePickerKeepsWhatYouTyped(unittest.TestCase):
         self.assertIn("query:", block[:block.index("\n};")])
         block = src[src.index("function renderResults()"):]
         self.assertIn("state.query", block[:400])
+
+
+class TestTheStripHasAZeroCell(unittest.TestCase):
+    """0 is the bottom of every category. It used to be reachable only through a 2 % dead zone at
+    the left edge of the strip — about seven points on a phone, with nothing drawn there to find —
+    so in practice the phone could never score it. Both clients, one rule."""
+
+    def strip(self, folder):
+        src = (ROOT / folder / "app.js").read_text(encoding="utf-8")
+        src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
+        src = re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
+        start = src.index("function wireStrip(" if folder == "static" else "function renderScore(")
+        return src[start:start + 5000]
+
+    def test_both_strips_draw_a_cell_for_zero(self):
+        for folder in ("static", "docs"):
+            block = self.strip(folder)
+            self.assertIn("for (let i = 0; i <=", block, folder)
+            self.assertIn("max + 1", block, f"{folder}: the grid still has max columns")
+
+    def test_the_dead_zone_hack_is_gone(self):
+        for folder in ("static", "docs"):
+            self.assertNotIn("frac <= 0.02", self.strip(folder), folder)
+
+    def test_the_zero_cell_is_lit_only_when_zero_is_the_score(self):
+        """Otherwise every strip with anything on it would start with a brass block at 0."""
+        for folder in ("static", "docs"):
+            self.assertIn("n === 0 ? v === 0 : n <= v", self.strip(folder), folder)
 
 
 class TestFinishedBottlesInThePicker(unittest.TestCase):
