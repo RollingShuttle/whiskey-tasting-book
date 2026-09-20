@@ -126,6 +126,7 @@ const TableView = (() => {
     switch (type) {
       case "money":  return `$${Number(v).toFixed(2)}`;
       case "num":    return Number.isInteger(Number(v)) ? String(Number(v)) : Number(v).toFixed(1);
+      case "num2":   return Number(v).toFixed(2);
       case "num3":   return Number(v).toFixed(3);
       case "int":    return String(v);
       case "score":  return String(v);
@@ -152,7 +153,7 @@ const TableView = (() => {
       return el("td", { class: "t-name" },
         el("span", { class: "t-dot", style: `background:${accentFor(row.type)}` }), text);
     }
-    const cls = { code: "t-code", money: "t-num", num: "t-num", num3: "t-num", int: "t-num",
+    const cls = { code: "t-code", money: "t-num", num: "t-num", num2: "t-num", num3: "t-num", int: "t-num",
                   score: "t-score", score1: "t-score" }[col.type] || "";
     return el("td", { class: cls }, text);
   }
@@ -379,7 +380,7 @@ const TableView = (() => {
     const head = el("tr", {}, ...shown.map((c) => {
       const active = c.key === sortKey;
       return el("th", {
-        class: `${active ? "sorted" : ""} ${["money", "num", "num3", "int", "score", "score1"]
+        class: `${active ? "sorted" : ""} ${["money", "num", "num2", "num3", "int", "score", "score1"]
           .includes(c.type) ? "t-num" : ""}`,
         onclick: () => {
           const s = T.sort[T.mode];

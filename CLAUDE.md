@@ -48,7 +48,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 465 tests, all passing
+python -m unittest discover -s tests    # 467 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -71,7 +71,10 @@ spreads, and every axis carries its own max so the view draws each bar against i
 The table serves two modes from `/api/table/collection` (one row per spirit, master fields
 joined to the career score, encounters included as not-owned) and `/api/table/tastings` (one row
 per sitting); columns are declared once in `app.py` as `COLLECTION_COLUMNS` / `TASTING_COLUMNS`
-and the column chooser and CSV are generated from that contract. Sessions are a
+and the column chooser and CSV are generated from that contract. The row builders under
+`/api/table/*` copy spirit fields **by name**, though, so a new column needs the declaration *and*
+the copy (in the collection, retired and tastings builders) — a test checks the value, not the
+header, because a declared-but-uncopied column renders as a dash for ever. Sessions are a
 first-class journal record: `store.write_session/sessions/session/next_flight_pos`, immutable with
 revisions like tastings, filed under `sessions/` with an **`F-`** prefix (not `S-`, which is
 already a Sample code). `rollup.py` grew a `Sessions` sheet. A standalone pour and a flight are the

@@ -78,12 +78,17 @@ COLLECTION_COLUMNS = [
     {"key": "proof",            "label": "Proof",    "type": "num",   "default": True},
     {"key": "release_year",     "label": "Year",     "type": "int",   "default": True},
     {"key": "abv",              "label": "ABV",      "type": "num",   "default": False},
+    # Two of the workbook's own columns. Proof Diff is bottling proof less barrel-entry proof —
+    # it holds as proof − entry_proof on every row that has all three — and can be negative.
+    {"key": "conc_ratio",       "label": "Conc. ratio", "type": "num2", "default": False},
+    {"key": "proof_diff",       "label": "Proof diff",  "type": "num",  "default": False},
     {"key": "paid",             "label": "Paid",     "type": "money", "default": True},
     {"key": "size_oz",          "label": "Size oz",  "type": "num",   "default": False},
     {"key": "value_per_oz",     "label": "$ / oz",   "type": "money", "default": True},
     {"key": "best",             "label": "Best",     "type": "int",   "default": False},
     {"key": "worst",            "label": "Worst",    "type": "int",   "default": False},
-    {"key": "score_per_dollar", "label": "Score / $", "type": "num3", "default": False},    {"key": "n",                "label": "n",        "type": "int",   "default": True},
+    {"key": "score_per_dollar", "label": "Score / $", "type": "num3", "default": False},
+    {"key": "n",                "label": "n",        "type": "int",   "default": True},
 ]
 
 TASTING_COLUMNS = [
@@ -97,6 +102,8 @@ TASTING_COLUMNS = [
     {"key": "source",           "label": "Source",   "type": "text",  "default": False},
     {"key": "proof",            "label": "Proof",    "type": "num",   "default": True},
     {"key": "release_year",     "label": "Year",     "type": "int",   "default": True},
+    {"key": "conc_ratio",       "label": "Conc. ratio", "type": "num2", "default": False},
+    {"key": "proof_diff",       "label": "Proof diff",  "type": "num",  "default": False},
     {"key": "counted",          "label": "Counted",  "type": "text",  "default": True},
     {"key": "venue",            "label": "Venue",    "type": "text",  "default": True},
     {"key": "pour_price",       "label": "Pour $",   "type": "money", "default": False},
@@ -695,6 +702,7 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
                 "rarity": sp.get("rarity"), "status": sp.get("status"),
                 "age": sp.get("age"), "age_label": sp.get("age_label"),
                 "proof": sp.get("proof"), "abv": sp.get("abv"),
+                "conc_ratio": sp.get("conc_ratio"), "proof_diff": sp.get("proof_diff"),
                 "release_year": sp.get("release_year"),
                 "paid": sp.get("paid"), "size_oz": sp.get("size_oz"),
                 "value_per_oz": sp.get("value_per_oz"),
@@ -721,6 +729,7 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
                 "source": "Retired", "owned": False,
                 "type": f.get("type"), "region": f.get("region"),
                 "rarity": f.get("rarity"), "status": "Finished",
+                "conc_ratio": f.get("conc_ratio"), "proof_diff": f.get("proof_diff"),
                 "age": f.get("age"), "age_label": f.get("age_label"),
                 "proof": f.get("proof"), "abv": f.get("abv"),
                 "release_year": f.get("release_year"),
@@ -770,6 +779,7 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
                 "type": sp.get("type"), "region": sp.get("region"),
                 "source": sp.get("_sheet"),
                 "proof": sp.get("proof"), "release_year": sp.get("release_year"),
+                "conc_ratio": sp.get("conc_ratio"), "proof_diff": sp.get("proof_diff"),
                 "total": t["total"], "medal": t["medal"],
                 "counted": "yes" if t.get("include_in_average", True) else "no",
                 "venue": t.get("venue"),

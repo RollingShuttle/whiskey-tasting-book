@@ -49,7 +49,7 @@ run.bat update.bat build_exe.bat        the three things you double-click
 | `static/` | the PC front end — `app.js` (sheet + flights), `table.js`, `compare.js`, `analysis.js` | — |
 | `docs/` | the iPhone client — offline-first, syncs through OneDrive | `tests/test_phone.py` |
 
-465 tests, all passing. `python tools/verify_gate.py` runs the shipping gate in [guide/SPEC.md](guide/SPEC.md) §7.
+467 tests, all passing. `python tools/verify_gate.py` runs the shipping gate in [guide/SPEC.md](guide/SPEC.md) §7.
 
 ## Views
 

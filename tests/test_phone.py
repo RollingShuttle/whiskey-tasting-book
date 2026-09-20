@@ -246,7 +246,7 @@ class TestPhoneTable(unittest.TestCase):
         src = code("table.js")
         for key in ("score", "name", "code", "type", "proof", "year", "n", "region", "age",
                     "paid", "value_per_oz", "score_per_dollar", "medal", "best", "worst",
-                    "rarity", "status"):
+                    "rarity", "status", "conc_ratio", "proof_diff"):
             self.assertIn('key: "%s"' % key, src, "cannot sort by %s" % key)
 
     def test_the_sorted_field_is_always_shown(self):

@@ -42,7 +42,8 @@ FIXTURE_SNAPSHOT = {
         {"_sheet": "Bottle", "_row": 26, "code": "B-18", "distillery": "Example Distillery",
          "name": "Single Barrel", "type": "Bourbon", "region": "America", "age": None,
          "age_label": "NAS", "proof": 100.0, "abv": 50.0, "size_ml": 750.0, "paid": 100.0,
-         "conc_ratio": 1.15, "status": "Opened", "rarity": "Uncommon"},
+         "conc_ratio": 1.15, "entry_proof": 125.0, "proof_diff": -25.0,
+         "status": "Opened", "rarity": "Uncommon"},
         {"_sheet": "Sample", "_row": 9, "code": "S-1", "distillery": "Sample Co",
          "name": "Test Rye", "type": "Rye", "region": "Scotland", "proof": 120.0,
          "abv": 60.0, "sizeoz": 1.0, "age": 8.0, "conc_ratio": 0.95},
@@ -296,6 +297,21 @@ class TestTableView(AppCase):
                                round(100.0 / (750 / app_mod.ML_PER_OZ), 2), places=2)
         self.assertAlmostEqual(row["score_per_dollar"], round(66 / 100.0, 3), places=3)
         self.assertIsNone(self._by_code()["S-1"]["value_per_oz"])     # no paid on a sample
+
+    def test_the_workbook_ratios_travel_to_both_tables(self):
+        """Conc. Ratio and Proof Diff are the workbook's own columns. The row builders copy
+        fields by name, so a column declared without being copied would render as a dash for
+        ever — this checks the value, not the header."""
+        for columns in (app_mod.COLLECTION_COLUMNS, app_mod.TASTING_COLUMNS):
+            keys = [c["key"] for c in columns]
+            self.assertIn("conc_ratio", keys)
+            self.assertIn("proof_diff", keys)
+        row = self._by_code()["B-18"]
+        self.assertEqual((row["conc_ratio"], row["proof_diff"]), (1.15, -25.0))
+        self.assertIsNone(self._by_code()["S-1"]["proof_diff"], "the fixture sample has none")
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})
+        sitting = self.c.get("/api/table/tastings").get_json()["rows"][0]
+        self.assertEqual((sitting["conc_ratio"], sitting["proof_diff"]), (1.15, -25.0))
 
     def test_career_is_the_mean_of_sittings_not_the_last_one(self):
         self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})                     # 66
@@ -1227,6 +1243,19 @@ class TestThePickerKeepsWhatYouTyped(unittest.TestCase):
         self.assertIn("query:", block[:block.index("\n};")])
         block = src[src.index("function renderResults()"):]
         self.assertIn("state.query", block[:400])
+
+
+class TestTheTableFormatsTwoDecimalNumbers(unittest.TestCase):
+    """A concentration ratio of 1.15 shown by the one-decimal formatter is 1.1 or 1.2 — a
+    different number. The cell type has to exist in the formatter, be right-aligned like the
+    other numbers, and have its header aligned the same way."""
+
+    def test_num2_is_known_everywhere_a_type_is_looked_up(self):
+        src = (ROOT / "static" / "table.js").read_text(encoding="utf-8")
+        self.assertIn('case "num2":   return Number(v).toFixed(2);', src)
+        self.assertIn('num2: "t-num"', src)
+        head = src[src.index("const head = el("):]
+        self.assertIn('"num2"', head[:400], "the header of a num2 column is not right-aligned")
 
 
 class TestTheStripHasAZeroCell(unittest.TestCase):
