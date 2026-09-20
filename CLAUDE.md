@@ -48,7 +48,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 467 tests, all passing
+python -m unittest discover -s tests    # 471 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -74,7 +74,12 @@ per sitting); columns are declared once in `app.py` as `COLLECTION_COLUMNS` / `T
 and the column chooser and CSV are generated from that contract. The row builders under
 `/api/table/*` copy spirit fields **by name**, though, so a new column needs the declaration *and*
 the copy (in the collection, retired and tastings builders) — a test checks the value, not the
-header, because a declared-but-uncopied column renders as a dash for ever. Sessions are a
+header, because a declared-but-uncopied column renders as a dash for ever.
+
+The page widens with the window, per view: `showView` stamps `view-<name>` on `<body>` and
+`#main`'s width is set from that. Score keeps a bounded column (a scorecard reads best that way),
+Table and Compare take the whole window, and Analysis lays its 720-unit SVG charts two abreast on
+a wide screen rather than scaling one up — the type would scale with it. Sessions are a
 first-class journal record: `store.write_session/sessions/session/next_flight_pos`, immutable with
 revisions like tastings, filed under `sessions/` with an **`F-`** prefix (not `S-`, which is
 already a Sample code). `rollup.py` grew a `Sessions` sheet. A standalone pour and a flight are the

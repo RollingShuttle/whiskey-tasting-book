@@ -487,6 +487,10 @@ function discardDraft() {
 // ---------------------------------------------------------------- views
 function showView(v) {
   state.view = v;
+  // The stylesheet widens the page for the views that want the room — see #main there.
+  for (const name of ["score", "table", "compare", "analysis"]) {
+    document.body.classList.toggle(`view-${name}`, v === name);
+  }
   for (const [id, name] of [["nav-score", "score"], ["nav-table", "table"],
                             ["nav-compare", "compare"], ["nav-analysis", "analysis"]]) {
     document.getElementById(id).classList.toggle("active", v === name);

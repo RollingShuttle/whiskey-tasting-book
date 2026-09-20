@@ -1245,6 +1245,41 @@ class TestThePickerKeepsWhatYouTyped(unittest.TestCase):
         self.assertIn("state.query", block[:400])
 
 
+class TestThePageUsesTheWindowItIsGiven(unittest.TestCase):
+    """The window is resizable. A 2000-pixel screen showing a 940-pixel column with the table
+    scrolling sideways inside it is the window being resizable for nothing."""
+
+    def css(self):
+        return (ROOT / "static" / "style.css").read_text(encoding="utf-8")
+
+    def test_the_view_is_stamped_on_the_body_so_the_stylesheet_can_tell(self):
+        src = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        block = src[src.index("function showView("):]
+        self.assertIn("classList.toggle(`view-${name}`, v === name)", block[:600])
+
+    def test_the_table_and_the_comparison_take_the_whole_window(self):
+        css = self.css()
+        self.assertRegex(css, r"body\.view-table #main[^{]*\{[^}]*max-width:\s*none")
+        self.assertRegex(css, r"body\.view-compare #main[^{]*\{[^}]*max-width:\s*none")
+
+    def test_the_header_wraps_rather_than_widening_the_page(self):
+        """Below about 860 px the New flight / Refresh / count group ran past the window edge and
+        gave the whole page a sideways scrollbar — the one place it still did."""
+        css = self.css()
+        rule = css[css.index(".topbar {"):]
+        rule = rule[:rule.index("}")]
+        self.assertIn("flex-wrap: wrap", rule)
+
+    def test_the_charts_go_side_by_side_rather_than_growing_their_type(self):
+        """An SVG drawn at 720 units and scaled by width scales its text with it. Two abreast
+        keeps each near its drawn size; one across a wide screen would be a poster."""
+        css = self.css()
+        rule = css[css.index(".analysis-view {"):]
+        rule = rule[:rule.index("}")]
+        self.assertIn("auto-fit", rule)
+        self.assertIn("min(640px, 100%)", rule, "a narrow window must not overflow")
+
+
 class TestTheTableFormatsTwoDecimalNumbers(unittest.TestCase):
     """A concentration ratio of 1.15 shown by the one-decimal formatter is 1.1 or 1.2 — a
     different number. The cell type has to exist in the formatter, be right-aligned like the

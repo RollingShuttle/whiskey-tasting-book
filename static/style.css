@@ -39,6 +39,8 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 /* ---------------------------------------------------------------- top bar */
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; row-gap: 10px;     /* on a narrow window the controls drop to a second line
+                                         rather than pushing the page wider than the window */
   padding: 14px 22px;
   border-bottom: 1px solid var(--line);
   position: sticky; top: 0; z-index: 5;
@@ -46,7 +48,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   backdrop-filter: blur(6px);
 }
 .brand { font-family: var(--serif); font-size: 19px; letter-spacing: .2px; }
-.topbar-right { display: flex; align-items: center; gap: 12px; }
+.topbar-right { display: flex; align-items: center; gap: 12px; margin-left: auto; }
 
 .pill {
   font-size: 12px; padding: 4px 11px; border-radius: 999px;
@@ -77,7 +79,15 @@ button.ghost.back:hover {
 .back-arrow { color: var(--brass-bright); font-size: 15px; line-height: 1; }
 
 /* ---------------------------------------------------------------- layout */
-#main { max-width: 940px; margin: 0 auto; padding: 22px; }
+/* The window is resizable, so the page has to be too. A scorecard reads best in a bounded
+   column — strips a metre long help nobody — so the Score view keeps one, a little wider than
+   before. The table and the comparison are what was being squeezed into that column, scrolling
+   sideways inside it on a 2000-pixel screen: they take the whole window. The analysis charts are
+   SVGs drawn at 720 units and scaled by width, so their type grows with them; rather than one
+   chart the width of the room, a wide screen gets two side by side (see .analysis-view). */
+#main { max-width: 1120px; margin: 0 auto; padding: 22px; }
+body.view-table #main, body.view-compare #main { max-width: none; }
+body.view-analysis #main { max-width: 1960px; }
 
 .card {
   background: var(--surface);
@@ -507,7 +517,11 @@ input:disabled, textarea:disabled { color: var(--text); opacity: .8; cursor: def
 .quick-problem { color: #E8896A; font-size: 12px; margin-left: auto; text-align: right; }
 
 /* ---------------------------------------------------------------- analysis */
-.analysis-view { display: flex; flex-direction: column; gap: 18px; }
+.analysis-view {
+  display: grid; gap: 18px; align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(min(640px, 100%), 1fr));
+}
+.analysis-view > :not(.an-card) { grid-column: 1 / -1; }   /* the summary line runs the width */
 .an-summary { color: var(--muted); font-size: 13px; line-height: 1.6; }
 .an-card {
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
