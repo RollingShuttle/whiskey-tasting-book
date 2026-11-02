@@ -1,6 +1,9 @@
 # Whiskey Tasting Book — project context
 
 Read `guide/SPEC.md` before changing anything. It is the build spec and it is current.
+`guide/IOS-APP.md` is the plan for wrapping `docs/` as a native iOS app (Capacitor, bundled files,
+system-browser sign-in, Xcode Cloud → TestFlight) — not started; its facts were verified on
+2 Nov 2026 and it says which decisions they rest on.
 `guide/SETUP.md` covers the one-time Microsoft account setup. `guide/RUNNING.md` is the plain-language
 guide to installing and starting both halves (the PC app opens via `launch.py`, not `app.py`, and
 ships as a console-free exe built by `build_exe.bat`, staying resident in the notification area

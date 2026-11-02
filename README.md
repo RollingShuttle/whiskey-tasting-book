@@ -30,7 +30,7 @@ static/                 the PC front end, bundled into the exe
 docs/                   the iPhone client (GitHub Pages will only serve / or /docs)
 tests/                  one file per module — python -m unittest discover -s tests
 tools/                  scripts run by hand: update, first-time setup, shortcut, gate
-guide/                  SPEC.md, RUNNING.md, SETUP.md
+guide/                  SPEC.md, RUNNING.md, SETUP.md, IOS-APP.md (the native app plan)
 run.bat update.bat build_exe.bat        the three things you double-click
 ```
 
