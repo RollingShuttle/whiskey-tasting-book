@@ -33,8 +33,16 @@ const Store = (() => {
       return raw ? JSON.parse(raw) : fallback;
     } catch { return fallback; }
   }
+  // Why a failed write is remembered: iOS can refuse storage (quota, eviction, a broken origin),
+  // and a store that swallows that silently looks exactly like a sync that never ran.
+  let lastWriteError = null;
   function write(key, value) {
-    if (!put(key, value)) return false;
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      lastWriteError = `${e && e.name ? `${e.name}: ` : ""}${(e && e.message) || e}`;
+      return false;
+    }
     mirror();
     return true;
   }
@@ -365,7 +373,7 @@ const Store = (() => {
     snapshot, setSnapshot, spirits, rubric, setRubric, careers, setCareers,
     queue, enqueue, drop, queueCount,
     cards, cardsFor, addCard, markSent, reviseCard, deleteCard, buried,
-    meta, setMeta, restoreFromNative,
+    meta, setMeta, restoreFromNative, lastWriteError: () => lastWriteError,
     submitScorecard, submitPending, submitEncounter,
     encounters, addEncounter, asSpirit,
     stamp, rand4, medalFor, today, localTime, localClock,

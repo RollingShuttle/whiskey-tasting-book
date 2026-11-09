@@ -764,10 +764,14 @@ function renderSync() {
       })()),
       // The last thing that went wrong, in its own words. Silence here once meant an hour of
       // guessing between a sign-in problem, a network problem and a missing file.
-      m.lastError
-        ? notice("warn", `Last attempt failed${m.lastErrorAt
-            ? ` at ${Store.localClock(m.lastErrorAt)}` : ""}: ${m.lastError}`)
-        : null,
+      lastRefresh && lastRefresh.error
+        ? notice("warn", `Last attempt failed at ${Store.localClock(lastRefresh.at)}: ${lastRefresh.error}`)
+        : lastRefresh && lastRefresh.stage !== "done"
+          ? el("div", { class: "muted" }, `Refreshing… ${lastRefresh.stage}`)
+          : m.lastError
+            ? notice("warn", `Last attempt failed${m.lastErrorAt
+                ? ` at ${Store.localClock(m.lastErrorAt)}` : ""}: ${m.lastError}`)
+            : null,
       // Only once something has been synced: before that, "nothing published yet" is simply true.
       staleSource() && m.lastSync
         ? notice("warn", "The PC that last refreshed is running an older version of the app, so "
@@ -794,22 +798,34 @@ function renderSync() {
 }
 
 // ---------------------------------------------------------------- sync engine
+/* Kept in memory as well as in meta: if storage itself is what is failing, meta cannot hold the
+   message, and the Sync screen would show nothing at all — which is what happened. */
+let lastRefresh = null;
+
 async function refresh() {
+  lastRefresh = { at: new Date().toISOString(), stage: "snapshot/collection.json", error: null };
+  const keep = (ok, what) => {
+    if (!ok) throw new Error(`storage refused ${what}: ${Store.lastWriteError() || "unknown"}`);
+  };
   try {
     const snap = await Graph.getJSON("snapshot/collection.json");
-    if (snap) Store.setSnapshot(snap);
+    if (snap) keep(Store.setSnapshot(snap), "the collection");
+    lastRefresh.stage = "snapshot/careers.json";
     const careers = await Graph.getJSON("snapshot/careers.json");
     if (careers) {
-      Store.setCareers(careers.careers ? careers : { careers });
+      keep(Store.setCareers(careers.careers ? careers : { careers }), "the scores");
       app.careers = Store.careers().careers;
       app.calibration = Store.careers().calibration;
       app.careersAt = Store.careers().generatedAt;
     }
+    lastRefresh.stage = "snapshot/rubric.json";
     const rub = await Graph.getJSON("snapshot/rubric.json");
-    if (rub) { Store.setRubric(rub); app.rubric = rub; }
+    if (rub) { keep(Store.setRubric(rub), "the rubric"); app.rubric = rub; }
+    lastRefresh.stage = "done";
     Store.setMeta({ lastSync: new Date().toISOString(), lastError: null, lastErrorAt: null });
   } catch (e) {
-    Store.setMeta({ lastError: String(e.message || e), lastErrorAt: new Date().toISOString() });
+    lastRefresh.error = String(e.message || e);
+    Store.setMeta({ lastError: lastRefresh.error, lastErrorAt: new Date().toISOString() });
   }
   renderSync();
   if (app.tab === "collection") renderCollection();

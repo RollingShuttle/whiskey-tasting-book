@@ -59,13 +59,17 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 532 tests, all passing
+python -m unittest discover -s tests    #  tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
 
 `tests/test_collection.py` SHA-256s the master workbook before and after loading. If that test ever
 fails, stop everything.
+
+`tests/test_phone_js.py` **executes** the phone scripts in V8 (`pip install mini-racer`, a dev-only
+dependency; the tests skip without it). Every other phone test reads source text, which once let a
+removed helper ship with its caller intact — green suite, app silently storing nothing. Run it.
 
 ## State as of 8 Sep 2026
 
