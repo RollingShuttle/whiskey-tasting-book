@@ -9,7 +9,9 @@
 // auth.token.
 //
 // The redirect URI is <redirectScheme>://auth — msauth.com.mikeyang.whiskey://auth in practice — which is
-// registered in Entra under "Mobile and desktop applications". It needs no CFBundleURLTypes entry: the
+// registered in Entra under "iOS / macOS" (Entra derives it from the bundle id; the "Mobile and desktop
+// applications" tile with the same URI typed by hand makes the identical native-client entry). It needs no
+// CFBundleURLTypes entry: the
 // authentication session captures the callback itself; nothing else on the phone ever sees that URL.
 import AuthenticationServices
 import CryptoKit

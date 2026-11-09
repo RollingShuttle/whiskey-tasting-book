@@ -17,13 +17,20 @@ The app signs in with a redirect URI of its own, and Microsoft refuses one it ha
 (the error is `AADSTS50011`, redirect URI mismatch, and the sheet never comes back).
 
 Entra admin centre → **App registrations** → *Whiskey Tasting Book* → **Authentication** →
-**Add a platform** → **Mobile and desktop applications** → under *Custom redirect URIs* enter
+**Add a platform** → **iOS / macOS** → Bundle ID
+
+    com.mikeyang.whiskey
+
+→ **Configure**. Entra generates the redirect URI from the bundle id; check that it reads
 
     msauth.com.mikeyang.whiskey://auth
 
-→ **Configure**. Not *Web* (that expects a client secret) and not *Single-page application* (that
-expects a browser origin). Leave the existing GitHub Pages entry alone — the PWA still uses it.
-Keep *Personal Microsoft accounts only*. No secret is created; there was never one.
+and ignore the MSAL configuration snippets it shows below (this app does not use that library).
+The *Mobile and desktop applications* tile with that URI typed by hand makes the identical
+native-client entry; the iOS tile only saves the typing. Not *Web* (that expects a client secret)
+and not *Single-page application* (that expects a browser origin). Leave the existing GitHub
+Pages entry alone — the PWA still uses it. Keep *Personal Microsoft accounts only*. No secret is
+created; there was never one.
 
 The scheme is `msauth.` + the bundle identifier. It needs no URL-type entry in the app, because
 `ASWebAuthenticationSession` captures the callback itself.

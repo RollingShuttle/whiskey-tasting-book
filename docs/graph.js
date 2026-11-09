@@ -27,7 +27,7 @@ const Graph = (() => {
 
   /* The shell's sign-in redirect. ASWebAuthenticationSession hands the callback straight back to
      the app, so this is a custom scheme rather than a URL: "msauth." + the iOS bundle id, which
-     is com.mikeyang.whiskey. It is registered in Entra under "Mobile and desktop applications"
+     is com.mikeyang.whiskey. It is registered in Entra as an "iOS / macOS" platform entry
      as msauth.com.mikeyang.whiskey://auth. Rename the bundle and this string and the Entra entry
      must both follow, or sign-in fails with a redirect_uri mismatch. */
   const NATIVE_REDIRECT_SCHEME = "msauth.com.mikeyang.whiskey";

@@ -85,12 +85,15 @@ app folder.
 ## 3. Only you can do these (before the Mac day; no Mac needed)
 
 1. **Register the native sign-in with Microsoft** (10 minutes, on the PC). Entra admin centre →
-   App registrations → *Whiskey Tasting Book* → Authentication → **Add a platform** → **Mobile
-   and desktop applications** → *Custom redirect URIs*: `msauth.com.mikeyang.whiskey://auth` →
-   Configure. Not under *Web* (that expects a secret) and not under *Single-page application*
-   (that expects a browser origin). Leave the existing Pages entry — the PWA still uses it. No
-   secret is created. Without this step the sign-in sheet opens and Microsoft refuses with
-   AADSTS50011.
+   App registrations → *Whiskey Tasting Book* → Authentication → **Add a platform** → **iOS /
+   macOS** → Bundle ID `com.mikeyang.whiskey` → Configure. Entra generates the redirect URI from
+   the bundle id; check it reads `msauth.com.mikeyang.whiskey://auth`, and ignore the MSAL
+   configuration snippets it shows (the app does not use that library). The *Mobile and desktop
+   applications* tile with that URI typed by hand registers the identical native client; the iOS
+   tile just saves the typing. Not under *Web* (that expects a secret) and not under
+   *Single-page application* (that expects a browser origin). Leave the existing Pages entry —
+   the PWA still uses it. No secret is created. Without this step the sign-in sheet opens and
+   Microsoft refuses with AADSTS50011.
 2. **App Store Connect** (20 minutes, on the PC): *My Apps → + → New App*: iOS, name (globally
    unique even for TestFlight-only apps — have alternatives ready), bundle id
    `com.mikeyang.whiskey` (register it first under Certificates, Identifiers & Profiles →
