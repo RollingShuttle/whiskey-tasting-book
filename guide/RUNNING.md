@@ -385,9 +385,13 @@ You now have an icon. Opening it from the icon runs it full screen with no brows
 2. Open the app from the home screen.
 3. Tap **Sync** at the bottom.
 4. Tap **Sign in**. Sign in with your **personal** Microsoft account.
-5. Back on the Sync screen, tap **Refresh**.
+5. The phone pulls the collection on its own as soon as you are signed in — the Sync screen shows
+   each step as it lands (Collection, Scores, Rubric, Upload), and a thin brass line under the
+   title shows the same thing from any screen.
 
-Your collection appears under the Collection tab. You are done.
+Your collection appears under the Collection tab. You are done. From now on the phone refreshes
+itself every time you open it or come back to it; **Refresh** on the Sync screen is for when you
+cannot wait.
 
 ---
 
@@ -399,7 +403,8 @@ Your collection appears under the Collection tab. You are done.
   works with no signal at all — the card is saved to the phone first and uploaded later. The number
   on the Sync tab tells you how many are waiting.
 - **On the PC, when you are at the computer:** start the app. It picks up whatever the phone sent.
-  Press **Refresh** when you want the phone to see newly added bottles.
+  Press **Refresh** when you want the phone to see newly added bottles — the phone picks them up
+  the next time it is opened.
 - **New bottles:** add them on the phone under *Add bottle*. They do not go straight into your
   collection — they wait, and the PC app shows them at the top of the Score screen for you to check
   and approve. Only then is the row written, and only after a backup.
@@ -414,7 +419,9 @@ Your collection appears under the Collection tab. You are done.
 - **The phone asks you to sign in about once a day.** Microsoft limits how long a browser app can
   stay signed in, and it is not adjustable. It never stops you scoring — only uploading.
 - **Scores you entered on the PC do not instantly appear on the phone.** The phone sees them after
-  you press Refresh on the PC and OneDrive has synced.
+  you press Refresh on the PC, OneDrive has synced, and the phone is next opened (or you tap
+  Refresh there). Switching away and straight back does not fetch again — the phone waits a couple
+  of minutes between automatic pulls, and only downloads a file that has actually changed.
 - **The Sync screen says "offline".** That is just the phone reporting honestly. Keep scoring.
 
 ### If something looks wrong
@@ -425,7 +432,7 @@ Your collection appears under the Collection tab. You are done.
 | You closed the app but want it back | Double-click the icon again — or double-click the app icon in the notification area by the clock. |
 | You want it fully stopped | Right-click the app icon in the notification area → **Quit**. |
 | A window says "The app has been closed" | It is a leftover window from a copy you quit. Close it and open the app again. |
-| "No collection yet" on the phone | Start the PC app and press Refresh, then Refresh on the phone. |
+| "No collection yet" on the phone | Start the PC app and press Refresh, then open Sync on the phone: it says which step failed and why. |
 | "Workbook open in Excel" | Close `Whiskey Tastings.xlsx` (or the collection workbook) in Excel and try again. This is deliberate — writing while Excel has it open would create a conflicting copy. |
 | Sign-in fails on the phone | Check you used the personal Microsoft account, and that the address in Step C matches exactly, trailing slash included. |
 | You want to be sure nothing broke | Run `python tools/verify_gate.py`. |

@@ -29,7 +29,7 @@ import unittest
 import rubric as rubric_mod
 
 DOCS = ROOT / "docs"
-REQUIRED = ["index.html", "style.css", "app.js", "store.js", "graph.js", "config.js",
+REQUIRED = ["index.html", "style.css", "app.js", "store.js", "graph.js", "sync.js", "config.js",
             "analysis.js", "compare.js", "table.js",
             "sw.js", "manifest.webmanifest", "rubric.json", "icon-180.png"]
 
@@ -88,6 +88,36 @@ class TestIosRules(unittest.TestCase):
     def test_the_viewport_covers_the_safe_areas(self):
         self.assertIn("viewport-fit=cover", self.html,
                       "without this the safe-area insets resolve to zero")
+
+    def test_the_page_does_not_zoom(self):
+        """An app, not a page: a double-tap that magnified the screen was the one gesture that
+        gave the web away. WKWebView honours the viewport's two flags; touch-action covers Safari,
+        which ignores them, and also removes WebKit's double-tap wait before a click."""
+        viewport = re.search(r'name="viewport" content="([^"]*)"', self.html).group(1)
+        self.assertIn("maximum-scale=1", viewport)
+        self.assertIn("user-scalable=no", viewport)
+        root = re.search(r"\nhtml\s*\{[^}]*\}", self.css).group(0)
+        self.assertIn("touch-action: pan-x pan-y", root,
+                      "the one layer Safari honours; it must deny pinch-zoom, not just double-tap")
+        for weaker in ("pinch-zoom", "manipulation", "touch-action: auto"):
+            self.assertNotIn(weaker, root)
+        strip = re.search(r"\.strip\s*\{[^}]*\}", self.css).group(0)
+        self.assertIn("touch-action: none", strip, "the drag still needs none, not the page rule")
+
+    def test_the_screen_title_reads_as_a_title(self):
+        """The h1 names the screen. It was caption-sized; it must now be larger than the spirit
+        names in the rows beneath it, which are 1rem."""
+        h1 = re.search(r"\.bar h1\s*\{[^}]*\}", self.css).group(0)
+        size = float(re.search(r"font-size:\s*([\d.]+)rem", h1).group(1))
+        lh = float(re.search(r"line-height:\s*([\d.]+)", h1).group(1))
+        bar = float(re.search(r"--bar-h:\s*(\d+)px", self.css).group(1))
+        self.assertGreaterEqual(size, 1.4)
+        self.assertIn("font-weight: 600", h1)
+        self.assertLessEqual(size * 16 * lh, bar - 8, "the title no longer fits the bar")
+        for keep in ("white-space: nowrap", "text-overflow: ellipsis", "min-width: 0"):
+            self.assertIn(keep, h1, "a long name would wrap the bar taller than --bar-h")
+        main = re.search(r"\n#main\s*\{[^}]*\}", self.css).group(0)
+        self.assertIn("var(--bar-h)", main, "the content offset must follow the bar height")
 
     def test_safe_area_insets_are_used_on_every_edge(self):
         for edge in ("safe-area-inset-top", "safe-area-inset-bottom",
@@ -830,9 +860,9 @@ class TestNativeShell(unittest.TestCase):
         """The queue tells a lapsed sign-in from a dropped connection by this message; a different
         one would be treated as the network and nobody would be asked to sign in again."""
         src = code("graph.js")
-        block = src[src.index("async function token("):src.index("const url =")]
+        block = src[src.index("function token("):src.index("const url =")]
         self.assertEqual(block.count('"sign-in required"'), 2,
-                         "both branches of token() must throw the same error")
+                         "both branches of acquireToken() must throw the same error")
         self.assertIn("r.interactive", block)
 
     def test_the_store_mirrors_itself_to_the_shell(self):
@@ -855,16 +885,18 @@ class TestNativeShell(unittest.TestCase):
         """Swift switches on the type string. A spelling the shell does not know is not an error
         anywhere — the request simply never comes back."""
         sent = set()
-        for name in ("native.js", "graph.js", "store.js", "app.js"):
+        for name in ("native.js", "graph.js", "store.js", "sync.js", "app.js"):
             sent.update(re.findall(r'Native\.(?:request|send)\(\s*"([^"]+)"', code(name)))
         sent.update(re.findall(r'\btype:\s*"([^"]+)"', code("native.js")))
         self.assertEqual(sent, self.WEB_TO_NATIVE)
 
-    def test_coming_to_the_foreground_tries_the_queue_again(self):
+    def test_coming_to_the_foreground_syncs(self):
+        """The shell's foreground is the browser's online and visible at once: it pulls what the
+        PC published if it has been a while, and tries the queue regardless."""
         src = code("app.js")
         self.assertIn('Native.on("foreground"', src)
         line = src[src.index('Native.on("foreground"'):]
-        self.assertIn("flush()", line[:line.index("\n")])
+        self.assertIn('autoSync("foreground")', line[:line.index("\n")])
 
     def test_signing_in_inside_the_shell_finishes_what_boot_would_have(self):
         """In the browser, sign-in leaves the page and boot() picks up on return. The shell's page
@@ -872,9 +904,96 @@ class TestNativeShell(unittest.TestCase):
         src = code("app.js")
         block = src[src.index("async function signInFlow("):src.index("async function signOutFlow(")]
         self.assertIn("await Graph.signIn()", block)
+        # One call: a manual Sync.start pulls the snapshot and then pushes the queue.
         self.assertIn("await refresh()", block)
-        self.assertIn("flush()", block)
         self.assertIn("onclick: signInFlow", src)
+
+
+
+class TestSyncWiring(unittest.TestCase):
+    """docs/sync.js is the engine; app.js draws it and calls it. The engine's logic runs for
+    real in test_phone_js.py; what is pinned here is the wiring the DOM-free tests cannot see."""
+
+    def test_the_engine_is_loaded_between_graph_and_the_screens(self):
+        html = text("index.html")
+        order = [m for m in re.findall(r'<script src="([^"]+)">', html)]
+        self.assertLess(order.index("graph.js"), order.index("sync.js"))
+        self.assertLess(order.index("sync.js"), order.index("app.js"))
+        self.assertIn('"./sync.js"', text("sw.js"), "the PWA would open without its sync engine")
+
+    def test_the_engine_needs_no_page(self):
+        """So it can run in V8. The page's names stay in app.js."""
+        src = code("sync.js")
+        self.assertNotRegex(src, r"\bdocument\.")
+        self.assertNotRegex(src, r"\bapp\.")
+        self.assertNotRegex(src, r"\bscreens\b")
+        self.assertNotIn("setTimeout", src, "the throttle is on the clock, not a timer")
+
+    def test_a_quick_app_switch_is_throttled_but_not_for_long(self):
+        m = re.search(r"MIN_INTERVAL = (\d+) \* 60 \* 1000", code("sync.js"))
+        self.assertIsNotNone(m)
+        self.assertTrue(1 <= int(m.group(1)) <= 15, "minutes, and a bottle approved on the PC "
+                        "should show on the next real return")
+
+    def test_the_downloads_run_together_and_one_failure_keeps_the_rest(self):
+        self.assertIn("Promise.allSettled", code("sync.js"))
+
+    def test_the_button_is_answered_before_the_first_byte(self):
+        src = code("sync.js")
+        block = src[src.index("async function run("):src.index("let uploaded")]
+        self.assertIn("emit();", block, "the checklist must be published before any download")
+        app_src = code("app.js")
+        self.assertIn("disabled: S.running", app_src)
+        self.assertIn('"Refreshing…"', app_src)
+
+    def test_every_way_back_syncs(self):
+        boot = code("app.js")
+        boot = boot[boot.index("async function boot("):]
+        for trigger in ('autoSync("online")', 'autoSync("visible")', 'autoSync("foreground")',
+                        'autoSync("boot")'):
+            self.assertIn(trigger, boot)
+        self.assertIn("!document.hidden", boot, "visibilitychange fires for hiding too")
+        self.assertLess(boot.index("Sync.onChange(onSync)"), boot.index('setTab("collection")'),
+                        "subscribe before the first screen, or the first run's changes go unseen")
+        self.assertNotIn("await refresh()", boot, "boot must not wait for the network")
+
+    def test_an_automatic_sync_never_leaves_the_page(self):
+        """In the browser build MSAL used to answer a lapsed token with acquireTokenRedirect — a
+        full-page navigation. Harmless when only the button asked; fatal once boot and coming
+        back to the page ask too, because a half-scored card lives only in memory."""
+        src = code("graph.js")
+        self.assertNotIn("acquireTokenRedirect", src)
+        self.assertIn("loginRedirect", src, "the Sign in button is the one navigation left")
+
+    def test_last_sync_means_everything_came_down(self):
+        """A pull with a failed step must not move lastSync, or the next foreground would skip
+        the retry — and the flush of old never set it at all after a failure."""
+        src = code("sync.js")
+        self.assertRegex(src, r"if \(pull && !pulls\.some\(.*failed.*\)\) meta\.lastSync")
+        self.assertNotIn("lastSync:", code("app.js").replace("m.lastSync", ""))
+
+    def test_a_refused_card_does_not_block_the_queue(self):
+        src = code("sync.js")
+        self.assertIn("Store.noteFailure(item.path, msg)", src)
+        self.assertIn("function noteFailure(", code("store.js"))
+        self.assertIn("i.error", code("app.js"), "the Sync screen shows which card and why")
+
+    def test_one_token_serves_a_burst(self):
+        src = code("graph.js")
+        self.assertIn("tokenInflight", src)
+        self.assertIn("listFolder", src)
+        self.assertIn("$select=name,eTag,size,lastModifiedDateTime", src)
+
+    def test_a_finished_sync_redraws_what_is_on_screen_not_the_tab(self):
+        src = code("app.js")
+        block = src[src.index("function onSync("):src.index("async function signInFlow(")]
+        self.assertIn("currentScreen()", block)
+        self.assertNotIn("app.tab", block)
+        for screen in ("collection", "detail", "table", "compare", "analysis", "sync"):
+            self.assertIn(f'case "{screen}"', block)
+        self.assertNotIn('case "score"', block, "a card being written is never redrawn under a finger")
+        self.assertIn('classList.contains("keyboard")', block)
+        self.assertIn("window.scrollY", block)
 
 
 if __name__ == "__main__":

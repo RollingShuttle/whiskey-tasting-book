@@ -15,6 +15,11 @@ struct WebContainerView: UIViewRepresentable {
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
         config.setURLSchemeHandler(AppSchemeHandler(), forURLScheme: AppSchemeHandler.scheme)
+        // The page asks for no zoom (docs/index.html: maximum-scale=1, user-scalable=no). Safari
+        // overrides that for accessibility by setting this to true; the app keeps it false so the
+        // flags are honoured and a double-tap or a pinch does nothing (SPEC.md §9.2). The default is
+        // already false — it is written out so a "match Safari" tweak one day cannot undo it silently.
+        config.ignoresViewportScaleLimits = false
         config.userContentController.add(Bridge.shared, name: "native")
 
         let webView = WKWebView(frame: .zero, configuration: config)

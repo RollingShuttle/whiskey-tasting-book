@@ -661,7 +661,13 @@ reads as a website someone bookmarked, and it breaks in specific ways in the bar
 **Home-screen install**
 - `<meta name="apple-mobile-web-app-capable" content="yes">` plus `mobile-web-app-capable`, and a
   180×180 `apple-touch-icon`. Installed, it launches without Safari chrome.
-- `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">`.
+- `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">`.
+- **No page zoom.** This is an app, not a page: nothing on it needs the whole screen magnified,
+  and a double-tap that zoomed was the one gesture that gave the web away. The native shell's
+  WKWebView and the home-screen install honour the two scale flags; a Safari tab has ignored them
+  since iOS 10, so `html { touch-action: pan-x pan-y }` denies pinch and double-tap there too.
+  Every scroller keeps working under pan-x pan-y; the score strip alone narrows it to `none` for
+  the drag. The 16 px input rule below is a separate mechanism (focus zoom) and still applies.
 - `<meta name="theme-color" content="#12100E">` and `color-scheme: dark` — the design is
   dark-committed, so declare it rather than letting iOS guess.
 

@@ -32,7 +32,12 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
-html { color-scheme: dark; }
+/* An app, not a page: no pinch zoom and no double-tap zoom anywhere — in a Safari tab too,
+   which ignores the viewport's user-scalable=no but not this. pan-x pan-y keeps every scroller
+   (the page, the chips row, the table); the score strip narrows it to none for the drag. Any
+   value but auto also drops WebKit's wait before a click for a second tap, so every button
+   answers on the first touch. */
+html { color-scheme: dark; touch-action: pan-x pan-y; }
 
 body {
   margin: 0;
@@ -58,9 +63,13 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--line);
 }
-/* The Dynamic Island eats the top centre — the title sits left of it, not under it. */
+/* The Dynamic Island eats the top centre — the title sits left of it, not under it. Sized to
+   read as the screen's name, not a caption: the bar is 52 px, so 1.5rem leaves the line centred
+   with room to spare. */
 .bar h1 {
-  font-family: var(--serif); font-size: 1.15rem; font-weight: 500; margin: 0;
+  font-family: var(--serif); font-size: 1.5rem; font-weight: 600; margin: 0;
+  letter-spacing: -0.01em; line-height: 1.2; color: var(--text);
+  flex: 1 1 auto; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .back {
@@ -69,6 +78,12 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 }
 .net { margin-left: auto; font-size: 0.75rem; color: var(--muted); flex-shrink: 0; }
 .net.off { color: var(--warn); }
+/* Under the bar's bottom edge; scaled by how much of the sync is done. */
+.syncbar {
+  position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+  background: var(--brass-bright); transform-origin: left; transform: scaleX(0);
+  transition: transform .25s ease;
+}
 
 /* ---------------------------------------------------------------- layout */
 #main {
@@ -238,6 +253,26 @@ label.field > span { color: var(--muted); font-size: 0.78rem; }
 .qrow .kind { color: var(--muted); font-size: 0.7rem; text-transform: uppercase;
               letter-spacing: .04em; flex-shrink: 0; }
 .qrow .when { margin-left: auto; color: var(--muted); font-size: 0.72rem; flex-shrink: 0; }
+.qrow .qname { display: flex; flex-direction: column; min-width: 0; }
+.qrow.failed { border: 1px solid #6a3a2a; }
+.qerr { color: var(--warn); font-size: 0.72rem; white-space: normal; margin-top: 2px; }
+
+/* The sync checklist: a row per step, its mark saying pending, running, done or failed. */
+.steps { list-style: none; margin: 10px 0 2px; padding: 0; }
+.step {
+  display: grid; grid-template-columns: 12px auto 1fr; align-items: center; gap: 8px;
+  padding: 4px 0; font-size: 0.86rem;
+}
+.step-mark { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--muted); }
+.step.running .step-mark { border-color: var(--brass-bright); animation: pulse 1s ease-in-out infinite; }
+.step.done .step-mark { background: var(--ok); border-color: var(--ok); }
+.step.failed .step-mark { background: var(--warn); border-color: var(--warn); }
+.step-detail {
+  color: var(--muted); font-size: 0.78rem; text-align: right;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.step.failed .step-detail { color: var(--warn); white-space: normal; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
 .notice {
   padding: 12px 14px; border-radius: 12px; margin-bottom: 12px; font-size: 0.86rem;

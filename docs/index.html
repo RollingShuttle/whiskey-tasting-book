@@ -2,8 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <!-- viewport-fit=cover is what lets the safe-area insets below mean anything (SPEC.md §9.2) -->
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- viewport-fit=cover is what lets the safe-area insets below mean anything (SPEC.md §9.2).
+       maximum-scale / user-scalable: this is an app, not a page — nothing on it needs the whole
+       screen magnified, and a double-tap that zoomed was the one gesture that felt like a web site.
+       The native shell's WKWebView and the home-screen install honour these two; a Safari tab has
+       ignored them since iOS 10, and there style.css's touch-action rule on html does the work. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#12100E">
   <meta name="color-scheme" content="dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -25,6 +29,8 @@
     </button>
     <h1 id="title">Collection</h1>
     <span class="net" id="net" aria-live="polite"></span>
+    <!-- A thin brass line while a sync runs, so it shows from every screen. -->
+    <div class="syncbar" id="syncbar" hidden></div>
   </header>
 
   <main id="main">
@@ -66,6 +72,7 @@
   <script src="native.js"></script>
   <script src="store.js"></script>
   <script src="graph.js"></script>
+  <script src="sync.js"></script>
   <script src="table.js"></script>
   <script src="analysis.js"></script>
   <script src="compare.js"></script>

@@ -36,7 +36,7 @@ ICON = SOURCES / "Assets.xcassets" / "AppIcon.appiconset" / "AppIcon.png"
 DOCS = ROOT / "docs"
 # The page's side of the bridge. native.js is the transport; graph.js and store.js ask it for
 # sign-in and backup; app.js listens for the shell's unsolicited events.
-WEB_FILES = ("native.js", "graph.js", "store.js", "app.js")
+WEB_FILES = ("native.js", "graph.js", "store.js", "sync.js", "app.js")
 
 # The protocol, as both halves have to speak it. Bridge.swift's header is the native statement of it.
 WEB_TO_NATIVE = {"ready", "auth.status", "auth.signIn", "auth.token", "auth.signOut",

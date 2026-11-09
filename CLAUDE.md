@@ -59,7 +59,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 537 tests, all passing
+python -m unittest discover -s tests    # 575 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -153,6 +153,18 @@ calibration: [...]}` and is **persisted to localStorage**; it used to live only 
 closing the app blanked every published score until the next sync.
 **Bump `sw.js` VERSION whenever anything in `docs/` changes**, or an installed phone serves the
 cached old bundle for ever.
+
+`docs/sync.js` is the sync engine (8 Nov 2026): every trigger — the Refresh button, boot, the
+shell's foreground, the browser's visible and online events, a submitted card — goes through
+`Sync.start({reason})`, which is single-flight, skips when offline or signed out, throttles the
+automatic pulls to `MIN_INTERVAL`, and keeps a step-by-step account in `Sync.state` that the Sync
+screen draws and the header's thin bar follows. It lists the snapshot folder once and downloads
+only the files whose eTag changed; `meta.lastSync` moves only when every file came down; a refused
+upload stays in the queue carrying its reason instead of blocking the cards behind it. The module
+has no `document` and no `app` so `tests/test_phone_js.py` runs it in V8. `Store.read` is memoised
+per key (invalidated on write) — the collection screen used to parse the whole snapshot once per
+row. The page does not zoom: viewport `maximum-scale=1, user-scalable=no` for the shell and the
+home-screen install, `html { touch-action: pan-x pan-y }` for Safari.
 Guarded by `tests/test_phone.py`, which checks the §9.2 rules that only fail on a phone: safe-area
 insets on every edge, 100dvh not 100vh, 16 px inputs, a 44 px score strip with
 `touch-action: none`, the tab bar hiding for the keyboard, and every precached file existing.

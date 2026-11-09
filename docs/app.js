@@ -45,6 +45,7 @@ const app = {
   filter: "all",
   query: "",
   draft: null,
+  detailCode: null,       // the spirit the detail screen shows, so a sync can redraw it in place
   addMode: "pour",       // the Add tab opens on the bar pour, which is the one done standing up
 };
 
@@ -322,6 +323,7 @@ function buriedHere(code) {
 function openDetail(code, { push = true } = {}) {
   const s = findSpirit(code);
   if (!s) return;
+  app.detailCode = code;
   const career = careerFor(code);
   const sittings = sittingsFor(code);
   const meta = [s.type, s.region, s.age ? `${s.age} yr` : s.age_label,
@@ -728,13 +730,44 @@ function renderSync() {
   const q = Store.queue();
   const m = Store.meta();
   const signedIn = Graph.isSignedIn();
+  const S = Sync.state;
 
   const rows = q.length
-    ? q.map((i) => el("div", { class: "qrow" },
+    ? q.map((i) => el("div", { class: `qrow${i.error ? " failed" : ""}` },
         el("span", { class: "kind" }, i.kind),
-        el("span", {}, i.path.split("/").pop().slice(0, 24)),
+        el("span", { class: "qname" },
+          i.path.split("/").pop().slice(0, 24),
+          // Why it was refused, on the card itself: which one, and what OneDrive said.
+          i.error ? el("span", { class: "qerr" }, i.error) : null),
         el("span", { class: "when" }, (i.created_at || "").slice(11, 16))))
     : [el("div", { class: "muted" }, "Nothing waiting.")];
+
+  // The checklist of the run in progress or just finished: one row per step, what it is doing
+  // or what it found. Drawn from memory, so a run that died with the app leaves no ghost.
+  const steps = S.steps.length
+    ? el("ul", { class: "steps" }, ...S.steps.map((s) =>
+        el("li", { class: `step ${s.state}` },
+          el("span", { class: "step-mark", "aria-hidden": "true" }),
+          el("span", { class: "step-label" }, s.label),
+          el("span", { class: "step-detail" }, s.detail))))
+    : null;
+
+  // What the last run changed. This run's if there was one; otherwise what meta remembers.
+  const sum = S.summary ? { ...S.summary, at: S.finishedAt } : m.lastSummary;
+  const summary = (() => {
+    if (!sum || S.running) return null;
+    const n = (k) => (sum[k] || []).length;
+    const bits = [];
+    if (n("added")) bits.push(`${n("added")} new`);
+    if (n("removed")) bits.push(`${n("removed")} gone`);
+    if (n("changed")) bits.push(`${n("changed")} changed`);
+    if (n("newScores")) bits.push(`${n("newScores")} score${n("newScores") === 1 ? "" : "s"} changed`);
+    if (sum.uploaded) bits.push(`${sum.uploaded} uploaded`);
+    const names = (sum.added || []).slice(0, 3).map((c) => findSpirit(c)?.name || c);
+    return el("div", { class: "muted" },
+      `${sum.at ? `At ${Store.localClock(sum.at)}: ` : ""}${bits.length ? bits.join(", ") : "nothing changed"}`
+      + (names.length ? ` — new: ${names.join(", ")}${n("added") > 3 ? "…" : ""}` : ""));
+  })();
 
   fill(screens.sync,
     !Graph.configured()
@@ -762,16 +795,14 @@ function renderSync() {
         const sittings = Object.values(k.sittings || {}).reduce((a, v) => a + v.length, 0);
         return `${Store.spirits().length} spirits · ${scored} scored · ${sittings} sittings`;
       })()),
+      steps,
+      summary,
       // The last thing that went wrong, in its own words. Silence here once meant an hour of
       // guessing between a sign-in problem, a network problem and a missing file.
-      lastRefresh && lastRefresh.error
-        ? notice("warn", `Last attempt failed at ${Store.localClock(lastRefresh.at)}: ${lastRefresh.error}`)
-        : lastRefresh && lastRefresh.stage !== "done"
-          ? el("div", { class: "muted" }, `Refreshing… ${lastRefresh.stage}`)
-          : m.lastError
-            ? notice("warn", `Last attempt failed${m.lastErrorAt
-                ? ` at ${Store.localClock(m.lastErrorAt)}` : ""}: ${m.lastError}`)
-            : null,
+      !S.running && (S.error || m.lastError)
+        ? notice("warn", `Last attempt failed${(S.error ? S.finishedAt : m.lastErrorAt)
+            ? ` at ${Store.localClock(S.error ? S.finishedAt : m.lastErrorAt)}` : ""}: ${S.error || m.lastError}`)
+        : null,
       // Only once something has been synced: before that, "nothing published yet" is simply true.
       staleSource() && m.lastSync
         ? notice("warn", "The PC that last refreshed is running an older version of the app, so "
@@ -782,10 +813,12 @@ function renderSync() {
           ? el("button", { class: "btn", type: "button", onclick: signInFlow }, "Sign in")
           : null,
         Graph.configured() && signedIn
-          ? el("button", { class: "btn", type: "button", onclick: refresh }, "Refresh")
+          ? el("button", { class: "btn", type: "button", disabled: S.running, onclick: refresh },
+               S.running ? "Refreshing…" : "Refresh")
           : null,
         signedIn
-          ? el("button", { class: "btn ghost", type: "button", onclick: signOutFlow }, "Sign out")
+          ? el("button", { class: "btn ghost", type: "button", disabled: S.running, onclick: signOutFlow },
+               "Sign out")
           : null)),
 
     el("div", { class: "card" },
@@ -793,65 +826,59 @@ function renderSync() {
         `${q.length} waiting to upload`),
       ...rows,
       q.length ? el("div", { class: "actions" },
-        el("button", { class: "btn wide", type: "button", disabled: !online || !signedIn,
+        el("button", { class: "btn wide", type: "button",
+                       disabled: !online || !signedIn || S.running,
                        onclick: flush }, "Upload now")) : null));
 }
 
-// ---------------------------------------------------------------- sync engine
-/* Kept in memory as well as in meta: if storage itself is what is failing, meta cannot hold the
-   message, and the Sync screen would show nothing at all — which is what happened. */
-let lastRefresh = null;
+// ---------------------------------------------------------------- sync wiring
+/* The engine is docs/sync.js; this is what the page does with it. Every trigger goes through
+   Sync.start, which decides whether anything needs doing — these three names only say why it
+   was asked. The button and a cold start always pull; the rest pull when it has been a while
+   and push the queue regardless. */
+const refresh = () => Sync.start({ reason: "manual" });
+const flush = () => Sync.start({ reason: "upload" });
+const autoSync = (reason) => Sync.start({ reason });
 
-async function refresh() {
-  lastRefresh = { at: new Date().toISOString(), stage: "snapshot/collection.json", error: null };
-  const keep = (ok, what) => {
-    if (!ok) throw new Error(`storage refused ${what}: ${Store.lastWriteError() || "unknown"}`);
-  };
-  try {
-    const snap = await Graph.getJSON("snapshot/collection.json");
-    if (snap) keep(Store.setSnapshot(snap), "the collection");
-    lastRefresh.stage = "snapshot/careers.json";
-    const careers = await Graph.getJSON("snapshot/careers.json");
-    if (careers) {
-      keep(Store.setCareers(careers.careers ? careers : { careers }), "the scores");
-      app.careers = Store.careers().careers;
-      app.calibration = Store.careers().calibration;
-      app.careersAt = Store.careers().generatedAt;
-    }
-    lastRefresh.stage = "snapshot/rubric.json";
-    const rub = await Graph.getJSON("snapshot/rubric.json");
-    if (rub) { keep(Store.setRubric(rub), "the rubric"); app.rubric = rub; }
-    lastRefresh.stage = "done";
-    Store.setMeta({ lastSync: new Date().toISOString(), lastError: null, lastErrorAt: null });
-  } catch (e) {
-    lastRefresh.error = String(e.message || e);
-    Store.setMeta({ lastError: lastRefresh.error, lastErrorAt: new Date().toISOString() });
-  }
-  renderSync();
-  if (app.tab === "collection") renderCollection();
-  if (app.tab === "table") TableView.render(screens.table);
-  if (app.tab === "analysis") AnalysisView.render(screens.analysis);
-  if (app.tab === "compare") CompareView.render(screens.compare);
-}
+/** Something in a file the PC publishes actually came down this run. */
+const landed = (s) => s.steps.some((st) =>
+  st.name !== "upload" && st.state === "done" && !/^(unchanged|not published)/.test(st.detail));
 
-/** Walk the queue one item at a time. Uploads are idempotent, so a failure just leaves the item
-    in place for the next attempt. */
-async function flush() {
-  if (!navigator.onLine || !Graph.isSignedIn()) return;
-  for (const item of Store.queue()) {
-    try {
-      await Graph.putJSON(item.path, item.body);
-      Store.drop(item.path);
-      if (item.kind === "tasting") Store.markSent(item.path);
-    } catch (e) {
-      // Stop on the first failure and try again later — but say what it was, on the Sync screen.
-      Store.setMeta({ lastError: String(e.message || e), lastErrorAt: new Date().toISOString() });
-      break;
-    }
-  }
-  Store.setMeta({ lastSync: new Date().toISOString() });
+/* Called on every change of the sync state. While it runs, only the header's bar and the Sync
+   screen move. When it ends with new data, whatever is on screen is redrawn in place — by what
+   is visible, not by the tab, because a pushed detail screen reads the same figures — except a
+   card being written or read, and never under a finger typing in a search box. */
+function onSync(s) {
+  paintStatus();
   updateBadge();
-  if (currentScreen() === "sync") renderSync();
+  const fresh = !s.running && landed(s);                        // something the PC published came down
+  const sent = !s.running && !!(s.summary && s.summary.uploaded); // something of ours went up
+  if (!fresh && !sent) {
+    if (currentScreen() === "sync") renderSync();
+    return;
+  }
+  if (fresh) {
+    const kept = Store.careers();
+    app.careers = kept.careers;
+    app.calibration = kept.calibration;
+    app.careersAt = kept.generatedAt;
+    app.rubric = Store.rubric() || app.rubric;
+  }
+  if (document.body.classList.contains("keyboard")) return;
+  const y = window.scrollY;
+  switch (currentScreen()) {
+    // Rows only, so the search box keeps its text — unless the screen was the "no collection
+    // yet" notice, which has no rows to repaint.
+    case "collection": if (fresh) screens.collection.querySelector(".notice") ? renderCollection() : paintRows(); break;
+    // Redrawn for an upload too: a sitting that has just gone up stops saying "waiting".
+    case "detail": if (app.detailCode) openDetail(app.detailCode, { push: false }); break;
+    case "table": if (fresh) TableView.render(screens.table); break;
+    case "compare": if (fresh) CompareView.render(screens.compare); break;
+    case "analysis": if (fresh) AnalysisView.render(screens.analysis); break;
+    case "sync": renderSync(); break;
+    default: break;                      // score, sitting, add: a card in hand is left alone
+  }
+  window.scrollTo(0, y);
 }
 
 /** In the browser, signing in leaves the page and boot() picks everything up when it comes
@@ -867,7 +894,7 @@ async function signInFlow() {
     // before anything is shown, and that has always been silent; keep it that way there.
     if (!e.cancelled && Native.caps.has("auth")) window.alert(`Sign-in failed: ${e.message || e}`);
   }
-  if (Graph.isSignedIn()) { await refresh(); flush(); }
+  if (Graph.isSignedIn()) await refresh();              // pulls, then pushes the queue
   else if (currentScreen() === "sync") renderSync();
 }
 
@@ -883,15 +910,26 @@ function updateBadge() {
   badge.hidden = n === 0;
 }
 
-function updateNet() {
+/** The header's one word of status and the thin bar beneath it. Offline outranks syncing, and
+    neither shows when there is nothing to say. */
+function paintStatus() {
   const net = document.getElementById("net");
   const online = navigator.onLine;
-  net.textContent = online ? "" : "offline";
+  const running = Sync.state.running;
+  net.textContent = !online ? "offline" : running ? "syncing" : "";
   net.classList.toggle("off", !online);
+  const bar = document.getElementById("syncbar");
+  bar.hidden = !running;
+  bar.style.transform = `scaleX(${running ? Math.max(0.08, Sync.progress()) : 0})`;
+}
+
+function updateNet() {
+  const online = navigator.onLine;
   if (!online && !Store.meta().offlineSince) {
     Store.setMeta({ offlineSince: new Date().toISOString() });
   }
-  if (online) Store.setMeta({ offlineSince: null });
+  if (online && Store.meta().offlineSince) Store.setMeta({ offlineSince: null });
+  paintStatus();
 }
 
 // ---------------------------------------------------------------- boot
@@ -917,11 +955,15 @@ async function boot() {
   });
   document.addEventListener("focusout", () => document.body.classList.remove("keyboard"));
 
-  window.addEventListener("online", () => { updateNet(); flush(); });
+  // Every way the app comes back to life pulls what the PC published and pushes the queue:
+  // the browser's online and visible events, and the shell's foreground, which is both of those
+  // at once. Sync.start decides whether anything needs doing — a quick switch away and back
+  // does not fetch again — and onSync redraws the screen when something new has landed.
+  window.addEventListener("online", () => { updateNet(); autoSync("online"); });
   window.addEventListener("offline", updateNet);
-  // Returning to the foreground is the shell's "online": the connection may have come back while
-  // the app was asleep, so the queue is tried again exactly as it is when it does.
-  Native.on("foreground", () => { updateNet(); flush(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) autoSync("visible"); });
+  Native.on("foreground", () => { updateNet(); autoSync("foreground"); });
+  Sync.onChange(onSync);
 
   const kept = Store.careers();
   app.careers = kept.careers;
@@ -945,7 +987,9 @@ async function boot() {
     navigator.serviceWorker.register("sw.js").catch(() => { /* http:// dev, or unsupported */ });
   }
 
-  if (await Graph.resume()) { await refresh(); flush(); }
+  // Not awaited: the screen is already up with what the phone holds, and the header's bar
+  // says the rest is on its way.
+  if (await Graph.resume()) autoSync("boot");
 }
 
 boot();

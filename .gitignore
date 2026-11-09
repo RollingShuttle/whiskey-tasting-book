@@ -15,3 +15,7 @@ error.log
 # Local machine config — holds a username in its file paths. Copy config.example.yaml -> config.yaml.
 config.yaml
 config.local.yaml
+
+# Claude Code's per-machine files — except the launch recipe that serves the phone bundle locally
+.claude/*
+!.claude/launch.json

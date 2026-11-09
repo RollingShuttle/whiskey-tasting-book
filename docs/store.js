@@ -27,16 +27,29 @@ const Store = (() => {
 
   // Every read and write is guarded: private browsing and a full quota both throw, and losing a
   // draft must never take the app down with it.
+  //
+  // Reads are memoised. The collection is two hundred spirits and the list, the detail screen
+  // and the table each ask for it several times per row — every one of those used to be a full
+  // JSON.parse of the whole snapshot, and the phone felt it. A key is parsed once and kept until
+  // something writes it; a write invalidates rather than storing the caller's object, so the
+  // cache can never hold anything that is not exactly what storage holds. Callers get the cached
+  // value itself, not a copy — nothing in the app mutates what it reads, and a copy per call
+  // would bring back a fraction of the cost this removes.
+  const cache = new Map();
   function read(key, fallback) {
+    if (cache.has(key)) return cache.get(key) ?? fallback;
     try {
       const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : fallback;
-    } catch { return fallback; }
+      const value = raw ? JSON.parse(raw) : null;
+      cache.set(key, value);                      // null too: "known to be absent" saves a lookup
+      return value ?? fallback;
+    } catch { return fallback; }                  // a failed read is not remembered
   }
   // Why a failed write is remembered: iOS can refuse storage (quota, eviction, a broken origin),
   // and a store that swallows that silently looks exactly like a sync that never ran.
   let lastWriteError = null;
   function write(key, value) {
+    cache.delete(key);                            // whatever happens next, the memo is stale
     try {
       localStorage.setItem(key, JSON.stringify(value));
     } catch (e) {
@@ -46,6 +59,10 @@ const Store = (() => {
     mirror();
     return true;
   }
+  // Another tab of the web app (never the shell, which has one page) may write the same origin.
+  window.addEventListener("storage", (e) => {
+    if (e.key === null) cache.clear(); else cache.delete(e.key);
+  });
   // -- the shell's copy -----------------------------------------------------
   /* Debounced: a flight scored in a hurry writes several keys in a row, and one save after the
      burst is enough. The object is keyed by the storage key itself so restoring needs no
@@ -99,6 +116,7 @@ const Store = (() => {
       if (typeof data[key] !== "string") continue;             // absent when it was backed up
       try { localStorage.setItem(key, data[key]); restored = true; } catch { /* quota; carry on */ }
     }
+    cache.clear();                                             // written behind the memo's back
     return restored;
   }
   function present(key) {
@@ -171,6 +189,13 @@ const Store = (() => {
   }
   function drop(path) {
     write(K.queue, queue().filter((i) => i.path !== path));
+  }
+  /** Why an upload was refused, kept on the item itself: the Sync screen can then say which
+      card and what OneDrive said, and the next pass can see how often it has tried. */
+  function noteFailure(path, error) {
+    write(K.queue, queue().map((i) => (i.path === path
+      ? { ...i, error: String(error).slice(0, 200), attempts: (i.attempts || 0) + 1, lastTried: nowIso() }
+      : i)));
   }
   const queueCount = () => queue().length;
 
@@ -371,7 +396,7 @@ const Store = (() => {
 
   return {
     snapshot, setSnapshot, spirits, rubric, setRubric, careers, setCareers,
-    queue, enqueue, drop, queueCount,
+    queue, enqueue, drop, noteFailure, queueCount,
     cards, cardsFor, addCard, markSent, reviseCard, deleteCard, buried,
     meta, setMeta, restoreFromNative, lastWriteError: () => lastWriteError,
     submitScorecard, submitPending, submitEncounter,

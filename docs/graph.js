@@ -126,7 +126,17 @@ const Graph = (() => {
     await client.logoutRedirect({ account });
   }
 
-  async function token() {
+  /* One token per burst. The three snapshot files are fetched together, and inside the shell
+     each token() is a round trip to the keychain and sometimes to Microsoft; concurrent callers
+     share the one in flight. It is not kept past that — the shell is the one that knows when a
+     token has expired, and the browser's MSAL caches its own. */
+  let tokenInflight = null;
+  function token() {
+    if (!tokenInflight) tokenInflight = acquireToken().finally(() => { tokenInflight = null; });
+    return tokenInflight;
+  }
+
+  async function acquireToken() {
     if (native()) {
       const r = await Native.request("auth.token",
         { clientId: CONFIG.CLIENT_ID, authority: CONFIG.AUTHORITY, scopes: CONFIG.SCOPES });
@@ -143,13 +153,37 @@ const Graph = (() => {
       const r = await client.acquireTokenSilent({ scopes: CONFIG.SCOPES, account });
       return r.accessToken;
     } catch {
-      await client.acquireTokenRedirect({ scopes: CONFIG.SCOPES, account });
+      // No redirect from here. A token is asked for by automatic syncs — on boot, on coming back
+      // to the page — and a redirect at that moment would navigate away from a half-scored card,
+      // which lives only in memory. Forget the account instead, so the Sync screen offers Sign in,
+      // and only that button (loginRedirect, above) ever leaves the page.
+      account = null;
       throw new Error("sign-in required");
     }
   }
 
   const url = (path) =>
     `${CONFIG.GRAPH}/me/drive/special/approot:/${path.split("/").map(encodeURIComponent).join("/")}:/content`;
+  const folderUrl = (path) =>
+    `${CONFIG.GRAPH}/me/drive/special/approot:/${path.split("/").map(encodeURIComponent).join("/")}:/children`
+    + "?$select=name,eTag,size,lastModifiedDateTime";
+
+  /** What one folder of the app folder holds, with each file's eTag: one small request that
+      says whether any of the published files has changed since the last pull, so an unchanged
+      day costs a listing rather than three downloads. Null when the folder is not there yet,
+      like getJSON. Paging is not a concern — the snapshot folder holds three files. */
+  async function listFolder(path) {
+    const t = await token();
+    let r;
+    try {
+      r = await fetch(folderUrl(path), { headers: { Authorization: `Bearer ${t}` } });
+    } catch (e) {
+      throw new Error(`${e.message || e} — could not reach OneDrive for ${path}/`);
+    }
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error(`${r.status} listing ${path}/`);
+    return (await r.json()).value || [];
+  }
 
   /** Safari reports a blocked or failed request as nothing more than "Load failed"; a Graph
       refusal carries its reason in the body. Both are put into the error, with the path, because
@@ -196,6 +230,7 @@ const Graph = (() => {
     signOut,
     getJSON,
     putJSON,
+    listFolder,
     isSignedIn: () => !!account,
     who: () => account?.username || null,
   };
