@@ -59,7 +59,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    #  tests, all passing
+python -m unittest discover -s tests    # 537 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
