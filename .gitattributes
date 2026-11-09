@@ -1,0 +1,8 @@
+# Files the Mac runs or Xcode reads must be LF whatever Windows checked out. The .bat files are
+# not listed on purpose: they stay CRLF, which is what cmd.exe needs for ^ continuations and labels.
+*.sh text eol=lf
+*.command text eol=lf
+*.xcscheme text eol=lf
+*.xcprivacy text eol=lf
+*.pbxproj text eol=lf
+*.swift text eol=lf

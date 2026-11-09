@@ -1,9 +1,9 @@
 # Whiskey Tasting Book — project context
 
 Read `guide/SPEC.md` before changing anything. It is the build spec and it is current.
-`guide/IOS-APP.md` is the plan for wrapping `docs/` as a native iOS app (Capacitor, bundled files,
-system-browser sign-in, Xcode Cloud → TestFlight) — not started; its facts were verified on
-2 Nov 2026 and it says which decisions they rest on.
+`guide/IOS-APP.md` is the plan and record for the native iOS app — a hand-written Swift+WKWebView
+shell under `ios/` (built 8 Nov 2026, **not yet compiled**; `ios/README.md` is the Mac-day
+checklist). Its facts were verified on 2 Nov 2026 and it says which decisions they rest on.
 `guide/SETUP.md` covers the one-time Microsoft account setup. `guide/RUNNING.md` is the plain-language
 guide to installing and starting both halves (the PC app opens via `launch.py`, not `app.py`, and
 ships as a console-free exe built by `build_exe.bat`, staying resident in the notification area
@@ -11,11 +11,19 @@ when its window closes) — keep it accurate when behaviour changes.
 
 ## Where things are
 
-The eight app modules, the three `.bat` files and `config.yaml` stay at the root: the exe reads
-`config.yaml` and `data/` from the folder it sits in, and the `.bat` files are what gets
-double-clicked. Everything else has a folder — `tests/`, `tools/` (scripts run by hand),
-`guide/` (the three documents above), `static/` (the PC front end, bundled into the exe) and
-`docs/`.
+The eight app modules, the three `.bat` files, `update-mac.command` (double-clicked on the Mac) and
+`config.yaml` stay at the root: the exe reads `config.yaml` and `data/` from the folder it sits
+in, and the `.bat` files are what gets double-clicked. Everything else has a folder — `tests/`,
+`tools/` (scripts run by hand), `guide/` (the documents above), `static/` (the PC front end,
+bundled into the exe), `docs/` and `ios/` (the iPhone app's Xcode project; it copies `docs/` into
+the app at build time, so `docs/` stays the one source for the PWA and the app).
+
+**`docs/` is served two ways** — from GitHub Pages at an `https` origin, and inside the iPhone
+app at `app://local/`. Code there must not assume a browser origin: sign-in and the storage
+mirror go through `docs/native.js` when the shell is present (`Native.caps`), and take the old
+paths when it is not; a test pins the browser path, and `tests/test_ios.py` pins that the page
+and `ios/TastingBookShell/Bridge.swift` name the same messages. The Swift has never been
+compiled on this machine — `ios/README.md` lists the two most likely complaints and their fixes.
 
 Two of those names are fixed by something outside this repo and **cannot be renamed**: GitHub
 Pages serves only `/` or `/docs`, so the phone client has to be `docs/` however much it looks
@@ -51,7 +59,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 471 tests, all passing
+python -m unittest discover -s tests    # 532 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```

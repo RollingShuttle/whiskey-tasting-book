@@ -28,10 +28,12 @@ total, and a medal band: Diamond 90+, Gold 80+, Silver 70+, Bronze 60+.
 *.py                    the app: server, launcher, and the modules underneath them
 static/                 the PC front end, bundled into the exe
 docs/                   the iPhone client (GitHub Pages will only serve / or /docs)
+ios/                    the iPhone app: a Swift shell around docs/, built in Xcode
 tests/                  one file per module — python -m unittest discover -s tests
 tools/                  scripts run by hand: update, first-time setup, shortcut, gate
-guide/                  SPEC.md, RUNNING.md, SETUP.md, IOS-APP.md (the native app plan)
-run.bat update.bat build_exe.bat        the three things you double-click
+guide/                  SPEC.md, RUNNING.md, SETUP.md, IOS-APP.md (the native app)
+run.bat update.bat build_exe.bat        the three things you double-click on the PC
+update-mac.command                      the one thing you double-click on the Mac
 ```
 
 ## Modules
@@ -49,7 +51,7 @@ run.bat update.bat build_exe.bat        the three things you double-click
 | `static/` | the PC front end — `app.js` (sheet + flights), `table.js`, `compare.js`, `analysis.js` | — |
 | `docs/` | the iPhone client — offline-first, syncs through OneDrive | `tests/test_phone.py` |
 
-471 tests, all passing. `python tools/verify_gate.py` runs the shipping gate in [guide/SPEC.md](guide/SPEC.md) §7.
+532 tests, all passing. `python tools/verify_gate.py` runs the shipping gate in [guide/SPEC.md](guide/SPEC.md) §7.
 
 ## Views
 

@@ -9,7 +9,12 @@
    chrome, and popups in a standalone web app are unreliable at best.
 
    MSAL is loaded on demand. The app shell must open and score a pour with no network at all, so
-   nothing here is on the critical path until you actually sign in. */
+   nothing here is on the critical path until you actually sign in.
+
+   Inside the native iOS app (guide/IOS-APP.md) the browser library is not used at all: the shell
+   signs in with ASWebAuthenticationSession, keeps the tokens in the keychain, and is asked for
+   them over the bridge in native.js. That branch is taken only when the shell has said it can
+   ("auth" in Native.caps); on GitHub Pages every line below behaves exactly as it did. */
 "use strict";
 
 const Graph = (() => {
@@ -19,6 +24,21 @@ const Graph = (() => {
   let loading = null;
 
   const configured = () => !!(CONFIG.CLIENT_ID && CONFIG.CLIENT_ID.trim());
+
+  /* The shell's sign-in redirect. ASWebAuthenticationSession hands the callback straight back to
+     the app, so this is a custom scheme rather than a URL: "msauth." + the iOS bundle id, which
+     is com.mikeyang.whiskey. It is registered in Entra under "Mobile and desktop applications"
+     as msauth.com.mikeyang.whiskey://auth. Rename the bundle and this string and the Entra entry
+     must both follow, or sign-in fails with a redirect_uri mismatch. */
+  const NATIVE_REDIRECT_SCHEME = "msauth.com.mikeyang.whiskey";
+
+  /* True only inside the shell, and only once it has said it does sign-in. Checked on every call
+     rather than once: native.js is loaded in the browser too, where caps simply stays empty. */
+  const native = () => typeof Native !== "undefined" && Native.caps.has("auth");
+
+  /* The shell reports an account as a display name; MSAL reports one as an object. Both are
+     kept in the one shape who() reads. */
+  const nativeAccount = (name) => ({ username: name || "Microsoft account" });
 
   function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -31,6 +51,7 @@ const Graph = (() => {
   }
 
   async function ensure() {
+    if (native()) throw new Error("MSAL is not used inside the native shell");
     if (client) return client;
     if (!configured()) throw new Error("not configured");
     if (!loading) {
@@ -59,6 +80,13 @@ const Graph = (() => {
   /** Safe to call on boot: resolves to false when not configured or not signed in. */
   async function resume() {
     if (!configured()) return false;
+    if (native()) {
+      try {
+        const r = await Native.request("auth.status");
+        account = r.signedIn ? nativeAccount(r.account) : null;
+      } catch { account = null; }
+      return !!account;
+    }
     try {
       await ensure();
       return !!account;
@@ -66,6 +94,22 @@ const Graph = (() => {
   }
 
   async function signIn() {
+    if (native()) {
+      const r = await Native.request("auth.signIn", {
+        clientId: CONFIG.CLIENT_ID,
+        authority: CONFIG.AUTHORITY,
+        scopes: CONFIG.SCOPES,
+        redirectScheme: NATIVE_REDIRECT_SCHEME,
+      }, { timeout: 0 });                 // a person is typing a password; this one may take minutes
+      if (!r.ok) {
+        // Cancelling the sheet is not a failure to report; anything else is.
+        const e = new Error(r.cancelled ? "sign-in cancelled" : (r.error || "sign-in failed"));
+        e.cancelled = !!r.cancelled;
+        throw e;
+      }
+      account = nativeAccount(r.account);
+      return;
+    }
     await ensure();
     // Refresh tokens for browser apps are capped at 24 hours and Safari blocks the hidden-iframe
     // renewal, so this reappears about once a day. It never blocks scoring — only uploading.
@@ -73,11 +117,26 @@ const Graph = (() => {
   }
 
   async function signOut() {
+    if (native()) {
+      await Native.request("auth.signOut");
+      account = null;
+      return;
+    }
     if (!client) return;
     await client.logoutRedirect({ account });
   }
 
   async function token() {
+    if (native()) {
+      const r = await Native.request("auth.token",
+        { clientId: CONFIG.CLIENT_ID, authority: CONFIG.AUTHORITY, scopes: CONFIG.SCOPES });
+      if (r.ok) return r.token;
+      // interactive means the refresh token is gone — expired, revoked, password changed — and
+      // only a person can put that right, so the sync screen goes back to offering Sign in.
+      // Anything else is the network, and the queue simply waits for the next attempt.
+      if (r.interactive) { account = null; throw new Error("sign-in required"); }
+      throw new Error(r.error || "could not get a token");
+    }
     await ensure();
     if (!account) throw new Error("not signed in");
     try {

@@ -768,14 +768,13 @@ function renderSync() {
         : null,
       el("div", { class: "actions" },
         Graph.configured() && !signedIn
-          ? el("button", { class: "btn", type: "button", onclick: () => Graph.signIn() }, "Sign in")
+          ? el("button", { class: "btn", type: "button", onclick: signInFlow }, "Sign in")
           : null,
         Graph.configured() && signedIn
           ? el("button", { class: "btn", type: "button", onclick: refresh }, "Refresh")
           : null,
         signedIn
-          ? el("button", { class: "btn ghost", type: "button", onclick: () => Graph.signOut() },
-              "Sign out")
+          ? el("button", { class: "btn ghost", type: "button", onclick: signOutFlow }, "Sign out")
           : null)),
 
     el("div", { class: "card" },
@@ -830,6 +829,28 @@ async function flush() {
   if (currentScreen() === "sync") renderSync();
 }
 
+/** In the browser, signing in leaves the page and boot() picks everything up when it comes
+    back. Inside the native shell the page never moves, so what boot() would have done on return
+    — pull the snapshot, try the queue — is done here, and a failure is said out loud rather than
+    left in a log nobody opens. In the browser the redirect has happened before this resumes. */
+async function signInFlow() {
+  try {
+    await Graph.signIn();
+  } catch (e) {
+    Store.setMeta({ lastError: String(e.message || e) });
+    // Only inside the shell. In the browser the redirect either leaves the page or MSAL throws
+    // before anything is shown, and that has always been silent; keep it that way there.
+    if (!e.cancelled && Native.caps.has("auth")) window.alert(`Sign-in failed: ${e.message || e}`);
+  }
+  if (Graph.isSignedIn()) { await refresh(); flush(); }
+  else if (currentScreen() === "sync") renderSync();
+}
+
+async function signOutFlow() {
+  try { await Graph.signOut(); } catch (e) { Store.setMeta({ lastError: String(e.message || e) }); }
+  if (currentScreen() === "sync") renderSync();
+}
+
 function updateBadge() {
   const n = Store.queueCount();
   const badge = document.getElementById("tab-badge");
@@ -850,6 +871,13 @@ function updateNet() {
 
 // ---------------------------------------------------------------- boot
 async function boot() {
+  // Inside the native shell the bridge has to be up before anything else: graph.js and store.js
+  // pick their path from what the shell says it can do, and a backup can only be put back into
+  // a store that is still empty — so both come before the first read. In the browser each
+  // resolves at once.
+  await Native.init();
+  await Store.restoreFromNative();
+
   document.getElementById("back").addEventListener("click", back);
   document.querySelectorAll(".tab").forEach((b) =>
     b.addEventListener("click", () => setTab(b.dataset.tab)));
@@ -866,6 +894,9 @@ async function boot() {
 
   window.addEventListener("online", () => { updateNet(); flush(); });
   window.addEventListener("offline", updateNet);
+  // Returning to the foreground is the shell's "online": the connection may have come back while
+  // the app was asleep, so the queue is tried again exactly as it is when it does.
+  Native.on("foreground", () => { updateNet(); flush(); });
 
   const kept = Store.careers();
   app.careers = kept.careers;
@@ -883,7 +914,9 @@ async function boot() {
   updateBadge();
   setTab("collection");
 
-  if ("serviceWorker" in navigator) {
+  // The shell ships the bundle inside the app and updates it with the app; a service worker in
+  // there would keep serving the copy it cached first, however many times the app updated.
+  if (!Native.available && "serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(() => { /* http:// dev, or unsupported */ });
   }
 

@@ -6,7 +6,11 @@
 
    Filenames follow the same rules as store.py, and for the same reason: the timestamp is only
    second-resolution, so the random suffix is load-bearing. Two cards for one spirit in the same
-   second would otherwise share a name and the second would destroy the first (SPEC.md §0). */
+   second would otherwise share a name and the second would destroy the first (SPEC.md §0).
+
+   Inside the native iOS app (guide/IOS-APP.md) the whole store is also mirrored to a file the
+   shell keeps: a web view's storage can be evicted and does not survive a reinstall, and a phone
+   full of unsent cards is exactly the thing this app exists to protect. */
 "use strict";
 
 const Store = (() => {
@@ -30,7 +34,67 @@ const Store = (() => {
     } catch { return fallback; }
   }
   function write(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
+    if (!put(key, value)) return false;
+    mirror();
+    return true;
+  }
+  // -- the shell's copy -----------------------------------------------------
+  /* Debounced: a flight scored in a hurry writes several keys in a row, and one save after the
+     burst is enough. The object is keyed by the storage key itself so restoring needs no
+     translation. The PWA has no shell, so none of this runs there. */
+  const BACKUP_NAME = "tasting-book.json";
+  const MIRROR_DELAY = 1000;
+  let mirrorTimer = null;
+  const nativeBackup = () => typeof Native !== "undefined" && Native.caps.has("backup");
+
+  function mirrorNow() {
+    clearTimeout(mirrorTimer);
+    mirrorTimer = null;
+    // The raw strings, not parsed values: one serialisation instead of three, and the file holds
+    // exactly what the store held.
+    const data = {};
+    for (const key of Object.values(K)) {
+      try { data[key] = localStorage.getItem(key); } catch { data[key] = null; }
+    }
+    Native.send("backup.save", { name: BACKUP_NAME, json: JSON.stringify(data) });
+  }
+  function mirror() {
+    if (!nativeBackup()) return;
+    clearTimeout(mirrorTimer);
+    mirrorTimer = setTimeout(mirrorNow, MIRROR_DELAY);
+  }
+  // Backgrounding the app suspends its timers, so a save still waiting goes now rather than
+  // whenever the app next wakes — which may be after iOS has already emptied the web view.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && mirrorTimer && nativeBackup()) mirrorNow();
+  });
+  // The shell reloads this page itself after iOS kills the web process; pagehide is the last word.
+  window.addEventListener("pagehide", () => {
+    if (mirrorTimer && nativeBackup()) mirrorNow();
+  });
+
+  /** The shell holds a backup and this web view holds nothing of ours — a first launch, a
+      reinstall, an eviction — so put it back. Never over a live store, even a partial one: the
+      live one is the newer. Resolves false everywhere else, the PWA included, so boot() can
+      always await it. */
+  async function restoreFromNative() {
+    if (!nativeBackup()) return false;
+    if (Object.values(K).some(present)) return false;
+    let reply;
+    try { reply = await Native.request("backup.load"); } catch { return false; }
+    if (!reply || reply.none || typeof reply.text !== "string") return false;
+    let data;
+    try { data = JSON.parse(reply.text); } catch { return false; }
+    if (!data || typeof data !== "object") return false;
+    let restored = false;
+    for (const key of Object.values(K)) {
+      if (typeof data[key] !== "string") continue;             // absent when it was backed up
+      try { localStorage.setItem(key, data[key]); restored = true; } catch { /* quota; carry on */ }
+    }
+    return restored;
+  }
+  function present(key) {
+    try { return localStorage.getItem(key) !== null; } catch { return false; }
   }
 
   const pad = (n, w = 2) => String(n).padStart(w, "0");
@@ -301,7 +365,7 @@ const Store = (() => {
     snapshot, setSnapshot, spirits, rubric, setRubric, careers, setCareers,
     queue, enqueue, drop, queueCount,
     cards, cardsFor, addCard, markSent, reviseCard, deleteCard, buried,
-    meta, setMeta,
+    meta, setMeta, restoreFromNative,
     submitScorecard, submitPending, submitEncounter,
     encounters, addEncounter, asSpirit,
     stamp, rand4, medalFor, today, localTime, localClock,

@@ -730,5 +730,152 @@ class TestCollectionList(unittest.TestCase):
                             "a concatenated haystack must be bracketed before lowercasing: " + expr)
 
 
+class TestNativeShell(unittest.TestCase):
+    """The same bundle also runs inside the native iOS app (guide/IOS-APP.md), where sign-in and
+    a backup of local storage are done in Swift and reached over the bridge in native.js. Every
+    rule here protects the GitHub Pages copy as much as the app: the browser must keep taking the
+    paths it always took, and the two halves must agree on the messages between them.
+
+    These read the source rather than run it — no JavaScript engine is installed on the machine
+    that runs them — so they pin names, order and the agreement between the two halves, not
+    behaviour. The phone is where behaviour is checked (ios/README.md, the three tests)."""
+
+    # The protocol between docs/ and the shell. A message the web sends that is not here would be
+    # ignored by Swift without a word; one here that the web never sends is dead weight.
+    WEB_TO_NATIVE = {"ready", "auth.status", "auth.signIn", "auth.token", "auth.signOut",
+                     "backup.save", "backup.load"}
+
+    def test_native_js_is_precached_and_loaded_before_what_uses_it(self):
+        self.assertIn('"./native.js"', text("sw.js"))
+        html = text("index.html")
+        self.assertLess(html.index('src="native.js"'), html.index('src="store.js"'))
+        self.assertLess(html.index('src="native.js"'), html.index('src="graph.js"'))
+
+    def test_the_bridge_is_a_plain_script(self):
+        """The rest of the bundle is plain scripts; one ES module among them would load in a
+        different order from the <script> tags and Native would not exist when store.js ran."""
+        src = code("native.js")
+        self.assertNotIn("export ", src)
+        self.assertNotIn("import ", src)
+        self.assertIn("const Native = (() => {", src)
+
+    def test_no_service_worker_inside_the_shell(self):
+        """The app ships and updates its own bundle; a service worker there would keep serving
+        the copy it cached first, however many times the app updated."""
+        self.assertIn('if (!Native.available && "serviceWorker" in navigator)', code("app.js"))
+
+    def test_boot_waits_for_the_shell_before_reading_storage(self):
+        """A backup can only be restored into an empty store, so the restore has to run before
+        the first read — and the bridge has to be up before the restore can ask for it."""
+        block = code("app.js")
+        block = block[block.index("async function boot("):]
+        self.assertLess(block.index("await Native.init()"),
+                        block.index("await Store.restoreFromNative()"))
+        self.assertLess(block.index("await Store.restoreFromNative()"),
+                        block.index("Store.careers()"))
+
+    def test_init_cannot_hang_the_browser_path(self):
+        """A shell that installs the handler but never answers must still produce a working app,
+        so init() gives up rather than waiting on a hello that never comes — and within a few
+        seconds, or the shell's first paint would visibly wait. The timer only ever runs inside
+        the shell: the browser returns before it exists."""
+        src = code("native.js")
+        block = src[src.index("function init("):src.index("function request(")]
+        self.assertIn("setTimeout(", block)
+        self.assertIn("clearTimeout(timer)", block)
+        self.assertIn("Promise.resolve(false)", block)
+        m = re.search(r"const HELLO_TIMEOUT = (\d+)", src)
+        self.assertIsNotNone(m, "the wait is not a named constant")
+        self.assertTrue(1000 <= int(m.group(1)) <= 5000, m.group(1))
+
+    def test_a_request_the_shell_never_answers_does_not_hang_the_page(self):
+        """restoreFromNative is awaited before the first paint; a reply that never comes must
+        become a rejection, not a blank screen. The sign-in sheet is the one request allowed to
+        wait on a person, so it opts out with timeout 0."""
+        src = code("native.js")
+        block = src[src.index("function request("):src.index("const send")]
+        self.assertIn("no reply to", block)
+        self.assertRegex(src, r"const REQUEST_TIMEOUT = \d+")
+        self.assertIn("timeout: 0", code("graph.js"))
+
+    def test_the_two_replies_named_differently_are_handled_as_such(self):
+        src = code("native.js")
+        self.assertIn('"auth.signIn": "auth.result"', src)
+        self.assertIn('"backup.load": "backup.result"', src)
+
+    def test_graph_adds_the_native_branch_and_keeps_the_browser_one(self):
+        """The PWA on GitHub Pages must behave exactly as before: MSAL, redirect flow and all."""
+        src = code("graph.js")
+        self.assertIn('Native.caps.has("auth")', src)
+        for kept in ("loginRedirect", "handleRedirectPromise", "MSAL_SRC", "acquireTokenSilent"):
+            self.assertIn(kept, src, f"the browser path lost {kept}")
+
+    def test_the_shell_never_loads_msal(self):
+        src = code("graph.js")
+        block = src[src.index("async function ensure("):src.index("async function resume(")]
+        self.assertLess(block.index("native()"), block.index("loadScript(CONFIG.MSAL_SRC)"))
+
+    def test_the_redirect_scheme_is_the_bundle_id(self):
+        """What Entra has on file under Mobile and desktop applications; the bundle id and this
+        string have to move together."""
+        src = code("graph.js")
+        self.assertIn('"msauth.com.mikeyang.whiskey"', src)
+        block = src[src.index("async function signIn("):src.index("async function signOut(")]
+        self.assertIn("redirectScheme: NATIVE_REDIRECT_SCHEME", block)
+        for field in ("clientId: CONFIG.CLIENT_ID", "authority: CONFIG.AUTHORITY",
+                      "scopes: CONFIG.SCOPES"):
+            self.assertIn(field, block, "the shell is handed what config.js says, never its own copy")
+
+    def test_a_token_refusal_reads_the_same_as_in_the_browser(self):
+        """The queue tells a lapsed sign-in from a dropped connection by this message; a different
+        one would be treated as the network and nobody would be asked to sign in again."""
+        src = code("graph.js")
+        block = src[src.index("async function token("):src.index("const url =")]
+        self.assertEqual(block.count('"sign-in required"'), 2,
+                         "both branches of token() must throw the same error")
+        self.assertIn("r.interactive", block)
+
+    def test_the_store_mirrors_itself_to_the_shell(self):
+        src = code("store.js")
+        self.assertIn('"tasting-book.json"', src)
+        self.assertIn('Native.send("backup.save"', src)
+        block = src[src.index("function write("):src.index("const BACKUP_NAME")]
+        self.assertIn("mirror()", block, "a write that is not mirrored is a write the shell loses")
+
+    def test_a_backup_is_restored_only_into_an_empty_store(self):
+        """The live store is always the newer of the two; a backup put over it would roll back
+        every card scored since the last save."""
+        src = code("store.js")
+        block = src[src.index("async function restoreFromNative("):src.index("function present(")]
+        ask = block.index('Native.request("backup.load")')
+        self.assertLess(block.index("Object.values(K).some(present)"), ask)
+        self.assertIn("return false", block[:ask])
+
+    def test_every_message_the_web_sends_is_in_the_protocol(self):
+        """Swift switches on the type string. A spelling the shell does not know is not an error
+        anywhere — the request simply never comes back."""
+        sent = set()
+        for name in ("native.js", "graph.js", "store.js", "app.js"):
+            sent.update(re.findall(r'Native\.(?:request|send)\(\s*"([^"]+)"', code(name)))
+        sent.update(re.findall(r'\btype:\s*"([^"]+)"', code("native.js")))
+        self.assertEqual(sent, self.WEB_TO_NATIVE)
+
+    def test_coming_to_the_foreground_tries_the_queue_again(self):
+        src = code("app.js")
+        self.assertIn('Native.on("foreground"', src)
+        line = src[src.index('Native.on("foreground"'):]
+        self.assertIn("flush()", line[:line.index("\n")])
+
+    def test_signing_in_inside_the_shell_finishes_what_boot_would_have(self):
+        """In the browser, sign-in leaves the page and boot() picks up on return. The shell's page
+        never moves, so the pull and the upload have to happen where the sign-in resolves."""
+        src = code("app.js")
+        block = src[src.index("async function signInFlow("):src.index("async function signOutFlow(")]
+        self.assertIn("await Graph.signIn()", block)
+        self.assertIn("await refresh()", block)
+        self.assertIn("flush()", block)
+        self.assertIn("onclick: signInFlow", src)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
