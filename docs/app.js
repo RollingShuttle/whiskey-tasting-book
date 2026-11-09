@@ -762,7 +762,14 @@ function renderSync() {
         const sittings = Object.values(k.sittings || {}).reduce((a, v) => a + v.length, 0);
         return `${Store.spirits().length} spirits · ${scored} scored · ${sittings} sittings`;
       })()),
-      staleSource()
+      // The last thing that went wrong, in its own words. Silence here once meant an hour of
+      // guessing between a sign-in problem, a network problem and a missing file.
+      m.lastError
+        ? notice("warn", `Last attempt failed${m.lastErrorAt
+            ? ` at ${Store.localClock(m.lastErrorAt)}` : ""}: ${m.lastError}`)
+        : null,
+      // Only once something has been synced: before that, "nothing published yet" is simply true.
+      staleSource() && m.lastSync
         ? notice("warn", "The PC that last refreshed is running an older version of the app, so "
             + "some of what this phone needs was not published. Update it there and press Refresh.")
         : null,
@@ -800,9 +807,9 @@ async function refresh() {
     }
     const rub = await Graph.getJSON("snapshot/rubric.json");
     if (rub) { Store.setRubric(rub); app.rubric = rub; }
-    Store.setMeta({ lastSync: new Date().toISOString() });
+    Store.setMeta({ lastSync: new Date().toISOString(), lastError: null, lastErrorAt: null });
   } catch (e) {
-    Store.setMeta({ lastError: String(e.message || e) });
+    Store.setMeta({ lastError: String(e.message || e), lastErrorAt: new Date().toISOString() });
   }
   renderSync();
   if (app.tab === "collection") renderCollection();
@@ -820,8 +827,10 @@ async function flush() {
       await Graph.putJSON(item.path, item.body);
       Store.drop(item.path);
       if (item.kind === "tasting") Store.markSent(item.path);
-    } catch {
-      break;                                          // stop on the first failure; try again later
+    } catch (e) {
+      // Stop on the first failure and try again later — but say what it was, on the Sync screen.
+      Store.setMeta({ lastError: String(e.message || e), lastErrorAt: new Date().toISOString() });
+      break;
     }
   }
   Store.setMeta({ lastSync: new Date().toISOString() });

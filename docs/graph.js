@@ -151,11 +151,28 @@ const Graph = (() => {
   const url = (path) =>
     `${CONFIG.GRAPH}/me/drive/special/approot:/${path.split("/").map(encodeURIComponent).join("/")}:/content`;
 
+  /** Safari reports a blocked or failed request as nothing more than "Load failed"; a Graph
+      refusal carries its reason in the body. Both are put into the error, with the path, because
+      the Sync screen shows this text and it has to be enough to act on. */
+  async function send(path, init) {
+    let r;
+    try {
+      r = await fetch(url(path), init);
+    } catch (e) {
+      throw new Error(`${e.message || e} — could not reach OneDrive for ${path}`);
+    }
+    if (!r.ok && r.status !== 404) {
+      const body = await r.text().catch(() => "");
+      const verb = init.method === "PUT" ? "writing" : "reading";
+      throw new Error(`${r.status} ${verb} ${path}${body ? `: ${body.slice(0, 240)}` : ""}`);
+    }
+    return r;
+  }
+
   async function getJSON(path) {
     const t = await token();
-    const r = await fetch(url(path), { headers: { Authorization: `Bearer ${t}` } });
+    const r = await send(path, { headers: { Authorization: `Bearer ${t}` } });
     if (r.status === 404) return null;                 // nothing written there yet
-    if (!r.ok) throw new Error(`${r.status} reading ${path}`);
     return r.json();
   }
 
@@ -163,12 +180,12 @@ const Graph = (() => {
       path, so a failed upload can always simply be repeated (SPEC.md §1.3). */
   async function putJSON(path, body) {
     const t = await token();
-    const r = await fetch(url(path), {
+    const r = await send(path, {
       method: "PUT",
       headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!r.ok) throw new Error(`${r.status} writing ${path}`);
+    if (r.status === 404) throw new Error(`404 writing ${path}: the app folder is missing`);
     return r.json();
   }
 
