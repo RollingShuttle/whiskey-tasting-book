@@ -1046,5 +1046,43 @@ class TestPhoneOnlyWiring(unittest.TestCase):
         self.assertIn("!c._sent && !c._local", self.src)
 
 
+class TestAddForm(unittest.TestCase):
+    """Type is picked from the workbook's list, and an age can be a word. Both were plain text
+    boxes: one let "Burbon" through, and the other had a digits-only keypad that could not type
+    NAS at all."""
+
+    def setUp(self):
+        self.js = code("app.js")
+        self.css = text("style.css")
+
+    def test_type_is_chosen_from_the_list(self):
+        self.assertIn("Store.types()", self.js)
+        self.assertIn('el("select"', self.js)
+        self.assertNotIn('input("Type"', self.js, "a free-text Type is how a misspelling gets in")
+        self.assertIn("typeField(),", self.js)
+
+    def test_there_is_room_for_a_type_the_list_does_not_hold(self):
+        self.assertIn('el("option", { value: OTHER_TYPE }, "Other…")', self.js)
+        self.assertIn("other.hidden = !typed", self.js)
+        self.assertIn("Store.canonicalType(fields.Type)", self.js)
+
+    def test_age_offers_the_two_words_a_label_may_carry(self):
+        self.assertIn('[["NAS", "no age statement"], ["N/A", "not applicable"]]', self.js)
+        self.assertNotIn('input("Age"', self.js)
+        self.assertIn("ageField(),", self.js)
+        self.assertIn('inputmode: "numeric"', self.js, "years are still typed on the number pad")
+
+    def test_the_drop_down_does_not_zoom_the_page(self):
+        """A select under 16 px zooms Safari on focus exactly as an input does."""
+        block = re.search(r"textarea, input\[type=\"text\"\][^{]*\{[^}]*\}", self.css)
+        self.assertIn("select", block.group(0).split("{")[0])
+        self.assertIn("font-size: 16px", block.group(0))
+
+    def test_the_age_words_are_big_enough_to_tap(self):
+        rule = re.search(r"\.age-row \.chip\s*\{[^}]*\}", self.css)
+        self.assertIsNotNone(rule)
+        self.assertIn("min-height: 44px", rule.group(0))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

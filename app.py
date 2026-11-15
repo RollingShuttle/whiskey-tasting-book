@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 from datetime import datetime, timezone
@@ -236,6 +237,24 @@ def _sitting_item(t, catalog):
         "notes": notes, "overall_note": overall,
         "date": t.get("date"), "tasting_id": t["tasting_id"],
     }
+
+
+def _age_parts(raw):
+    """An encounter's age, split the way the collection's is: years as a number, or the word the
+    phone offers in their place (NAS, N/A) as `age_label`. The encounter file holds one field; a
+    row that carried the word in its number column would sort it in among the years."""
+    if raw is None or isinstance(raw, bool):
+        return {"age": None, "age_label": None}
+    if isinstance(raw, (int, float)):
+        return {"age": raw, "age_label": None}
+    text = str(raw).strip()
+    try:
+        years = float(text)
+    except ValueError:
+        years = None
+    if years is not None and math.isfinite(years):
+        return {"age": years, "age_label": None}
+    return {"age": None, "age_label": text or None}
 
 
 def _encounter_stub(journal, code):
@@ -520,7 +539,7 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
             pours.append({
                 "code": e["code"], "display_name": name or e.get("name"), "name": e.get("name"),
                 "distillery": e.get("distillery"), "type": e.get("type"),
-                "region": e.get("region"), "age": e.get("age"), "proof": e.get("proof"),
+                "region": e.get("region"), **_age_parts(e.get("age")), "proof": e.get("proof"),
                 "venue": e.get("venue"), "_sheet": "Encounter", "owned": False, "status": None,
                 "sittings": sittings.get(e["code"], 0),
             })
@@ -771,7 +790,7 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
                 "source": "Encounter", "owned": False,
                 "type": enc.get("type"), "region": enc.get("region"),
                 "rarity": None, "status": None,
-                "age": enc.get("age"), "age_label": None,
+                **_age_parts(enc.get("age")),
                 "proof": enc.get("proof"), "abv": None,
                 "release_year": None,
                 "paid": None, "size_oz": None,

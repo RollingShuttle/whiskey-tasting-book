@@ -405,7 +405,9 @@ account: the bottles and the scores live on that phone.
 2. The first screen asks where the book should live. They tap **On this phone only**.
 3. **Add → Bottle I bought** puts a bottle straight into their collection. **Add → Bar pour** scores
    something they do not own. Everything else — scoring, the table, compare, analysis — works as
-   it does for you.
+   it does for you. **Type** is a list to pick from; **Other…** at the bottom of it takes anything
+   the list does not have (a red wine, a champagne), and that type is on their list from then on.
+   **Age** takes a number of years, or **NAS** or **N/A**.
 4. The last tab is called **Data** in this mode. **Export** makes a backup file (Save to Files,
    AirDrop, Mail); **Import** puts one back, on the same phone or a new one.
 

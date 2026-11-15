@@ -494,5 +494,69 @@ class TestPhoneOnly(unittest.TestCase):
             self.assertEqual(self.ctx.eval("Store.spirits()[0].name"), "Still here", bad)
 
 
+@unittest.skipIf(MiniRacer is None, "pip install mini-racer to run the phone scripts for real")
+class TestTypesAndAges(unittest.TestCase):
+    """Type is chosen from the workbook's own list, with room for what the list does not hold;
+    and an age may be a word — NAS, N/A — without becoming a number that sorts."""
+
+    def setUp(self):
+        self.ctx = engine()
+
+    def types(self):
+        return json.loads(self.ctx.eval("JSON.stringify(Store.types())"))
+
+    def js(self, expr):
+        return json.loads(self.ctx.eval(f"JSON.stringify({expr})"))
+
+    def test_a_phone_with_no_pc_has_the_list_built_in(self):
+        got = self.types()
+        self.assertEqual(got[:2], ["Bourbon", "Rye"])
+        self.assertEqual(len(got), 20)
+        for t in ("Single Malt", "Gin", "Vodka", "Moonshine"):
+            self.assertIn(t, got)
+
+    def test_the_published_list_is_the_one_offered(self):
+        """What the PC read from the workbook's drop-down replaces the built-in list, and a type
+        already on a bottle is offered even if the drop-down has since lost it."""
+        self.ctx.eval("Store.setSnapshot({types: ['Alpha', 'Beta'], spirits: ["
+                      "{code: 'B-1', type: 'Beta'}, {code: 'B-2', type: 'gamma'}, {code: 'B-3'}]})")
+        self.assertEqual(self.types(), ["Alpha", "Beta", "gamma"])
+
+    def test_a_type_entered_once_is_offered_from_then_on(self):
+        self.ctx.eval("Store.setMode('local');"
+                      "Store.addLocalSpirit({name: 'A Red', type: 'Red Wine'});"
+                      "Store.submitEncounter({name: 'A Glass', type: 'Champagne'});")
+        got = self.types()
+        self.assertEqual(got[20:], ["Champagne", "Red Wine"], "after the list, in order")
+        self.assertEqual(len(got), len(set(t.lower() for t in got)))
+
+    def test_a_second_spelling_joins_the_first(self):
+        self.ctx.eval("Store.setMode('local'); Store.addLocalSpirit({name: 'A Red', type: 'Red Wine'});")
+        self.assertEqual(self.ctx.eval("Store.canonicalType('  red wine ')"), "Red Wine")
+        self.assertEqual(self.ctx.eval("Store.canonicalType('BOURBON')"), "Bourbon")
+        self.assertEqual(self.ctx.eval("Store.canonicalType('Sake')"), "Sake", "new is allowed")
+        self.assertIsNone(self.ctx.eval("Store.canonicalType('   ')"))
+
+    def test_a_bar_pour_keeps_a_worded_age_apart_from_the_years(self):
+        """`s.age ? age + " yr" : s.age_label` is how every list prints it: a pour whose age was
+        the string "NAS" printed "NAS yr" and sorted among the numbers."""
+        for given, want in (("'NAS'", [None, "NAS"]), ("'N/A'", [None, "N/A"]), ("12", [12, None]),
+                            ("'12'", [12, None]), ("null", [None, None]), ("''", [None, None])):
+            s = self.js(f"Store.submitEncounter({{name: 'A Pour', age: {given}}}).spirit")
+            self.assertEqual([s["age"], s["age_label"]], want, given)
+        rec = self.js("Store.submitEncounter({name: 'A Pour', age: 'NAS'}).rec")
+        self.assertEqual(rec["age"], "NAS", "the file keeps one field, as store.py writes it")
+        self.assertNotIn("age_label", rec)
+
+    def test_a_bottle_added_here_may_have_no_age_to_state(self):
+        self.ctx.eval("Store.setMode('local')")
+        gin = self.js("Store.addLocalSpirit({name: 'A Gin', type: 'Gin', age: 'N/A'})")
+        self.assertEqual([gin["age"], gin["age_label"]], [None, "N/A"])
+        old = self.js("Store.addLocalSpirit({name: 'An Old One', age: '18'})")
+        self.assertEqual([old["age"], old["age_label"]], [18, None])
+        back = self.js(f"Store.updateLocalSpirit('{gin['code']}', {{age: 'NAS'}})")
+        self.assertEqual([back["age"], back["age_label"]], [None, "NAS"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

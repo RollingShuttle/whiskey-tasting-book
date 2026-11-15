@@ -184,6 +184,47 @@ const Store = (() => {
   const isLocal = () => meta().mode === "local";
   const setMode = (m) => setMeta({ mode: m });
 
+  // -- the Type list, and an age that is not a number ------------------------
+  /* What the Add form offers for Type. The PC publishes the list from the workbook's own Type
+     drop-down (snapshot.types); DEFAULT_TYPES is that list as it stood when this was written, for
+     a phone with no PC behind it and for a snapshot published before the PC sent one. Whatever
+     this phone already holds under another type — a bottle or a bar pour entered under "Other" —
+     is offered too, so a type typed once never has to be typed, or misspelt, again. */
+  const DEFAULT_TYPES = ["Bourbon", "Rye", "Wheated", "BourRye", "Wheat", "Blended", "Finished",
+    "Single Malt", "Single Grain", "Tequila", "Mezcal", "Rum", "Gin", "Vodka", "Cognac",
+    "Armagnac", "Liqueur", "Baijiu", "Bitter", "Moonshine"];
+  function types() {
+    const snap = snapshot();
+    const listed = snap && Array.isArray(snap.types) && snap.types.length ? snap.types : DEFAULT_TYPES;
+    const seen = new Set();
+    const fresh = (t) => {
+      const s = String(t ?? "").trim();
+      if (!s || seen.has(s.toLowerCase())) return null;
+      seen.add(s.toLowerCase());
+      return s;
+    };
+    const out = listed.map(fresh).filter(Boolean);
+    const own = [...spirits(), ...encounters()].map((s) => fresh(s && s.type)).filter(Boolean);
+    return out.concat(own.sort((a, b) => a.localeCompare(b)));
+  }
+  /** The spelling already in use for a type: "red wine" typed a second time joins "Red Wine"
+      instead of starting a second group beside it. Null for nothing typed. */
+  function canonicalType(t) {
+    const s = String(t ?? "").trim();
+    if (!s) return null;
+    return types().find((x) => x.toLowerCase() === s.toLowerCase()) || s;
+  }
+
+  /** An age as the form or an encounter file hands it over — "12", 12, "NAS", "N/A", nothing —
+      split the way the PC's snapshot splits it: years as a number, anything else as the label
+      shown in their place. One field cannot be both: a list that sorts on it would sort "NAS" in
+      among the years, and the row would read "NAS yr". */
+  function ageParts(v) {
+    const t = String(v ?? "").trim();
+    if (!t) return { age: null, age_label: null };
+    return Number.isFinite(Number(t)) ? { age: Number(t), age_label: null } : { age: null, age_label: t };
+  }
+
   // -- bottles added on this phone ------------------------------------------
   const GONE = new Set(["finished", "removed"]);       // collection.py's vocabulary, for one field
   const LOCAL_CODE = /^L-(\d+)$/;
@@ -201,7 +242,7 @@ const Store = (() => {
       distillery,
       display_name: [distillery, name].filter(Boolean).join(" ") || name || distillery || code,
       type: text(f.type), region: text(f.region),
-      age: num(f.age), age_label: num(f.age) === null ? text(f.age) : null,
+      ...ageParts(f.age),
       proof: num(f.proof), release_year: num(f.release_year),
       paid: num(f.paid), size_ml: num(f.size_ml),
       status, owned: !GONE.has(status.toLowerCase()),
@@ -425,7 +466,7 @@ const Store = (() => {
     distillery: e.distillery,
     type: e.type,
     region: e.region,
-    age: e.age,
+    ...ageParts(e.age),       // the file holds one field; the lists want years and label apart
     proof: e.proof,
     venue: e.venue,
     _sheet: "Encounter",
@@ -516,6 +557,7 @@ const Store = (() => {
   return {
     snapshot, setSnapshot, spirits, rubric, setRubric, careers, setCareers,
     mode, isLocal, setMode, addLocalSpirit, updateLocalSpirit, removeLocalSpirit,
+    types, canonicalType,
     exportAll, importAll,
     queue, enqueue, drop, noteFailure, queueCount,
     cards, cardsFor, addCard, markSent, reviseCard, deleteCard, buried,

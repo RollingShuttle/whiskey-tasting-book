@@ -667,6 +667,16 @@ reads as a website someone bookmarked, and it breaks in specific ways in the bar
   on the phone with `L-n` codes, which the PC never issues and which are never reissued; a backup
   is exported and imported as one JSON file. A snapshot from the PC never removes an `L-` bottle.
   A phone that has ever synced is `onedrive` without being asked.
+- **Type is chosen; age may be a word.** The Add form's Type is a drop-down, not a text box. Its
+  choices are the workbook's own Type list: `collection.py` reads the three sheets' data
+  validations out of the zip, merges them in sheet order, and publishes them as `types` in
+  `snapshot/collection.json`. The phone carries the same list built in, for a book with no PC and
+  for a snapshot older than the field, and adds whatever types it already holds. **Other…** opens
+  a text box for anything else, matched without regard to case against what is on the list so one
+  type is never two. Age takes years on the number pad, or **NAS** / **N/A** as buttons — the
+  pad cannot type them. An encounter file keeps the word in its one `age` field, as `store.py`
+  writes it; every reader splits it into `age` (a number or null) and `age_label`, the way the
+  collection's rows already are, so a word never sorts among the years.
 - **No page zoom.** This is an app, not a page: nothing on it needs the whole screen magnified,
   and a double-tap that zoomed was the one gesture that gave the web away. The native shell's
   WKWebView and the home-screen install honour the two scale flags; a Safari tab has ignored them

@@ -166,5 +166,79 @@ class TestAgainstRealWorkbook(unittest.TestCase):
         self.assertEqual([f"[{i.sheet}] {i.message}" for i in self.coll.errors], [])
 
 
+class TestDropdowns(unittest.TestCase):
+    """The workbook's own Type drop-down is what the phone's Add form offers, so it is read out
+    of the file. Synthetic: two sheets whose lists differ by a word, the way the real ones do."""
+
+    HEAD = ["Bottle Code", "Distillery", "Name", "Type", "Region", "Status"]     # columns B..G
+
+    def build(self, lists):
+        from openpyxl import Workbook
+        from openpyxl.worksheet.datavalidation import DataValidation
+        from openpyxl.worksheet.table import Table
+        tmp = tempfile.TemporaryDirectory(prefix="dropdown-test-")
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "Whiskey Collection.xlsx"
+        wb = Workbook()
+        for n, (title, formula) in enumerate(lists.items()):
+            ws = wb.active if n == 0 else wb.create_sheet()
+            ws.title = title
+            for i, h in enumerate(self.HEAD, start=2):
+                ws.cell(row=8, column=i, value=h)
+            for i, v in enumerate([f"{title[0]}-1", "A Distillery", "One", "Bourbon"], start=2):
+                ws.cell(row=9, column=i, value=v)
+            ws.add_table(Table(displayName=f"Table{n}", ref="B8:G20"))
+            if formula:
+                dv = DataValidation(type="list", formula1=formula)
+                ws.add_data_validation(dv)
+                dv.add("E9:E20")                          # Type
+            kept_in_cells = DataValidation(type="list", formula1="$Z$1:$Z$5")
+            ws.add_data_validation(kept_in_cells)
+            kept_in_cells.add("F9:F20")                   # Region
+        wb.save(path)
+        wb.close()
+        return path
+
+    def test_a_list_is_read_under_its_column_name(self):
+        path = self.build({"Bottle": '"Bourbon,Rye, Gin ,Rum"'})
+        lists = C._read_dropdowns(path, C._read_table_defs(path))
+        self.assertEqual(lists["Bottle"]["Type"], ["Bourbon", "Rye", "Gin", "Rum"])
+        self.assertNotIn("Region", lists["Bottle"],
+                         "a list kept in cells is not followed: those cells are not ours to read")
+
+    def test_the_sheets_merge_in_reading_order(self):
+        """Vodka is on the second sheet's list only, after Gin. It belongs after Gin in the
+        merged list, not at the end of it."""
+        path = self.build({"Bottle": '"Bourbon,Rye,Gin,Rum"',
+                           "Miniature": '"bourbon,Rye,Gin,Vodka,Rum,Sake"'})
+        coll = C.Collection(path).load()
+        self.assertEqual(coll.options("Type"), ["Bourbon", "Rye", "Gin", "Vodka", "Rum", "Sake"])
+        self.assertEqual(coll.snapshot()["types"], coll.options("Type"),
+                         "the snapshot is how the list reaches the phone")
+        json.dumps(coll.snapshot()["types"])
+
+    def test_a_workbook_with_no_list_offers_none(self):
+        path = self.build({"Bottle": None})
+        coll = C.Collection(path).load()
+        self.assertEqual(coll.options("Type"), [])
+        self.assertEqual(coll.snapshot()["types"], [])
+        self.assertFalse([i for i in coll.issues if "drop-down" in i.message])
+
+    def test_reading_the_lists_leaves_the_file_alone(self):
+        path = self.build({"Bottle": '"Bourbon,Rye"'})
+        was = hashlib.sha256(path.read_bytes()).hexdigest()
+        C.Collection(path).load()
+        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), was)
+
+    def test_a_list_that_cannot_be_read_does_not_stop_the_collection(self):
+        from unittest import mock
+        path = self.build({"Bottle": '"Bourbon,Rye"'})
+        with mock.patch.object(C, "_read_dropdowns", side_effect=ValueError("not as expected")):
+            coll = C.Collection(path).load()
+        self.assertEqual(len(coll.rows["Bottle"]), 1, "the bottles are what the load is for")
+        self.assertEqual(coll.options("Type"), [])
+        self.assertTrue([i for i in coll.issues if i.level == "warn" and "drop-down" in i.message])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

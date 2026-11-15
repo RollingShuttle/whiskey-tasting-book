@@ -59,7 +59,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 594 tests, all passing
+python -m unittest discover -s tests    # 611 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -178,6 +178,19 @@ are never uploaded. `Store.mode()` infers `onedrive` for a phone with a `lastSyn
 the owner's phone must never be asked. On the PC, bar pours ride in `/api/spirits` under
 `encounters` (never among `spirits`): the Score picker lists them under a **Bar** chip and finds
 them in a search, and a click opens their sittings in the table.
+
+**The Add form's Type is a drop-down and its Age takes a word** (15 Nov 2026). The choices are
+the workbook's own Type list: `collection._read_dropdowns` reads the sheets' data validations
+from the zip (read-only, like `_read_table_defs`), `Collection.options("Type")` merges the three
+sheets in order, and `snapshot()` publishes it as `types`. `Store.types()` is that list — or
+`DEFAULT_TYPES`, the same list built in, for a phone-only book and for a snapshot older than the
+field — plus any type the phone already holds, which is how a type entered under **Other…** is
+offered from then on. `Store.canonicalType` folds a second spelling into the first. **If the
+workbook's drop-down changes, press Refresh on the PC**; `DEFAULT_TYPES` in `docs/store.js` is
+only the fallback, but keep it in step when you notice. Age is years on the number pad or the
+**NAS** / **N/A** buttons. An encounter file keeps whichever it was in its one `age` field;
+`Store.asSpirit` on the phone and `_age_parts` in `app.py` split it into `age` + `age_label`
+wherever a pour becomes a row, because every list prints `age ? age + " yr" : age_label`.
 
 Guarded by `tests/test_phone.py`, which checks the §9.2 rules that only fail on a phone: safe-area
 insets on every edge, 100dvh not 100vh, 16 px inputs, a 44 px score strip with

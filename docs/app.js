@@ -667,6 +667,9 @@ const bottleFields = (f) => ({
   age: f.Age, proof: f.Proof, size_ml: f["Size (ml)"], paid: f.Paid,
 });
 
+const OTHER_TYPE = "__other__";                  // the select's last option; never a type itself
+const AGE_WORDS = [["NAS", "no age statement"], ["N/A", "not applicable"]];
+
 function renderAdd() {
   const local = Store.isLocal();
   // Editing reuses the form: only a bottle added on this phone can be edited from it.
@@ -687,6 +690,60 @@ function renderAdd() {
     return el("label", { class: "field" }, el("span", {}, name), i);
   };
   const named = () => (fields.Name || "").trim() || (fields.Distillery || "").trim();
+  const seeded = (name) => (seed[name] === null || seed[name] === undefined ? "" : String(seed[name]).trim());
+
+  /* Type is chosen, not typed. The list is the workbook's own Type drop-down (Store.types), so a
+     bottle cannot reach the PC as "Burbon". "Other…" opens a box for what the list does not hold
+     — something strange met at a bar, a friend's gin or champagne — and a type entered there is
+     on the list from then on. */
+  const typeField = () => {
+    const start = seeded("Type");
+    if (editing) fields.Type = start;
+    const known = Store.types();
+    const other = el("input", { type: "text", autocapitalize: "words", hidden: true,
+                                placeholder: "Name the type", "aria-label": "Another type" });
+    other.addEventListener("input", (e) => { fields.Type = e.target.value; });
+    const sel = el("select", { "aria-label": "Type" },
+      el("option", { value: "" }, "Choose…"),
+      ...known.map((t) => el("option", { value: t }, t)),
+      el("option", { value: OTHER_TYPE }, "Other…"));
+    sel.value = known.find((t) => t.toLowerCase() === start.toLowerCase()) || "";
+    sel.addEventListener("change", () => {
+      const typed = sel.value === OTHER_TYPE;
+      other.hidden = !typed;
+      fields.Type = typed ? other.value : sel.value;
+      if (typed) other.focus();
+    });
+    return el("div", { class: "field" }, el("span", {}, "Type"), sel, other);
+  };
+
+  /* Age is a number of years, or one of the two things said instead of one: NAS, no age
+     statement, and N/A, for a gin or a wine where the question does not arise. The keypad is
+     digits only, so neither could be typed; they are buttons, and typing a number lets go of
+     them. */
+  const ageField = () => {
+    const start = seeded("Age");
+    const word = AGE_WORDS.find(([w]) => w.toLowerCase() === start.toLowerCase());
+    if (editing) fields.Age = word ? word[0] : start;
+    const box = el("input", { type: "text", inputmode: "numeric", placeholder: "Years",
+                              "aria-label": "Age in years", value: word ? null : start || null });
+    const paint = () => chips.forEach((c, i) => {
+      const on = fields.Age === AGE_WORDS[i][0];
+      c.classList.toggle("active", on);
+      c.setAttribute("aria-pressed", String(on));
+    });
+    const chips = AGE_WORDS.map(([w, meaning]) => el("button", {
+      type: "button", class: "chip", title: meaning, "aria-label": `${w}: ${meaning}`,
+      onclick: () => {
+        fields.Age = fields.Age === w ? "" : w;          // a second tap takes it back
+        box.value = "";
+        paint();
+      } }, w));
+    box.addEventListener("input", (e) => { fields.Age = e.target.value; paint(); });
+    paint();
+    return el("div", { class: "field" }, el("span", {}, "Age"),
+      el("div", { class: "age-row" }, box, ...chips));
+  };
 
   const modes = editing ? null : el("div", { class: "chips" },
     ...[["pour", "Bar pour"], ["bottle", "Bottle I bought"]].map(([id, label]) =>
@@ -709,15 +766,19 @@ function renderAdd() {
     el("div", { class: "card" },
       input("Distillery", { autocapitalize: "words" }),
       input("Name", { autocapitalize: "words" }),
-      input("Type", { autocapitalize: "words" }),
+      typeField(),
       input("Region", { autocapitalize: "words" }),
-      input("Age", { inputmode: "numeric" }),
+      ageField(),
       input("Proof", { inputmode: "decimal" }),
       pour ? input("Venue", { autocapitalize: "words" }) : input("Size (ml)", { inputmode: "decimal" }),
       pour ? null : input("Paid", { inputmode: "decimal" }),
       el("div", { class: "actions" },
         el("button", { class: "btn wide", type: "button", onclick: () => {
           if (!named()) return;
+          // "red wine" typed a second time joins "Red Wine" instead of starting a group beside
+          // it. Not while editing: there the bottle's own spelling is on the list, and a
+          // correction to it would be folded straight back into the mistake.
+          if (!editing && fields.Type !== undefined) fields.Type = Store.canonicalType(fields.Type) || "";
           if (editing) {
             const code = editing.code;
             if (!Store.updateLocalSpirit(code, bottleFields(fields))) {

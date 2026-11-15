@@ -139,6 +139,66 @@ def _read_table_defs(xlsx_path: Path) -> dict:
 
 
 # --------------------------------------------------------------------------- parsing helpers
+def _read_dropdowns(xlsx_path: Path, tables: dict) -> dict:
+    """The drop-down lists the workbook's own cells offer: {sheet: {column name: [choices]}}.
+
+    These are Excel data validations of type "list" that spell their choices out in the rule
+    itself ("Bourbon,Rye,…"), which is how this workbook writes them. Read from the zip for the
+    reason _read_table_defs is: read_only mode does not expose them. A rule that points at a
+    range of cells instead is left out — following it would mean reading cells this loader has no
+    business in — and whoever asks simply gets no list for that column.
+    """
+    import xml.etree.ElementTree as ET
+    rel_id = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+
+    def col_number(letters):
+        n = 0
+        for ch in letters:
+            n = n * 26 + (ord(ch) - 64)
+        return n
+
+    def spans(sqref):
+        """Each range of a sqref as (first col, first row, last col, last row)."""
+        for part in (sqref or "").replace("$", "").split():
+            m = re.fullmatch(r"([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?", part)
+            if m:
+                a, top = col_number(m.group(1)), int(m.group(2))
+                yield (a, top, col_number(m.group(3)) if m.group(3) else a,
+                       int(m.group(4)) if m.group(4) else top)
+
+    out: dict[str, dict] = {}
+    with zipfile.ZipFile(xlsx_path) as z:
+        names = set(z.namelist())
+        wb = ET.fromstring(z.read("xl/workbook.xml"))
+        rels = ET.fromstring(z.read("xl/_rels/workbook.xml.rels"))
+        rid_to_target = {r.get("Id"): r.get("Target") for r in rels}
+        for sheet in wb.find(f"{NS}sheets"):
+            tdef = tables.get(sheet.get("name"))
+            target = (rid_to_target.get(sheet.get(rel_id)) or "").lstrip("/")
+            if target and not target.startswith("xl/"):
+                target = "xl/" + target
+            if tdef is None or target not in names:
+                continue
+            c1, r1, c2, r2 = tdef.bounds
+            found = {}
+            for dv in ET.fromstring(z.read(target)).iter(f"{NS}dataValidation"):
+                formula = (dv.findtext(f"{NS}formula1") or "").strip()
+                if dv.get("type") != "list" or len(formula) < 2 \
+                        or not (formula.startswith('"') and formula.endswith('"')):
+                    continue                                   # not a list, or one kept in cells
+                choices = [c.strip() for c in formula[1:-1].replace('""', '"').split(",")]
+                choices = [c for c in choices if c]
+                for a, top, b, bottom in spans(dv.get("sqref")):
+                    if bottom <= r1 or top > r2:
+                        continue                               # not over the table's rows
+                    for col in range(max(a, c1), min(b, c2) + 1):
+                        if col - c1 < len(tdef.columns):
+                            found.setdefault(tdef.columns[col - c1], choices)
+            if found:
+                out[tdef.sheet] = found
+    return out
+
+
 def _num(v):
     """Numbers that may arrive as 'NAS', 'N/A', '#VALUE!' or blank -> None."""
     if v is None or isinstance(v, bool):
@@ -173,6 +233,7 @@ class Collection:
         self.path = Path(path)
         self.tables: dict[str, TableDef] = {}
         self.rows: dict[str, list] = {}
+        self.dropdowns: dict[str, dict] = {}      # {sheet: {column: [choices]}}, see _read_dropdowns
         self.issues: list[Issue] = []
         self._fingerprint = None
         self._formula_cache = {}
@@ -205,6 +266,14 @@ class Collection:
             raise FileNotFoundError(f"Master workbook not found: {self.path}")
         self._fingerprint = self._fp(with_hash)
         self.tables = _read_table_defs(self.path)
+        try:
+            self.dropdowns = _read_dropdowns(self.path, self.tables)
+        except Exception as e:      # noqa: BLE001 — a convenience for the phone's Add form
+            # The collection is what this load is for. A drop-down that cannot be read costs the
+            # phone its published list of types, and it has a built-in one to fall back on.
+            self.dropdowns = {}
+            self.issues.append(Issue("warn", "workbook",
+                                     f"could not read the drop-down lists: {e}"))
 
         wb = openpyxl.load_workbook(self.path, read_only=True, data_only=True)
         try:
@@ -365,10 +434,33 @@ class Collection:
     def errors(self):
         return [i for i in self.issues if i.level == "error"]
 
+    def options(self, column):
+        """One list of choices for a column, merged across the sheets in sheet order.
+
+        The three sheets keep their own drop-downs and they differ by a word or two. A choice a
+        later sheet adds goes in after its own left-hand neighbour, so the merged list reads the
+        way the workbook's lists do instead of with the newcomers piled at the end. Matching
+        ignores case; the first spelling met is the one kept.
+        """
+        merged = []
+        for sheet in self.tables:
+            at = -1                                # where this list's previous choice sits
+            for choice in self.dropdowns.get(sheet, {}).get(column, []):
+                found = next((i for i, c in enumerate(merged) if c.lower() == choice.lower()), None)
+                if found is None:
+                    at += 1
+                    merged.insert(at, choice)
+                else:
+                    at = found
+        return merged
+
     # -- output --------------------------------------------------------------
     def snapshot(self):
         return {
             "generated_from": str(self.path),
+            # The Type drop-down, for the phone's Add form: it offers these rather than a blank
+            # box, so a bottle cannot arrive here as "Burbon" (SPEC.md §9.2).
+            "types": self.options("Type"),
             "tables": {s: {"table": t.name, "ref": t.ref, "columns": t.columns,
                            "calculated": list(t.calc_columns)} for s, t in self.tables.items()},
             "counts": {s: len(r) for s, r in self.rows.items()},

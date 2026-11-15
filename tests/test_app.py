@@ -1146,6 +1146,24 @@ class TestBarPours(AppCase):
                             entered_from="phone", venue=fields.get("venue"))
         return enc
 
+    def test_an_age_that_is_a_word_stays_out_of_the_number_column(self):
+        """The phone offers NAS and N/A where a number of years would go, and the encounter file
+        holds whichever it was in its one field. Left there, the word sorts in among the years
+        and the row reads "NAS yr" — so the rows carry years and label apart, as the
+        collection's own do."""
+        self.bar_pour(name="No Statement", age="NAS")
+        self.bar_pour(name="A Gin", age="N/A")
+        self.bar_pour(name="Twelve", age=12)
+        self.bar_pour(name="Typed Twelve", age="12")
+        self.bar_pour(name="Unsaid")
+        want = {"No Statement": (None, "NAS"), "A Gin": (None, "N/A"),
+                "Twelve": (12, None), "Typed Twelve": (12, None), "Unsaid": (None, None)}
+        pours = self.c.get("/api/spirits").get_json()["encounters"]
+        self.assertEqual({p["name"]: (p["age"], p["age_label"]) for p in pours}, want)
+        rows = [r for r in self.c.get("/api/table/collection").get_json()["rows"]
+                if r["source"] == "Encounter"]
+        self.assertEqual({r["name"]: (r["age"], r["age_label"]) for r in rows}, want)
+
     def test_the_score_picker_can_find_a_bar_pour(self):
         """It was on the table and in the analysis and could not be found from the first screen:
         the picker listed only what is in the workbook. Listed apart from the spirits, with the
