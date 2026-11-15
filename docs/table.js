@@ -1,13 +1,16 @@
-/* Whiskey Tasting Book — the table on the phone (SPEC.md §4.3, §9.2).
+/* Whiskey Tasting Book — the collection as a table, on the phone (SPEC.md §4.3, §9.2).
 
-   The desktop table sorts on every field and has a column chooser to keep that manageable. A phone
-   is 375 points across, so the sorting is what comes over and the chooser does not: the sort is
-   picked from a scrolling row of chips rather than by hunting for a column header off the right
-   edge of the screen.
+   The table is the Collection screen's second view, not a tab of its own: the same bottles, the
+   same search box and the same filters as the list beside it, drawn as rows of figures to rank
+   by. What is in it is decided by the collection (app.js, `shownSpirits`); how it is ordered and
+   what its score is taken over are decided here.
 
-   The table then always shows the field it is sorted by, even when that is not one of the columns
-   it normally carries. Sorting by something you cannot see is the failure this avoids — a list
-   silently reordered by a number that is nowhere on screen.
+   The desktop table sorts on every field and has a column chooser to keep that manageable. A
+   phone is 375 points across, so the sorting is what comes over and the chooser does not: the
+   sort is picked from the phone's own picker rather than by hunting for a column header off the
+   right edge of the screen, and the table then always shows the field it is sorted by, even when
+   that is not one of the columns it normally carries. Sorting by something you cannot see is the
+   failure this avoids — a list silently reordered by a number that is nowhere on screen.
 
    Two of the columns are worked out here rather than stored: value per ounce and score per dollar,
    the two the spreadsheet could never produce. */
@@ -18,9 +21,7 @@ const TableView = (() => {
 
   let sort = "score";
   let desc = true;
-  let query = "";
-  let filter = "all";
-  let lens = null;          // {id, keys, custom} — set on first render, once the rubric is loaded
+  let lens = null;          // {id, keys, custom} — set on first use, once the rubric is loaded
 
   const num = (v) => {
     if (v === null || v === undefined || v === "") return null;
@@ -81,6 +82,12 @@ const TableView = (() => {
 
   const field = (key) => FIELDS.find((f) => f.key === key) || FIELDS[0];
 
+  /** The ranking starts on flavour alone: which is the better whiskey, not the better buy. */
+  function theLens() {
+    if (!lens) lens = { id: "flavour", keys: flavourKeys(), custom: false };
+    return lens;
+  }
+
   /** Medals sort by standing, not alphabetically — Bronze before Diamond would be nonsense. */
   function medalRank(name) {
     if (!name || !app.rubric) return null;
@@ -89,8 +96,8 @@ const TableView = (() => {
     return i === -1 ? null : bands.length - i;
   }
 
-  function rows() {
-    return knownSpirits().map((s) => {
+  function rows(spirits) {
+    return spirits.map((s) => {
       const career = careerFor(s.code);
       const paid = num(s.paid);
       const oz = num(s.sizeoz) !== null ? num(s.sizeoz)
@@ -145,21 +152,6 @@ const TableView = (() => {
     return a.code.localeCompare(b.code, undefined, { numeric: true });
   }
 
-  function shown() {
-    let list = rows();
-    if (filter === "scored") list = list.filter((r) => r.score !== null);
-    else if (filter === "instock") list = list.filter((r) => r.owned);
-    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    if (terms.length) {
-      list = list.filter((r) => {
-        const hay = (r.code + " " + r.name + " " + (r.spirit.distillery || "") + " "
-                     + (r.spirit.type || "") + " " + (r.spirit.region || "")).toLowerCase();
-        return terms.every((t) => hay.includes(t));
-      });
-    }
-    return list.sort(compare);
-  }
-
   /** The columns always carried, plus whatever is being sorted by. */
   function columns() {
     const core = FIELDS.filter((f) => f.core);
@@ -167,35 +159,43 @@ const TableView = (() => {
     return core.includes(chosen) ? core : core.concat([chosen]);
   }
 
+  /** A field picked a second time turns round; a new one starts the way it is usually asked.
+      The collection repaints (app.js, `paintRows`): the bar above the table names the sort too. */
   function pick(key) {
     if (sort === key) desc = !desc;
     else { sort = key; desc = !!(field(key).num || field(key).high); }
-    repaint();
+    paintRows();
   }
 
-  function repaint() {
-    render(document.getElementById("screen-table"));
-  }
+  /** What the table adds to the collection's bar: what the score is taken over, and what the
+      rows are ordered by. Each is one chip that opens the phone's own picker. They were two
+      scrolling rows of chips — nineteen for the sort alone — standing between the filters and
+      the first row of figures. The picker chooses the field; its direction is turned by tapping
+      the column's header, and the sorted column is always on screen to be tapped.
 
-  /** Which categories the ranking is taken over: flavour alone, flavour plus one of the others,
-      everything, or any set you pick. Aesthetics is the bottle and value is the price, so leaving
-      them out asks a different question — which is the better whiskey, not the better buy. */
-  function lensBar() {
+      The lens is which categories the ranking is taken over: flavour alone, flavour plus one of
+      the others, everything, or any set you pick. Aesthetics is the bottle and value is the
+      price, so leaving them out asks a different question. */
+  function controls() {
+    const now = theLens();
     const presets = lensPresets();
-    const active = presets.find((p) => sameKeys(p.keys, lens.keys));
-    const bar = el("div", { class: "chips lensbar" },
-      el("span", { class: "sortlabel" }, "Rank by"),
-      ...presets.map((p) => el("button", {
-        type: "button", class: "chip" + (p === active ? " active" : ""),
-        onclick: () => { lens = { id: p.id, keys: p.keys, custom: false }; repaint(); },
-      }, p.label)),
-      el("button", {
-        type: "button", class: "chip" + (lens.custom ? " active" : ""),
-        onclick: () => { lens = { ...lens, custom: !lens.custom }; repaint(); },
-      }, lens.custom ? "Custom ▴" : "Custom ▾"));
-    return lens.custom ? el("div", {}, bar, lensPicker()) : bar;
+    const active = now.custom ? null : presets.find((p) => sameKeys(p.keys, now.keys));
+    return [
+      pickerChip(`${active ? active.label : "Custom"} ▾`,
+        presets.map((p) => [p.id, p.label]).concat([["custom", "Custom…"]]),
+        active ? active.id : "custom",
+        (id) => {
+          const p = presets.find((x) => x.id === id);
+          lens = p ? { id: p.id, keys: p.keys, custom: false } : { ...lens, id: "custom", custom: true };
+          paintRows();
+        }, "Rank by"),
+      pickerChip(`${field(sort).label} ${desc ? "▾" : "▴"}`,
+        FIELDS.map((f) => [f.key, f.label]), sort,
+        (key) => { if (key !== sort) pick(key); }, "Sort by"),
+    ];
   }
 
+  /** Any set of categories, ticked one by one: under the bar while Custom is the choice. */
   function lensPicker() {
     return el("div", { class: "lenspicker" },
       ...(app.rubric.categories).map((c) => el("label", { class: "lenschoice" },
@@ -207,83 +207,50 @@ const TableView = (() => {
               : lens.keys.filter((k) => k !== c.key);
             // Never leave nothing selected: every row would go blank with no way back.
             lens = { ...lens, id: "custom", keys: keys.length ? keys : [c.key] };
-            repaint();
+            paintRows();
           },
         }),
         `${c.label || c.key} ${c.max}`)));
   }
 
-  function render(host) {
+  /** Draw `spirits` — already searched and filtered by the collection — into `host`. */
+  function render(host, spirits) {
     if (!host) return;
-    if (!lens) lens = { id: "flavour", keys: flavourKeys(), custom: false };
+    theLens();
+    const list = rows(spirits).sort(compare);
+    const cols = columns();
 
-    const search = el("input", {
-      class: "search", type: "text", value: query, enterkeyhint: "search",
-      placeholder: "Search name, distillery or code", "aria-label": "Search",
-      autocapitalize: "none", autocorrect: "off", spellcheck: "false",
-      oninput: (e) => { query = e.target.value; paint(); },
-    });
-
-    const filters = el("div", { class: "chips" },
-      ...[["all", "All"], ["instock", "In stock"], ["scored", "Scored"]].map(([id, label]) =>
-        el("button", {
-          type: "button", class: "chip" + (filter === id ? " active" : ""),
-          onclick: () => { filter = id; repaint(); },
-        }, label)));
-
-    // Every field the desktop sorts on, reachable without scrolling the table sideways to find
-    // a header that may not even be shown.
-    const sorts = el("div", { class: "chips sortbar" },
-      el("span", { class: "sortlabel" }, "Sort"),
-      ...FIELDS.map((f) => el("button", {
-        type: "button", class: "chip" + (sort === f.key ? " active" : ""),
+    const head = el("tr", {},
+      ...cols.map((f) => el("th", {
+        class: (f.num ? "t-num" : "") + (sort === f.key ? " sorted" : ""),
         onclick: () => pick(f.key),
-      }, f.label, sort === f.key ? (desc ? " ▾" : " ▴") : "")));
+      }, f.label, sort === f.key ? el("span", { class: "t-caret" }, desc ? " ▾" : " ▴") : null)));
 
-    const table = el("table", { class: "ptable" },
-      el("thead", { id: "t-head" }), el("tbody", { id: "t-body" }));
-    fill(host, search, filters, lensBar(), sorts,
-      el("div", { class: "ptable-wrap" }, table),
-      el("div", { class: "chart-basis", id: "t-count" }, ""));
-    paint();
-
-    function paint() {
-      const list = shown();
-      const cols = columns();
-      const thead = document.getElementById("t-head");
-      const tbody = document.getElementById("t-body");
-      const count = document.getElementById("t-count");
-      if (!thead || !tbody) return;
-
-      thead.replaceChildren(el("tr", {},
-        ...cols.map((f) => el("th", {
-          class: (f.num ? "t-num" : "") + (sort === f.key ? " sorted" : ""),
-          onclick: () => pick(f.key),
-        }, f.label, sort === f.key ? el("span", { class: "t-caret" }, desc ? " ▾" : " ▴") : null))));
-
-      tbody.replaceChildren();
-      if (!list.length) {
-        tbody.append(el("tr", {}, el("td", { colspan: String(cols.length), class: "muted" },
-          "Nothing matches.")));
-      }
-      for (const r of list) {
-        const tr = el("tr", { class: r.owned ? "" : "gone", onclick: () => openDetail(r.code) });
-        for (const f of cols) {
-          tr.append(el("td", {
-            class: (f.num ? "t-num" : "") + (f.key === "code" ? " t-code" : "")
-                   + (f.key === "name" ? " t-name" : ""),
-          }, String(f.show(r))));
-        }
-        tbody.append(tr);
-      }
-      if (count) {
-        count.textContent = `${list.length} shown, sorted by ${field(sort).label.toLowerCase()}`
-          + (desc ? ", highest first" : ", lowest first")
-          + ` · score out of ${lensMax(lens.keys)}`
-          + (lensIsEverything(lens.keys) ? "" : " — medals need the whole card");
-      }
+    const body = el("tbody", {});
+    if (!list.length) {
+      body.append(el("tr", {}, el("td", { colspan: String(cols.length), class: "muted" },
+        "Nothing matches.")));
     }
+    for (const r of list) {
+      const tr = el("tr", { class: r.owned ? "" : "gone", onclick: () => openDetail(r.code) });
+      for (const f of cols) {
+        tr.append(el("td", {
+          class: (f.num ? "t-num" : "") + (f.key === "code" ? " t-code" : "")
+                 + (f.key === "name" ? " t-name" : ""),
+        }, String(f.show(r))));
+      }
+      body.append(tr);
+    }
+
+    fill(host,
+      lens.custom ? lensPicker() : null,
+      el("div", { class: "ptable-wrap" }, el("table", { class: "ptable" }, el("thead", {}, head), body)),
+      el("div", { class: "chart-basis" },
+        `${list.length} shown, sorted by ${field(sort).label.toLowerCase()}`
+        + (desc ? ", highest first" : ", lowest first")
+        + ` · score out of ${lensMax(lens.keys)}`
+        + (lensIsEverything(lens.keys) ? "" : " — medals need the whole card")));
   }
 
-  return { render };
+  return { render, controls };
 })();

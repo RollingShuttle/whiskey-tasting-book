@@ -59,7 +59,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 640 tests, all passing
+python -m unittest discover -s tests    # 654 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -212,9 +212,19 @@ scorecard folds each category's note behind `+ note` (`.note-add`, whose `::befo
 notes and venue it holds — it used to keep them and show empty boxes — and `fitNotes()` sizes
 them *after* `show()`, because a hidden box measures as nothing. Collection chips are ordered by
 use and include `unscored`. `renderSync` ends with `modeCard()` rather than starting with it.
-`CompareView.begin(code)` is the way in from a bottle's page. Merging Table into Collection as a
-List | Table switch has been mocked up and is waiting on the owner's answer — do not start it
-unasked.
+`CompareView.begin(code)` is the way in from a bottle's page.
+
+**Collection and Table are one tab** (approved from a mockup, 15 Nov 2026): five tabs, and the
+Collection screen has a `List | Table` switch (`app.view`, remembered in `meta.view`). There is
+one search box and one set of chips; `shownSpirits(record)` in `app.js` is the only place the
+row set is decided, and `TableView.render(host, spirits)` draws what it is handed —
+`docs/table.js` has no search or filter of its own any more. `record` is the table's one
+difference: a finished bottle that earned a score keeps its greyed row in the ranking, where the
+list leaves it to the Finished chip. `paintRows()` (the name predates the table) repaints the
+bar and the body and leaves the search box alone, so typing keeps its cursor. The table's sort
+and its ranking lens are each one `pickerChip` — a chip with an invisible 16 px `<select>` over
+it — in place of two scrolling rows of chips; a header tap still sorts and turns the sort
+round. The list has its own short set of orders (`LIST_SORTS`), opening in shelf order.
 
 Guarded by `tests/test_phone.py`, which checks the §9.2 rules that only fail on a phone: safe-area
 insets on every edge, 100dvh not 100vh, 16 px inputs, a 44 px score strip with

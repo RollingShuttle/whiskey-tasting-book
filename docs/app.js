@@ -26,6 +26,17 @@ const el = (tag, props = {}, ...kids) => {
 /* replaceChildren turns a null into the text "null" — el() skips them, this must too. */
 const fill = (host, ...kids) => host.replaceChildren(...kids.flat().filter(Boolean));
 
+/** A chip that opens the phone's own picker. What is seen is the chip and its `label`; what is
+    tapped is a select laid invisibly over it, kept at 16 px so Safari does not zoom to it.
+    `options` are [value, text] pairs. One of these does the work of a row of chips. */
+function pickerChip(label, options, value, onPick, name) {
+  const select = el("select", { "aria-label": name },
+    ...options.map(([v, text]) => el("option", { value: v }, text)));
+  select.value = value;
+  select.addEventListener("change", () => onPick(select.value));
+  return el("label", { class: "chip pick" }, el("span", {}, label), select);
+}
+
 const TYPE_ACCENT = {
   Bourbon: "#C8952F", Rye: "#B4703A", "Single Malt": "#D9B26A", Blended: "#8E7A52",
   BourRye: "#BE8434", Rum: "#8A5A34", Tequila: "#7E8A5A", Gin: "#6E8A86",
@@ -44,6 +55,8 @@ const app = {
   tab: "collection",
   filter: "all",
   query: "",
+  view: "list",           // the collection as a list or as a table; remembered in meta
+  listSort: "",           // the list's order: "" is the shelf's, as the collection arrives
   draft: null,
   editCode: null,         // the phone-added bottle the Add form is editing, if any
   detailCode: null,       // the spirit the detail screen shows, so a sync can redraw it in place
@@ -56,7 +69,6 @@ const screens = {
   sitting: document.getElementById("screen-sitting"),
   score: document.getElementById("screen-score"),
   add: document.getElementById("screen-add"),
-  table: document.getElementById("screen-table"),
   compare: document.getElementById("screen-compare"),
   analysis: document.getElementById("screen-analysis"),
   sync: document.getElementById("screen-sync"),
@@ -90,7 +102,6 @@ function setTab(tab) {
   markTab(tab);
   if (tab === "collection") { renderCollection(); show("collection", "Collection"); }
   if (tab === "add") { app.editCode = null; renderAdd(); show("add", "Add"); }
-  if (tab === "table") { TableView.render(screens.table); show("table", "Table"); }
   if (tab === "compare") { CompareView.render(screens.compare); show("compare", "Compare"); }
   if (tab === "analysis") {
     // With no PC to publish the monthly means, they are worked out from this phone's own cards.
@@ -237,25 +248,35 @@ function renderCollection() {
       el("button", { type: "button", class: `chip${app.filter === id ? " active" : ""}`,
         onclick: () => { app.filter = id; renderCollection(); } }, label)));
 
-  const list = el("ul", { class: "rows", id: "rows" });
+  // The bar and the body are filled by paintRows, which is also what a keystroke, a sort and a
+  // finished sync call: the search box and the chips above them are left alone, so typing keeps
+  // its place.
   fill(host,
     spirits.length ? null : emptyCollectionNote(),
-    search, chips, list);
+    search, chips,
+    el("div", { class: "viewbar", id: "viewbar" }),
+    el("div", { id: "cview" }));
   paintRows();
 }
 
-function paintRows() {
-  const list = document.getElementById("rows");
-  if (!list) return;
+/** The collection the screen is showing: what the chips and the search box leave. One answer
+    for both views, so the list and the table can never disagree about what was asked for.
+
+    A Finished or Removed bottle is not offered: nothing can be poured from it, so nothing can be
+    scored. The ones scored while they lasted keep a place under their own chip, because the
+    sittings outlive the bottle; the ones never scored have nothing to show and are not listed.
+    `record` is the table's one difference: a ranking is a record of what was drunk, not a list
+    of what can be poured, so a finished bottle that earned a score keeps its row there, greyed,
+    as it always has. */
+function shownSpirits(record = false) {
   const terms = app.query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  // A Finished or Removed bottle is not offered: nothing can be poured from it, so nothing can
-  // be scored. The ones scored while they lasted keep a place under their own chip, because the
-  // sittings outlive the bottle; the ones never scored have nothing to show and are not listed.
   let spirits = knownSpirits();
   if (app.filter === "gone") {
     spirits = spirits.filter((s) => goneSpirit(s) && sittingsFor(s.code).length);
   } else {
-    spirits = spirits.filter((s) => !goneSpirit(s));
+    spirits = record
+      ? spirits.filter((s) => !goneSpirit(s) || careerFor(s.code))
+      : spirits.filter((s) => !goneSpirit(s));
     if (app.filter === "scored") spirits = spirits.filter((s) => careerFor(s.code));
     // Something you hold and have not scored. A bar pour is not held, so it is never "to do".
     else if (app.filter === "unscored") spirits = spirits.filter((s) => s.owned !== false && !careerFor(s.code));
@@ -267,12 +288,72 @@ function paintRows() {
       // The parentheses matter: `a + b.toLowerCase()` lowercases only b, so every name and
       // distillery kept its capitals while the search terms did not, and nothing matched.
       const hay = (`${s.code} ${s.display_name || ""} ${s.distillery || ""} `
-        + `${s.name || ""} ${s.type || ""}`).toLowerCase();
+        + `${s.name || ""} ${s.type || ""} ${s.region || ""}`).toLowerCase();
       return terms.every((t) => hay.includes(t));
     });
   }
+  return spirits;
+}
 
-  list.replaceChildren();
+/* The list's own orders. It opens in the order the collection arrives in — the shelf, as the
+   workbook has it — and the others are the things a row shows. One direction each, the one the
+   question is asked in: the best score, the oldest, the strongest, the newest. The table, which
+   shows every field, sorts on every field and both ways. */
+const LIST_SORTS = [["", "Shelf order"], ["score", "Score"], ["name", "Name"], ["type", "Type"],
+                    ["age", "Age"], ["proof", "Proof"], ["year", "Year"]];
+function listSorted(spirits) {
+  const numeric = (v) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v))
+    ? null : Number(v));
+  const of = {
+    score: (s) => { const c = careerFor(s.code); return c ? c.score : null; },
+    name: (s) => (s.name || s.display_name || s.code || "").toLowerCase() || null,
+    type: (s) => (s.type || "").toLowerCase() || null,
+    age: (s) => numeric(s.age),
+    proof: (s) => numeric(s.proof),
+    year: (s) => numeric(s.release_year),
+  }[app.listSort];
+  if (!of) return spirits;
+  // Something with no value is not a low value: it goes last, whichever way the rest run.
+  return spirits.map((s) => [of(s), s]).sort(([a], [b]) => {
+    if (a === null || b === null) return (a === null) - (b === null);
+    return typeof a === "number" ? b - a : a.localeCompare(b, undefined, { numeric: true });
+  }).map(([, s]) => s);
+}
+
+/** The bar between the filters and the rows: which view, and that view's own choices. */
+function paintViewBar(table) {
+  const bar = document.getElementById("viewbar");
+  if (!bar) return;
+  const way = (view, label) => el("button", {
+    type: "button", class: app.view === view ? "active" : "", "aria-pressed": String(app.view === view),
+    onclick: () => {
+      if (app.view === view) return;
+      app.view = view;
+      Store.setMeta({ view });                       // the view someone prefers is the one they get back
+      paintRows();
+    },
+  }, label);
+  fill(bar,
+    el("div", { class: "viewswitch", role: "group", "aria-label": "Show the collection as" },
+      way("list", "List"), way("table", "Table")),
+    el("span", { class: "grow" }),
+    table ? TableView.controls()
+      : pickerChip(`${LIST_SORTS.find(([key]) => key === app.listSort)[1]} ▾`, LIST_SORTS,
+          app.listSort, (key) => { app.listSort = key; paintRows(); }, "Sort the list by"));
+}
+
+/** Fill the bar and the body for the view in use. The name is from when there was only a list. */
+function paintRows() {
+  const body = document.getElementById("cview");
+  if (!body) return;
+  const table = app.view === "table";
+  paintViewBar(table);
+  if (table) { TableView.render(body, shownSpirits(true)); return; }
+
+  const terms = app.query.trim();
+  const spirits = listSorted(shownSpirits());
+  const list = el("ul", { class: "rows", id: "rows" });
+  fill(body, list);
   if (!spirits.length) {
     list.append(el("li", { class: "empty" },
       app.filter === "gone" && !terms.length ? "No finished bottle was scored while it lasted."
@@ -1275,7 +1356,6 @@ function onSync(s) {
     case "collection": if (fresh) screens.collection.querySelector(".notice") ? renderCollection() : paintRows(); break;
     // Redrawn for an upload too: a sitting that has just gone up stops saying "waiting".
     case "detail": if (app.detailCode) openDetail(app.detailCode, { push: false }); break;
-    case "table": if (fresh) TableView.render(screens.table); break;
     case "compare": if (fresh) CompareView.render(screens.compare); break;
     case "analysis": if (fresh) AnalysisView.render(screens.analysis); break;
     case "sync": renderSync(); break;
@@ -1385,6 +1465,7 @@ async function boot() {
 
   updateNet();
   applyMode();
+  if (Store.meta().view === "table") app.view = "table";
   setTab("collection");
 
   // The shell ships the bundle inside the app and updates it with the app; a service worker in

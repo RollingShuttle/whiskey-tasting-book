@@ -697,6 +697,14 @@ reads as a website someone bookmarked, and it breaks in specific ways in the bar
   scrolls. The Sync screen opens on its status and the queue; *Where your book lives*, chosen
   once, is last. A bottle's page offers **Compare with others**, which opens the comparison on
   that bottle with the picker up.
+- **Five tabs; the table is a view of the collection.** Collection, Add, Compare, Analysis,
+  Sync. The Collection screen has a **List | Table** switch under its filters: one search box and
+  one set of chips serve both, and the choice is remembered. The table's sort and its ranking
+  lens are each a single chip that opens the phone's own picker, where there were two scrolling
+  rows of chips (nineteen for the sort); tapping a column header still sorts, and turns the sort
+  round. The list can be ordered too — it opens in shelf order. One difference between the
+  views is deliberate: the list is where a pour is chosen, so a finished bottle appears only
+  under Finished; the table is a record, so one that earned a score keeps its greyed row.
 - **No page zoom.** This is an app, not a page: nothing on it needs the whole screen magnified,
   and a double-tap that zoomed was the one gesture that gave the web away. The native shell's
   WKWebView and the home-screen install honour the two scale flags; a Safari tab has ignored them

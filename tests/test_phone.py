@@ -246,10 +246,10 @@ class TestPhoneTable(unittest.TestCase):
     """The desktop table is wide and sortable. A phone is 375 points across, so the sorting stays
     and the column chooser goes."""
 
-    def test_the_screen_and_tab_exist(self):
+    def test_it_is_a_view_of_the_collection_not_a_tab(self):
         html = text("index.html")
-        self.assertIn("screen-table", html)
-        self.assertIn('data-tab="table"', html)
+        self.assertNotIn("screen-table", html)
+        self.assertNotIn('data-tab="table"', html)
         self.assertLess(html.index("table.js"), html.index('src="app.js"'))
 
     def test_it_carries_proof_and_year(self):
@@ -302,7 +302,7 @@ class TestPhoneTable(unittest.TestCase):
     def test_equal_scores_are_broken_the_way_the_desktop_breaks_them(self):
         """A 90 from four nights outranks a 90 from one."""
         src = code("table.js")
-        block = src[src.index("function tieBreak("):src.index("function shown(")]
+        block = src[src.index("function tieBreak("):src.index("function columns(")]
         self.assertIn("a.n !== b.n", block)
 
     def test_the_two_derived_columns_are_worked_out_here(self):
@@ -497,7 +497,7 @@ class TestAnOlderPcOverwritingTheData(unittest.TestCase):
         self.assertIn("sittings`", src)
 
 
-class TestFinishedBottlesOnThePhone(unittest.TestCase):
+class TestAFinishedBottleIsLeftOutOnThePhone(unittest.TestCase):
     """The desktop's rule, held here too: an empty bottle is not offered for scoring, the ones
     scored while they lasted sit under a Finished chip, and the rest are not listed at all."""
 
@@ -507,11 +507,11 @@ class TestFinishedBottlesOnThePhone(unittest.TestCase):
         return block[:block.index("\nfunction ")]
 
     def test_the_ordinary_lists_leave_finished_bottles_out(self):
-        self.assertIn("spirits.filter((s) => !goneSpirit(s))", self.block("function paintRows()"))
+        self.assertIn("spirits.filter((s) => !goneSpirit(s))", self.block("function shownSpirits("))
 
     def test_the_finished_chip_needs_a_sitting(self):
         self.assertIn("goneSpirit(s) && sittingsFor(s.code).length",
-                      self.block("function paintRows()"))
+                      self.block("function shownSpirits("))
         self.assertIn('["gone", "Finished"]', code("app.js"))
 
     def test_the_detail_screen_offers_no_card_for_one(self):
@@ -989,7 +989,7 @@ class TestSyncWiring(unittest.TestCase):
         block = src[src.index("function onSync("):src.index("async function signInFlow(")]
         self.assertIn("currentScreen()", block)
         self.assertNotIn("app.tab", block)
-        for screen in ("collection", "detail", "table", "compare", "analysis", "sync"):
+        for screen in ("collection", "detail", "compare", "analysis", "sync"):
             self.assertIn(f'case "{screen}"', block)
         self.assertNotIn('case "score"', block, "a card being written is never redrawn under a finger")
         self.assertIn('classList.contains("keyboard")', block)
@@ -1202,6 +1202,97 @@ class TestScreensAreLaidOutForHowTheyAreUsed(unittest.TestCase):
         self.assertIn("picking = codes.length < 2;", cmp_js)
         self.assertIn('(up to " + MAX + ")', cmp_js, "the text said four where the limit is six")
         self.assertNotIn("two to four", cmp_js)
+
+
+class TestOneCollectionTwoViews(unittest.TestCase):
+    """Collection and Table were two tabs for the same bottles, each with its own search box and
+    its own filters that did not know about the other's. They are one tab now: a list and a
+    table over one search, one set of filters, and five tabs instead of six."""
+
+    def setUp(self):
+        self.js = code("app.js")
+        self.table = code("table.js")
+        self.html = text("index.html")
+        self.css = text("style.css")
+
+    def fn(self, start):
+        block = self.js[self.js.index(start):]
+        return block[:block.index("\nfunction ")]
+
+    def test_there_are_five_tabs(self):
+        tabs = re.findall('data-tab="([a-z]+)"', self.html)
+        self.assertEqual(tabs, ["collection", "add", "compare", "analysis", "sync"])
+        self.assertNotIn("Six tabs", self.css, "the labels were shrunk to fit six")
+
+    def test_one_search_and_one_set_of_filters_serve_both(self):
+        """The table is handed what the collection is showing. It has no search box, no filter
+        and no idea what was typed."""
+        paint = self.fn("function paintRows()")
+        self.assertIn("TableView.render(body, shownSpirits(true))", paint)
+        self.assertIn("listSorted(shownSpirits())", paint)
+        for gone in ('class: "search"', "let query", "let filter", "knownSpirits()"):
+            self.assertNotIn(gone, self.table)
+        self.assertIn("function render(host, spirits)", self.table)
+
+    def test_the_switch_is_remembered(self):
+        bar = self.fn("function paintViewBar(")
+        self.assertIn('way("list", "List"), way("table", "Table")', bar)
+        self.assertIn("Store.setMeta({ view })", bar)
+        self.assertIn('if (Store.meta().view === "table") app.view = "table";', self.js)
+
+    def test_typing_repaints_the_rows_and_leaves_the_box_alone(self):
+        """The bar and the body are repainted on a keystroke; the search box above them is not,
+        or it would lose the cursor on every letter."""
+        self.assertIn("oninput: (e) => { app.query = e.target.value; paintRows(); }", self.js)
+        paint = self.fn("function paintRows()")
+        self.assertIn('document.getElementById("cview")', paint)
+        self.assertNotIn('class: "search"', paint)
+        self.assertNotIn("renderCollection()", paint)
+
+    def test_a_ranking_keeps_the_finished_bottles_the_list_leaves_out(self):
+        """The list is where a pour is chosen; the table is a record of what was drunk. A
+        finished bottle that earned a score keeps its greyed row in the table, as it always did."""
+        shown = self.fn("function shownSpirits(")
+        self.assertIn("? spirits.filter((s) => !goneSpirit(s) || careerFor(s.code))", shown)
+        self.assertIn(": spirits.filter((s) => !goneSpirit(s));", shown)
+
+    def test_two_pickers_stand_where_two_rows_of_chips_stood(self):
+        """Nineteen sort chips and seven rank-by chips sat between the filters and the first row
+        of figures. Each is one chip now, opening the phone's own picker."""
+        controls = self.table[self.table.index("function controls("):self.table.index("function lensPicker(")]
+        self.assertEqual(controls.count("pickerChip("), 2)
+        self.assertIn("FIELDS.map((f) => [f.key, f.label])", controls, "every field, not only the columns")
+        self.assertIn('[["custom", "Custom…"]]', controls)
+        for old in ("sortbar", "lensbar", "sortlabel"):
+            self.assertNotIn(old, self.table)
+            self.assertNotIn(old, self.css)
+
+    def test_a_header_tap_still_sorts_and_turns_the_sort_round(self):
+        self.assertIn("onclick: () => pick(f.key)", self.table)
+        pick = self.table[self.table.index("function pick("):self.table.index("function controls(")]
+        self.assertIn("if (sort === key) desc = !desc;", pick)
+        self.assertIn("paintRows();", pick, "the bar above the table names the sort, so it repaints too")
+
+    def test_the_picker_is_a_real_select_the_finger_can_reach(self):
+        chip = self.fn("function pickerChip(")
+        self.assertIn('el("select", { "aria-label": name }', chip)
+        self.assertIn('class: "chip pick"', chip)
+        rule = self.css[self.css.index(".chip.pick select {"):]
+        rule = rule[:rule.index("}")]
+        self.assertIn("opacity: 0", rule)
+        self.assertIn("inset: 0", rule)
+        self.assertIn("font-size: 16px", rule, "smaller, and Safari zooms the page when it opens")
+
+    def test_the_list_can_be_put_in_order_too(self):
+        self.assertIn('["", "Shelf order"], ["score", "Score"], ["name", "Name"]', self.js)
+        ordered = self.fn("function listSorted(")
+        self.assertIn("if (!of) return spirits;", ordered, "the shelf's order is the order it arrives in")
+        self.assertIn("(a === null) - (b === null)", ordered, "no value is not a low value: it goes last")
+
+    def test_a_finished_sync_repaints_whichever_view_is_up(self):
+        sync = self.js[self.js.index("function onSync("):self.js.index("async function signInFlow(")]
+        self.assertIn("renderCollection() : paintRows()", sync)
+        self.assertNotIn("TableView", sync)
 
 
 if __name__ == "__main__":
