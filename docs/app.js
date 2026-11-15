@@ -858,9 +858,13 @@ function localCard(q) {
        [Store.cards().length, "sitting"]].map(([n, word]) => `${n} ${word}${n === 1 ? "" : "s"}`).join(" · ")
       + (own !== Store.spirits().length ? ` (${own} added here)` : "")),
     el("div", { class: "muted", style: "margin-top:8px" },
-      "Nothing is uploaded or fetched. This phone holds the only copy, so export a backup now and "
-      + "then — and keep the app on your Home Screen: iOS may clear a web page's storage when it "
-      + "goes unused for weeks."),
+      // The Home Screen advice belongs to the web page. Inside the app nothing clears the store,
+      // and warning of it there would cast doubt on the one thing this card is here to settle.
+      "Nothing is uploaded or fetched. Everything is stored on this phone and nowhere else, so "
+      + "export a backup now and then"
+      + (Native.caps.has("backup") ? "."
+        : " — and keep the app on your Home Screen: iOS may clear a web page's storage when it "
+          + "goes unused for weeks.")),
     q.length
       ? el("div", { class: "muted", style: "margin-top:8px" },
           `${q.length} item${q.length === 1 ? "" : "s"} from before ${q.length === 1 ? "is" : "are"} `
