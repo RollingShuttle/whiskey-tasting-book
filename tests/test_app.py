@@ -1146,6 +1146,25 @@ class TestBarPours(AppCase):
                             entered_from="phone", venue=fields.get("venue"))
         return enc
 
+    def test_the_score_picker_can_find_a_bar_pour(self):
+        """It was on the table and in the analysis and could not be found from the first screen:
+        the picker listed only what is in the workbook. Listed apart from the spirits, with the
+        sittings counted through the uid the card carries."""
+        self.bar_pour(distillery="A Distillery", type="Bourbon", venue="A Bar", pours=2)
+        d = self.c.get("/api/spirits").get_json()
+        self.assertEqual(len(d["encounters"]), 1)
+        pour = d["encounters"][0]
+        self.assertEqual((pour["code"], pour["sittings"], pour["_sheet"], pour["owned"]),
+                         ("X-1", 2, "Encounter", False))
+        self.assertEqual(pour["display_name"], "A Distillery Something From The Back Bar")
+        self.assertNotIn("X-1", {s["code"] for s in d["spirits"]},
+                         "a bar pour among the spirits would be offered for scoring at a desk")
+        static = Path(app_mod.__file__).parent / "static"
+        src = (static / "app.js").read_text(encoding="utf-8")
+        self.assertIn('data-source="Encounter"', (static / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("state.encounters = data.encounters || []", src)
+        self.assertIn("record ? showSittingsFor(s.code) : addPour(s.code)", src)
+
     def test_the_score_reaches_the_encounter(self):
         self.bar_pour(distillery="A Distillery", type="Bourbon", venue="A Bar")
         rows = self.c.get("/api/table/collection").get_json()["rows"]
@@ -1346,8 +1365,9 @@ class TestFinishedBottlesInThePicker(unittest.TestCase):
         self.assertIn('data-source="gone"', html)
 
     def test_a_finished_row_opens_the_record_not_a_card(self):
-        self.assertIn("gone ? showSittingsFor(s.code) : addPour(s.code)",
-                      self.block("function renderResults()"))
+        block = self.block("function renderResults()")
+        self.assertIn("const record = gone || bar", block, "a finished bottle and a bar pour alike")
+        self.assertIn("record ? showSittingsFor(s.code) : addPour(s.code)", block)
         self.assertIn("focusTastings", self.source("table.js")[self.source("table.js").index("return {"):])
 
     def test_adding_a_pour_refuses_a_finished_bottle_whatever_the_road_in(self):

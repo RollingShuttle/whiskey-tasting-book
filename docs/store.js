@@ -160,8 +160,123 @@ const Store = (() => {
 
   // -- cached collection ----------------------------------------------------
   const snapshot = () => read(K.snapshot, null);
-  const setSnapshot = (data) => write(K.snapshot, data);
   const spirits = () => (snapshot()?.spirits) || [];
+  /* What the PC publishes replaces what the PC published — never a bottle that was added on
+     this phone. Those carry `_local` and an L- code the PC does not issue, so they ride along
+     behind whatever comes down and nothing a person typed in ever disappears on a sync. */
+  const setSnapshot = (data) => {
+    const mine = spirits().filter((s) => s._local);
+    return write(K.snapshot, mine.length
+      ? { ...data, spirits: ((data && data.spirits) || []).concat(mine) } : data);
+  };
+
+  // -- where the book lives -------------------------------------------------
+  /* "onedrive": the PC publishes the collection and this phone uploads its cards — the original
+     arrangement. "local": this phone is the whole book; bottles are added here, nothing is
+     queued and nothing is fetched, so it needs no account and no computer. A phone from before
+     the choice existed has no mode on file: one that has ever synced is plainly on OneDrive, and
+     one that has not is asked (null). */
+  const mode = () => {
+    const m = meta();
+    if (m.mode === "local" || m.mode === "onedrive") return m.mode;
+    return m.lastSync || snapshot() ? "onedrive" : null;
+  };
+  const isLocal = () => meta().mode === "local";
+  const setMode = (m) => setMeta({ mode: m });
+
+  // -- bottles added on this phone ------------------------------------------
+  const GONE = new Set(["finished", "removed"]);       // collection.py's vocabulary, for one field
+  const LOCAL_CODE = /^L-(\d+)$/;
+
+  /** A bottle in the shape the PC's snapshot gives one, built from what the Add form collects.
+      Numbers go in as numbers — a string sorts as text, "9" after "18". */
+  function localSpirit(code, f) {
+    const text = (v) => { const t = String(v ?? "").trim(); return t || null; };
+    const num = (v) => { const t = text(v); return t !== null && Number.isFinite(Number(t)) ? Number(t) : null; };
+    const name = text(f.name), distillery = text(f.distillery);
+    const status = text(f.status) || "Opened";
+    return {
+      code,
+      name: name || distillery,
+      distillery,
+      display_name: [distillery, name].filter(Boolean).join(" ") || name || distillery || code,
+      type: text(f.type), region: text(f.region),
+      age: num(f.age), age_label: num(f.age) === null ? text(f.age) : null,
+      proof: num(f.proof), release_year: num(f.release_year),
+      paid: num(f.paid), size_ml: num(f.size_ml),
+      status, owned: !GONE.has(status.toLowerCase()),
+      _sheet: "Bottle", _local: true,
+    };
+  }
+  const asFields = (s) => ({
+    name: s.name, distillery: s.distillery, type: s.type, region: s.region,
+    age: s.age ?? s.age_label, proof: s.proof, release_year: s.release_year,
+    paid: s.paid, size_ml: s.size_ml, status: s.status,
+  });
+
+  /** Add a bottle to the collection on this phone. Its code is L-n, one past the highest ever
+      handed out here — kept in meta as well as read off the list, because a code that was reissued
+      after its bottle was removed would re-point every review written against the old one. */
+  function addLocalSpirit(fields) {
+    const snap = snapshot() || { spirits: [] };
+    const used = (snap.spirits || []).map((s) => LOCAL_CODE.exec(s.code || ""))
+      .filter(Boolean).map((x) => Number(x[1]));
+    const n = Math.max(meta().localHigh || 0, ...used) + 1;
+    const spirit = localSpirit(`L-${n}`, fields);
+    if (!write(K.snapshot, { ...snap, spirits: [...(snap.spirits || []), spirit] })) return null;
+    setMeta({ localHigh: n });
+    return spirit;
+  }
+  /** Change a bottle added here — its details or its status. Null for any other bottle: what the
+      PC published is the PC's to change. */
+  function updateLocalSpirit(code, patch) {
+    const snap = snapshot();
+    const cur = snap && (snap.spirits || []).find((s) => s.code === code && s._local);
+    if (!cur) return null;
+    const next = localSpirit(code, { ...asFields(cur), ...patch });
+    const list = snap.spirits.map((s) => (s === cur ? next : s));
+    return write(K.snapshot, { ...snap, spirits: list }) ? next : null;
+  }
+  function removeLocalSpirit(code) {
+    const snap = snapshot();
+    if (!snap || !(snap.spirits || []).some((s) => s.code === code && s._local)) return false;
+    return write(K.snapshot, { ...snap, spirits: snap.spirits.filter((s) => s.code !== code) });
+  }
+
+  // -- a copy to keep -------------------------------------------------------
+  /** Everything this phone holds, as one JSON text. The storage keys are the keys, exactly as in
+      the shell's own backup file, so importAll takes either. */
+  function exportAll() {
+    const data = { _format: "whiskey-tasting-book", _version: 1, _exported: nowIso() };
+    for (const key of Object.values(K)) {
+      try { data[key] = localStorage.getItem(key); } catch { data[key] = null; }
+    }
+    return JSON.stringify(data);
+  }
+  /** Replace what this phone holds with a backup. Checked in full before the first write, so a
+      wrong or damaged file changes nothing. Returns what was wrong, or null when it is done. */
+  function importAll(text) {
+    let data;
+    try { data = JSON.parse(text); } catch { return "That file is not a Tasting Book backup."; }
+    if (!data || typeof data !== "object" || Array.isArray(data)) return "That file is not a Tasting Book backup.";
+    const held = Object.values(K).filter((k) => typeof data[k] === "string");
+    if (!held.length) return "That file holds no Tasting Book data.";
+    for (const k of held) {
+      try { JSON.parse(data[k]); } catch { return `The backup is damaged (${k}).`; }
+    }
+    try {
+      for (const key of Object.values(K)) {
+        if (typeof data[key] === "string") localStorage.setItem(key, data[key]);
+        else localStorage.removeItem(key);
+      }
+    } catch (e) {
+      cache.clear();
+      return `This phone refused the backup: ${(e && e.message) || e}`;
+    }
+    cache.clear();                                             // written behind the memo's back
+    mirror();
+    return null;
+  }
 
   const rubric = () => read(K.rubric, null);
   const setRubric = (data) => write(K.rubric, data);
@@ -182,6 +297,8 @@ const Store = (() => {
   // -- the queue ------------------------------------------------------------
   const queue = () => read(K.queue, []);
   function enqueue(item) {
+    // Phone-only: there is nowhere to send it, and a queue that can never drain would only grow.
+    if (isLocal()) return item;
     const q = queue();
     q.push(item);
     write(K.queue, q);
@@ -282,8 +399,10 @@ const Store = (() => {
   const cards = () => read(K.cards, []);
   function addCard(rec, path) {
     const list = cards();
-    list.unshift({ ...rec, _path: path, _sent: false });
-    write(K.cards, list.slice(0, 500));
+    list.unshift({ ...rec, _path: path, _sent: false, ...(isLocal() ? { _local: true } : {}) });
+    // With a PC behind it the journal is the record and this list is a convenience; alone, this
+    // list is the record, and trimming it would be throwing sittings away.
+    write(K.cards, list.slice(0, isLocal() ? 5000 : 500));
   }
   function markSent(path) {
     write(K.cards, cards().map((c) => (c._path === path ? { ...c, _sent: true } : c)));
@@ -343,7 +462,7 @@ const Store = (() => {
     delete rec._path;
     delete rec._sent;
     const path = `tastings/${rec.tasting_id}-r${revision}.json`;
-    write(K.cards, [{ ...rec, _path: path, _sent: false },
+    write(K.cards, [{ ...rec, _path: path, _sent: false, ...(isLocal() ? { _local: true } : {}) },
                     ...cards().filter((c) => c.tasting_id !== rec.tasting_id)]);
     enqueue({ path, kind: "tasting", body: rec, created_at: nowIso() });
     return { rec, path };
@@ -396,6 +515,8 @@ const Store = (() => {
 
   return {
     snapshot, setSnapshot, spirits, rubric, setRubric, careers, setCareers,
+    mode, isLocal, setMode, addLocalSpirit, updateLocalSpirit, removeLocalSpirit,
+    exportAll, importAll,
     queue, enqueue, drop, noteFailure, queueCount,
     cards, cardsFor, addCard, markSent, reviseCard, deleteCard, buried,
     meta, setMeta, restoreFromNative, lastWriteError: () => lastWriteError,

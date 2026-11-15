@@ -45,6 +45,7 @@ const app = {
   filter: "all",
   query: "",
   draft: null,
+  editCode: null,         // the phone-added bottle the Add form is editing, if any
   detailCode: null,       // the spirit the detail screen shows, so a sync can redraw it in place
   addMode: "pour",       // the Add tab opens on the bar pour, which is the one done standing up
 };
@@ -88,11 +89,16 @@ function setTab(tab) {
   app.stack = [];
   markTab(tab);
   if (tab === "collection") { renderCollection(); show("collection", "Collection"); }
-  if (tab === "add") { renderAdd(); show("add", "Add"); }
+  if (tab === "add") { app.editCode = null; renderAdd(); show("add", "Add"); }
   if (tab === "table") { TableView.render(screens.table); show("table", "Table"); }
   if (tab === "compare") { CompareView.render(screens.compare); show("compare", "Compare"); }
-  if (tab === "analysis") { AnalysisView.render(screens.analysis); show("analysis", "Analysis"); }
-  if (tab === "sync") { renderSync(); show("sync", "Sync"); }
+  if (tab === "analysis") {
+    // With no PC to publish the monthly means, they are worked out from this phone's own cards.
+    if (Store.isLocal() && !(Store.careers().calibration || []).length) app.calibration = localCalibration();
+    AnalysisView.render(screens.analysis);
+    show("analysis", "Analysis");
+  }
+  if (tab === "sync") { renderSync(); show("sync", Store.isLocal() ? "Data" : "Sync"); }
 }
 
 /** Everything this phone can show: the collection the PC published, plus the bar pours scored
@@ -230,8 +236,7 @@ function renderCollection() {
 
   const list = el("ul", { class: "rows", id: "rows" });
   fill(host,
-    spirits.length ? null : notice("warn",
-      "No collection yet. Open Sync and refresh once while you have a connection."),
+    spirits.length ? null : emptyCollectionNote(),
     search, chips, list);
   paintRows();
 }
@@ -359,6 +364,8 @@ function openDetail(code, { push = true } = {}) {
       : el("button", { class: "btn wide", type: "button", onclick: () => openScore(code) },
           "Score a pour"),
 
+    s._local ? localBottleCard(s, sittings.length) : null,
+
     // An empty list used to render nothing at all, which is indistinguishable from a screen that
     // failed to draw. It has one cause worth naming and one worth ruling out.
     sittings.length ? null : el("div", { class: "card", style: "margin-top:12px" },
@@ -386,7 +393,8 @@ function openDetail(code, { push = true } = {}) {
           },
             el("span", {}, c.date),
             el("span", { class: "when" },
-              `${c.total}${c._path && !c._sent ? " · waiting" : ""}`),
+              // A phone-only card is not waiting for anything: there is nowhere for it to go.
+              `${c.total}${c._path && !c._sent && !c._local ? " · waiting" : ""}`),
             c.medal
               ? el("span", { class: "medal",
                   style: `--m:${MEDAL_COLORS[c.medal] || "#9A9086"}` }, c.medal)
@@ -653,29 +661,51 @@ function submitCard() {
 const grow = (ta) => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight}px`; };
 
 // ---------------------------------------------------------------- add bottle
+/** What the Add form collects, under the names Store.addLocalSpirit takes. */
+const bottleFields = (f) => ({
+  distillery: f.Distillery, name: f.Name, type: f.Type, region: f.Region,
+  age: f.Age, proof: f.Proof, size_ml: f["Size (ml)"], paid: f.Paid,
+});
+
 function renderAdd() {
-  const pour = app.addMode === "pour";
+  const local = Store.isLocal();
+  // Editing reuses the form: only a bottle added on this phone can be edited from it.
+  const editing = app.editCode
+    ? Store.spirits().find((x) => x.code === app.editCode && x._local) || null : null;
+  const pour = !editing && app.addMode === "pour";
   const fields = {};
+  const seed = editing ? {
+    Distillery: editing.distillery, Name: editing.name, Type: editing.type,
+    Region: editing.region, Age: editing.age ?? editing.age_label, Proof: editing.proof,
+    "Size (ml)": editing.size_ml, Paid: editing.paid,
+  } : {};
   const input = (name, attrs = {}) => {
-    const i = el("input", Object.assign({ type: "text" }, attrs));
+    const start = seed[name] === null || seed[name] === undefined ? "" : String(seed[name]);
+    if (editing) fields[name] = start;
+    const i = el("input", Object.assign({ type: "text", value: start || null }, attrs));
     i.addEventListener("input", (e) => { fields[name] = e.target.value; });
     return el("label", { class: "field" }, el("span", {}, name), i);
   };
   const named = () => (fields.Name || "").trim() || (fields.Distillery || "").trim();
 
-  const modes = el("div", { class: "chips" },
+  const modes = editing ? null : el("div", { class: "chips" },
     ...[["pour", "Bar pour"], ["bottle", "Bottle I bought"]].map(([id, label]) =>
       el("button", { type: "button", class: `chip${app.addMode === id ? " active" : ""}`,
         onclick: () => { app.addMode = id; renderAdd(); } }, label)));
 
   fill(screens.add,
     modes,
-    notice(pour ? "ok" : "ok", pour
-      ? "Something you are drinking but do not own. Score it now — it is saved on this phone "
-        + "first, so no signal is needed — and it lands on the PC as a bar pour, never in your "
-        + "collection."
-      : "Queued for approval on the PC. Nothing reaches the collection workbook from this phone "
-        + "— a person checks each row first."),
+    editing ? null : notice("ok", pour
+      ? (local
+        ? "Something you are drinking but do not own. Score it now — it is saved on this phone "
+          + "and listed under Bar, never in your collection."
+        : "Something you are drinking but do not own. Score it now — it is saved on this phone "
+          + "first, so no signal is needed — and it lands on the PC as a bar pour, never in your "
+          + "collection.")
+      : (local
+        ? "Saved on this phone. It joins your collection straight away."
+        : "Queued for approval on the PC. Nothing reaches the collection workbook from this phone "
+          + "— a person checks each row first.")),
     el("div", { class: "card" },
       input("Distillery", { autocapitalize: "words" }),
       input("Name", { autocapitalize: "words" }),
@@ -688,14 +718,37 @@ function renderAdd() {
       el("div", { class: "actions" },
         el("button", { class: "btn wide", type: "button", onclick: () => {
           if (!named()) return;
+          if (editing) {
+            const code = editing.code;
+            if (!Store.updateLocalSpirit(code, bottleFields(fields))) {
+              window.alert(`Could not save: ${Store.lastWriteError() || "this phone refused the change"}`);
+              return;
+            }
+            app.editCode = null;
+            back();
+            openDetail(code, { push: false });
+            return;
+          }
           if (pour) { startBarPour(fields); return; }
+          if (local) {
+            // Phone-only: there is no PC to approve it, so the bottle goes straight in.
+            const sp = Store.addLocalSpirit(bottleFields(fields));
+            if (!sp) {
+              window.alert(`Could not save: ${Store.lastWriteError() || "this phone refused the bottle"}`);
+              return;
+            }
+            setTab("collection");
+            openDetail(sp.code);
+            return;
+          }
           const filled = Object.fromEntries(
             Object.entries(fields).filter(([, v]) => v && String(v).trim()));
           Store.submitPending("Bottle", filled);
           updateBadge();
           flush();
           setTab("sync");
-        } }, pour ? "Score this pour" : "Queue for approval"))));
+        } }, editing ? "Save changes" : pour ? "Score this pour"
+              : local ? "Add to my collection" : "Queue for approval"))));
 }
 
 /** A pour at a bar: the encounter is recorded, then its scorecard opens straight away. Both are
@@ -725,12 +778,207 @@ function startBarPour(f) {
 }
 
 // ---------------------------------------------------------------- sync
+// ---------------------------------------------------------------- where the book lives
+/* Two arrangements, one app. OneDrive: the PC publishes the collection and this phone sends its
+   cards back. Phone-only: no account and no computer — bottles are added here and everything
+   stays here. The choice is on the Sync tab, and a phone that has made none yet is asked on
+   its first screen. */
+function chooseMode(mode) {
+  const was = Store.mode();
+  if (mode === was && Store.meta().mode) return;
+  if (mode === "local" && was === "onedrive" && !window.confirm(
+    "Keep the book on this phone only?\n\nNothing is fetched or uploaded in this mode, and what "
+    + "you score in it is not sent to the PC later. You can switch back at any time.")) return;
+  if (mode === "onedrive" && was === "local" && !window.confirm(
+    "Sync with OneDrive?\n\nBottles you added on this phone stay. Sittings scored in phone-only "
+    + "mode stay on this phone and are not uploaded.")) return;
+  Store.setMode(mode);
+  applyMode();
+  if (mode === "onedrive") {
+    setTab("sync");
+    Graph.resume().then((ok) => { if (ok) refresh(); else if (currentScreen() === "sync") renderSync(); });
+  } else {
+    setTab(app.tab);
+  }
+}
+
+/** What the rest of the page shows differently by mode: the last tab's name and its badge. */
+function applyMode() {
+  document.getElementById("tab-sync-label").textContent = Store.isLocal() ? "Data" : "Sync";
+  updateBadge();
+}
+
+function modeCard() {
+  const mode = Store.mode();
+  const opt = (id, label, sub) => el("button", {
+    type: "button", class: `mode-opt${mode === id ? " active" : ""}`,
+    "aria-pressed": String(mode === id), onclick: () => chooseMode(id),
+  }, el("b", {}, label), el("span", {}, sub));
+  return el("div", { class: "card" },
+    el("div", { class: "muted", style: "margin-bottom:8px" }, "Where your book lives"),
+    el("div", { class: "mode-opts" },
+      opt("local", "This phone only", "No account, no computer"),
+      opt("onedrive", "OneDrive", "Syncs with the PC app")));
+}
+
+/** The first screen of a phone that has not chosen yet. */
+function modeChooser() {
+  return el("div", { class: "card" },
+    el("div", { class: "chart-title" }, "Where should your tasting book live?"),
+    el("div", { class: "muted", style: "margin-bottom:12px" }, "You can change this later, on the last tab."),
+    el("button", { class: "btn wide", type: "button", onclick: () => chooseMode("local") },
+      "On this phone only"),
+    el("div", { class: "muted", style: "margin:6px 0 14px" },
+      "No account and no computer. Add your bottles here and score them; everything stays on this phone."),
+    el("button", { class: "btn wide ghost", type: "button", onclick: () => chooseMode("onedrive") },
+      "Sync with OneDrive"),
+    el("div", { class: "muted", style: "margin-top:6px" },
+      "For use with the PC app: it publishes your collection, and this phone sends its scorecards back."));
+}
+
+/** What an empty collection says depends on where the book lives. */
+function emptyCollectionNote() {
+  const mode = Store.mode();
+  if (mode === "local") {
+    return notice("ok", "No bottles yet. Tap Add to put your first one in, or to score a pour at a bar.");
+  }
+  if (mode === "onedrive") {
+    return notice("warn", "No collection yet. Open Sync and refresh once while you have a connection.");
+  }
+  return modeChooser();
+}
+
+function localCard(q) {
+  const own = Store.spirits().filter((s) => s._local).length;
+  return el("div", { class: "card" },
+    el("div", { class: "state" },
+      el("span", { class: "dot on" }), el("span", {}, "Kept on this phone")),
+    el("div", { class: "muted" },
+      [[Store.spirits().length, "bottle"], [Store.encounters().length, "bar pour"],
+       [Store.cards().length, "sitting"]].map(([n, word]) => `${n} ${word}${n === 1 ? "" : "s"}`).join(" · ")
+      + (own !== Store.spirits().length ? ` (${own} added here)` : "")),
+    el("div", { class: "muted", style: "margin-top:8px" },
+      "Nothing is uploaded or fetched. This phone holds the only copy, so export a backup now and "
+      + "then — and keep the app on your Home Screen: iOS may clear a web page's storage when it "
+      + "goes unused for weeks."),
+    q.length
+      ? el("div", { class: "muted", style: "margin-top:8px" },
+          `${q.length} item${q.length === 1 ? "" : "s"} from before ${q.length === 1 ? "is" : "are"} `
+          + "still waiting, and will upload if you switch back to OneDrive.")
+      : null);
+}
+
+/** A copy out, and a copy back in. The share sheet where the phone has one (Save to Files,
+    AirDrop, Mail); otherwise a download; and inside the native app, where neither may exist,
+    the copy the app already keeps in Files. */
+async function exportBook() {
+  const text = Store.exportAll();
+  const name = `tasting-book-${Store.today()}.json`;
+  try {
+    const file = new File([text], name, { type: "application/json" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: "Tasting Book backup" });
+      return;
+    }
+  } catch (e) {
+    if (e && e.name === "AbortError") return;              // the sheet was dismissed
+  }
+  if (Native.caps.has("backup")) {
+    window.alert("Your book is already saved as tasting-book.json in the Files app, under "
+      + "On My iPhone → Tasting Book. Copy that file to keep a backup.");
+    return;
+  }
+  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  const a = el("a", { href: url, download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+function importBook(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    if (!window.confirm("Replace everything on this phone with this backup?\n\n"
+      + "Bottles, sittings and settings here are overwritten by the file's.")) return;
+    const problem = Store.importAll(String(reader.result || ""));
+    if (problem) { window.alert(problem); return; }
+    location.reload();
+  };
+  reader.onerror = () => window.alert("Could not read that file.");
+  reader.readAsText(file);
+}
+
+function backupCard() {
+  const picker = el("input", { type: "file", accept: "application/json,.json", hidden: "",
+    "aria-label": "Choose a backup file" });
+  picker.addEventListener("change", () => importBook(picker.files && picker.files[0]));
+  return el("div", { class: "card" },
+    el("div", { class: "muted", style: "margin-bottom:8px" }, "Backup"),
+    el("div", { class: "muted" }, "A file with everything this phone holds. Import puts one back."),
+    el("div", { class: "actions" },
+      el("button", { class: "btn", type: "button", onclick: exportBook }, "Export"),
+      el("button", { class: "btn ghost", type: "button", onclick: () => picker.click() }, "Import")),
+    picker);
+}
+
+/** The monthly mean of this phone's own counted cards — what the PC publishes as the
+    calibration series, worked out here when there is no PC to publish it. */
+function localCalibration() {
+  const by = new Map();
+  for (const c of Store.cards()) {
+    if (!c.include_in_average || c.total === null || c.total === undefined || !c.date) continue;
+    const month = String(c.date).slice(0, 7);
+    if (!by.has(month)) by.set(month, []);
+    by.get(month).push(c.total);
+  }
+  return [...by.keys()].sort().map((month) => {
+    const v = by.get(month);
+    return { month, mean: Math.round((v.reduce((x, y) => x + y, 0) / v.length) * 10) / 10, n: v.length };
+  });
+}
+
+/** A bottle added on this phone is this phone's to keep: its status, its details, and — while
+    nothing has been scored against it — its place in the list. A Finished one follows the same
+    rule as everywhere else: no new scores, and its sittings stay under the Finished chip. */
+function localBottleCard(s, sittings) {
+  const set = (status) => {
+    Store.updateLocalSpirit(s.code, { status });
+    openDetail(s.code, { push: false });
+  };
+  return el("div", { class: "card", style: "margin-top:12px" },
+    el("div", { class: "muted", style: "margin-bottom:8px" }, "This bottle"),
+    el("div", { class: "chips" }, ...["Unopened", "Opened", "Finished"].map((st) =>
+      el("button", { type: "button", class: `chip${s.status === st ? " active" : ""}`,
+        onclick: () => set(st) }, st))),
+    el("div", { class: "actions", style: "margin-top:4px" },
+      el("button", { class: "btn small ghost", type: "button", onclick: () => {
+        app.editCode = s.code;
+        renderAdd();
+        show("add", "Edit bottle", { push: true });
+      } }, "Edit details"),
+      sittings ? null : el("button", { class: "btn small danger", type: "button", onclick: () => {
+        if (!window.confirm(`Remove ${s.name || s.code} from your collection?`)) return;
+        Store.removeLocalSpirit(s.code);
+        back();
+        if (currentScreen() !== "collection") setTab(app.tab);
+      } }, "Remove")));
+}
+
 function renderSync() {
   const online = navigator.onLine;
   const q = Store.queue();
   const m = Store.meta();
   const signedIn = Graph.isSignedIn();
   const S = Sync.state;
+
+  // Phone-only: no account, no queue, nothing to fetch. The screen is the choice itself, what
+  // the phone holds, and the way to get a copy out of it.
+  if (Store.isLocal()) {
+    fill(screens.sync, modeCard(), localCard(q), backupCard());
+    return;
+  }
 
   const rows = q.length
     ? q.map((i) => el("div", { class: `qrow${i.error ? " failed" : ""}` },
@@ -770,6 +1018,7 @@ function renderSync() {
   })();
 
   fill(screens.sync,
+    modeCard(),
     !Graph.configured()
       ? notice("warn", "Sign-in is not configured yet. Add the Application (client) ID from "
           + "guide/SETUP.md Part 3 to config.js and redeploy. Scoring works without it — cards queue "
@@ -828,7 +1077,8 @@ function renderSync() {
       q.length ? el("div", { class: "actions" },
         el("button", { class: "btn wide", type: "button",
                        disabled: !online || !signedIn || S.running,
-                       onclick: flush }, "Upload now")) : null));
+                       onclick: flush }, "Upload now")) : null),
+    backupCard());
 }
 
 // ---------------------------------------------------------------- sync wiring
@@ -894,7 +1144,10 @@ async function signInFlow() {
     // before anything is shown, and that has always been silent; keep it that way there.
     if (!e.cancelled && Native.caps.has("auth")) window.alert(`Sign-in failed: ${e.message || e}`);
   }
-  if (Graph.isSignedIn()) await refresh();              // pulls, then pushes the queue
+  if (Graph.isSignedIn()) {
+    if (!Store.meta().mode) { Store.setMode("onedrive"); applyMode(); }   // signing in is the choice
+    await refresh();                                      // pulls, then pushes the queue
+  }
   else if (currentScreen() === "sync") renderSync();
 }
 
@@ -907,7 +1160,7 @@ function updateBadge() {
   const n = Store.queueCount();
   const badge = document.getElementById("tab-badge");
   badge.textContent = String(n);
-  badge.hidden = n === 0;
+  badge.hidden = n === 0 || Store.isLocal();            // nothing is waiting when nothing is sent
 }
 
 /** The header's one word of status and the thin bar beneath it. Offline outranks syncing, and
@@ -978,7 +1231,7 @@ async function boot() {
   }
 
   updateNet();
-  updateBadge();
+  applyMode();
   setTab("collection");
 
   // The shell ships the bundle inside the app and updates it with the app; a service worker in
@@ -989,7 +1242,12 @@ async function boot() {
 
   // Not awaited: the screen is already up with what the phone holds, and the header's bar
   // says the rest is on its way.
-  if (await Graph.resume()) autoSync("boot");
+  // A phone-only book never signs in: no sign-in library to load, no token to ask for.
+  if (Store.isLocal()) return;
+  if (await Graph.resume()) {
+    if (!Store.meta().mode) Store.setMode("onedrive");  // signed in before the choice existed
+    autoSync("boot");
+  }
 }
 
 boot();

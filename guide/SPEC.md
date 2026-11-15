@@ -662,6 +662,11 @@ reads as a website someone bookmarked, and it breaks in specific ways in the bar
 - `<meta name="apple-mobile-web-app-capable" content="yes">` plus `mobile-web-app-capable`, and a
   180×180 `apple-touch-icon`. Installed, it launches without Safari chrome.
 - `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">`.
+- **Two arrangements.** `onedrive` (this section as written) or `local`: the phone alone holds
+  the book. In `local` nothing is queued or fetched and no account is needed; bottles are added
+  on the phone with `L-n` codes, which the PC never issues and which are never reissued; a backup
+  is exported and imported as one JSON file. A snapshot from the PC never removes an `L-` bottle.
+  A phone that has ever synced is `onedrive` without being asked.
 - **No page zoom.** This is an app, not a page: nothing on it needs the whole screen magnified,
   and a double-tap that zoomed was the one gesture that gave the web away. The native shell's
   WKWebView and the home-screen install honour the two scale flags; a Safari tab has ignored them

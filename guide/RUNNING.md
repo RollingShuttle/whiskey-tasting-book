@@ -395,6 +395,31 @@ cannot wait.
 
 ---
 
+### Sharing it with a friend — no PC, no OneDrive
+
+The phone app can run entirely on its own. Nothing to install on a computer and no Microsoft
+account: the bottles and the scores live on that phone.
+
+1. Send your friend the Pages address from Step C. They open it in **Safari**, tap **Share**, then
+   **Add to Home Screen**.
+2. The first screen asks where the book should live. They tap **On this phone only**.
+3. **Add → Bottle I bought** puts a bottle straight into their collection. **Add → Bar pour** scores
+   something they do not own. Everything else — scoring, the table, compare, analysis — works as
+   it does for you.
+4. The last tab is called **Data** in this mode. **Export** makes a backup file (Save to Files,
+   AirDrop, Mail); **Import** puts one back, on the same phone or a new one.
+
+Two things to tell them. The phone holds the only copy, so export a backup now and then. And keep
+it on the Home Screen: iOS can clear the storage of a web page that goes unused for weeks, but
+leaves an installed one alone.
+
+Your own phone is unaffected: one that has ever synced stays on **OneDrive**, and the same last
+tab shows both choices under *Where your book lives*. Switching is a tap and a confirmation. What
+is scored in phone-only mode stays on the phone — it is not sent to the PC later — and bottles
+added on the phone are never removed by a sync.
+
+---
+
 ## Part 3 — Living with it
 
 ### The daily rhythm
@@ -423,6 +448,9 @@ cannot wait.
   Refresh there). Switching away and straight back does not fetch again — the phone waits a couple
   of minutes between automatic pulls, and only downloads a file that has actually changed.
 - **The Sync screen says "offline".** That is just the phone reporting honestly. Keep scoring.
+- **A pour scored at a bar is not in the PC's list of bottles.** It was never a bottle. On the PC
+  it is under the **Bar** chip of the Score screen (or type its name in the search), and in the
+  Table as an *Encounter* row; clicking it opens its sittings.
 
 ### If something looks wrong
 

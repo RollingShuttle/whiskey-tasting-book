@@ -257,6 +257,21 @@ label.field > span { color: var(--muted); font-size: 0.78rem; }
 .qrow.failed { border: 1px solid #6a3a2a; }
 .qerr { color: var(--warn); font-size: 0.72rem; white-space: normal; margin-top: 2px; }
 
+/* Where the book lives: two options side by side, the current one lit. */
+.mode-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mode-opt {
+  min-height: 60px; padding: 10px 12px; text-align: left; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--muted);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.mode-opt b { color: var(--text); font-size: 0.95rem; font-weight: 600; }
+.mode-opt span { font-size: 0.72rem; }
+.mode-opt.active {
+  border-color: var(--brass-bright);
+  background: color-mix(in srgb, var(--brass) 14%, var(--surface-2));
+}
+.mode-opt.active b { color: var(--brass-bright); }
+
 /* The sync checklist: a row per step, its mark saying pending, running, done or failed. */
 .steps { list-style: none; margin: 10px 0 2px; padding: 0; }
 .step {

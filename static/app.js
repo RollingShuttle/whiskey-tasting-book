@@ -148,6 +148,7 @@ async function loadSpirits() {
   try {
     const data = await api("/api/spirits");
     state.spirits = data.spirits || [];
+    state.encounters = data.encounters || [];      // bar pours: listed, never scored from here
     renderResults();
   } catch (e) {
     const pill = document.getElementById("syncpill");
@@ -564,11 +565,18 @@ function renderResults() {
   // that were scored while they lasted are listed under their own chip, where a click opens
   // their sittings; the ones that never were have nothing to show and appear nowhere here.
   const live = state.spirits.filter((s) => !goneSpirit(s));
+  // A bar pour is scored on the phone, at the bar; from here it can only be looked up. It has
+  // its own chip, and a search under All finds it too — the name is what a person types, and
+  // typing it used to find nothing at all.
+  const pours = state.encounters || [];
   let list;
   if (state.filter === "gone") {
     list = state.spirits.filter((s) => goneSpirit(s) && s.sittings > 0);
+  } else if (state.filter === "Encounter") {
+    list = pours;
   } else {
     list = state.filter === "all" ? live : live.filter((s) => s._sheet === state.filter);
+    if (state.filter === "all" && terms.length) list = list.concat(pours);
   }
   if (terms.length) {
     list = list.filter((s) => {
@@ -583,6 +591,7 @@ function renderResults() {
   if (count) {
     count.textContent = !state.spirits.length ? ""
       : state.filter === "gone" ? `${list.length} finished, with sittings`
+      : state.filter === "Encounter" ? `${list.length} bar pour${list.length === 1 ? "" : "s"}`
       : list.length === live.length ? `${list.length} spirits`
       : `${list.length} of ${live.length}`;
   }
@@ -591,6 +600,8 @@ function renderResults() {
     ul.append(el("li", { class: "pr-empty" },
       !state.spirits.length ? "No spirits loaded."
       : state.filter === "gone" && !terms.length ? "No finished bottle was scored while it lasted."
+      : state.filter === "Encounter" && !terms.length
+        ? "No bar pour yet. They are scored on the phone, at the bar, and appear here once OneDrive has brought them down."
       : "No match."));
     return;
   }
@@ -600,12 +611,16 @@ function renderResults() {
                   s.release_year ? String(Math.round(s.release_year)) : null]
       .filter(Boolean).join(" · ");
     const gone = goneSpirit(s);
-    ul.append(el("li", { role: "option", class: gone ? "gone" : null,
+    const bar = s._sheet === "Encounter";
+    const record = gone || bar;                    // opens its sittings rather than a new card
+    ul.append(el("li", { role: "option", class: record ? "gone" : null,
                          style: `border-left-color:${accentFor(s.type)}`,
-                         title: gone ? `${s.status} — opens its record` : null,
-                         onclick: () => (gone ? showSittingsFor(s.code) : addPour(s.code)) },
+                         title: gone ? `${s.status} — opens its record`
+                              : bar ? "Bar pour — opens its sittings" : null,
+                         onclick: () => (record ? showSittingsFor(s.code) : addPour(s.code)) },
       el("span", { class: "pr-name" }, s.name || s.display_name),
       gone ? el("span", { class: "pr-tag" }, s.status) : null,
+      bar ? el("span", { class: "pr-tag" }, "Bar pour") : null,
       el("span", { class: "pr-dist" }, s.distillery || ""),
       el("span", { class: "pr-meta" }, meta),
       el("span", { class: "pr-code" }, s.code)));
@@ -740,9 +755,15 @@ function renderSession() {
     filtered to the one code — where its sittings are read, corrected or removed. */
 function showSittingsFor(code) {
   const sp = state.spirits.find((s) => s.code === code);
+  const pour = (state.encounters || []).find((s) => s.code === code);
   TableView.focusTastings(code);
   showView("table");
-  if (sp) {
+  if (pour) {
+    showStatus("ok", `${pour.code} is a bar pour, scored on the phone. `
+      + (pour.sittings
+        ? `${pour.sittings === 1 ? "This is its sitting" : `These are its ${pour.sittings} sittings`}.`
+        : "Its card has not arrived yet — OneDrive may still be bringing it down."), true);
+  } else if (sp) {
     showStatus("ok", `${sp.code} is marked ${sp.status}: nothing new can be scored against it. `
       + `${sp.sittings === 1 ? "This is the sitting" : `These are the ${sp.sittings} sittings`} `
       + "it had while it lasted.", true);

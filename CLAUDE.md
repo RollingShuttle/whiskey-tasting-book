@@ -59,7 +59,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 575 tests, all passing
+python -m unittest discover -s tests    # 594 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -165,6 +165,20 @@ has no `document` and no `app` so `tests/test_phone_js.py` runs it in V8. `Store
 per key (invalidated on write) — the collection screen used to parse the whole snapshot once per
 row. The page does not zoom: viewport `maximum-scale=1, user-scalable=no` for the shell and the
 home-screen install, `html { touch-action: pan-x pan-y }` for Safari.
+**The phone has two arrangements** (14 Nov 2026), chosen under *Where your book lives* on the
+last tab and asked on the first screen of a phone that has neither chosen nor ever synced.
+`onedrive` is everything above. `local` ("This phone only") is for someone with no PC and no
+OneDrive: `Store.enqueue` is a no-op, `Sync.start` skips, `boot()` never loads MSAL, the Add
+form's bottle goes straight into the snapshot through `Store.addLocalSpirit` with an **`L-n`**
+code (a prefix the PC never issues; `meta.localHigh` keeps it from being reissued), and the tab
+is called Data and offers Export / Import (`Store.exportAll` / `importAll`, the same key-by-key
+shape as the shell's backup file). `Store.setSnapshot` carries `_local` bottles across every
+sync, so nothing typed on the phone disappears; cards scored in local mode carry `_local` and
+are never uploaded. `Store.mode()` infers `onedrive` for a phone with a `lastSync` or a snapshot —
+the owner's phone must never be asked. On the PC, bar pours ride in `/api/spirits` under
+`encounters` (never among `spirits`): the Score picker lists them under a **Bar** chip and finds
+them in a search, and a click opens their sittings in the table.
+
 Guarded by `tests/test_phone.py`, which checks the §9.2 rules that only fail on a phone: safe-area
 insets on every edge, 100dvh not 100vh, 16 px inputs, a 44 px score strip with
 `touch-action: none`, the tab bar hiding for the keyboard, and every precached file existing.

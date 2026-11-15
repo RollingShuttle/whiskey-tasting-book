@@ -392,5 +392,107 @@ class TestSync(unittest.TestCase):
         self.assertEqual(ps, sorted(ps), "progress never goes backwards")
 
 
+
+@unittest.skipIf(MiniRacer is None, "pip install mini-racer to run the phone scripts for real")
+class TestPhoneOnly(unittest.TestCase):
+    """The book can live on the phone alone — for someone with no PC and no OneDrive — and the
+    OneDrive arrangement must go on working exactly as it did for the phone that already uses it."""
+
+    def setUp(self):
+        self.ctx = engine()
+
+    def test_a_phone_that_has_synced_is_on_onedrive_without_being_asked(self):
+        self.assertIsNone(self.ctx.eval("Store.mode()"), "a new phone has not chosen")
+        self.ctx.eval("Store.setMeta({lastSync: new Date().toISOString()})")
+        self.assertEqual(self.ctx.eval("Store.mode()"), "onedrive")
+        self.assertFalse(self.ctx.eval("Store.isLocal()"))
+        fresh = engine()
+        fresh.eval("Store.setSnapshot({spirits: [{code: 'B-1'}]})")
+        self.assertEqual(fresh.eval("Store.mode()"), "onedrive", "a collection came from somewhere")
+
+    def test_the_choice_is_remembered(self):
+        self.ctx.eval("Store.setMode('local')")
+        self.assertEqual(self.ctx.eval("Store.mode()"), "local")
+        self.ctx.eval("Store.setMode('onedrive')")
+        self.assertEqual(self.ctx.eval("Store.mode()"), "onedrive")
+
+    def test_phone_only_queues_nothing_and_starts_no_sync(self):
+        signed_in(self.ctx, {})
+        self.ctx.eval("Store.setMode('local')")
+        self.ctx.eval("Store.submitScorecard({spirit_id: 'L-1', scores: {}});"
+                      "Store.submitEncounter({name: 'A Pour'});")
+        self.assertEqual(self.ctx.eval("Store.queueCount()"), 0)
+        self.assertEqual(self.ctx.eval("Store.cards().length"), 1, "the card itself is kept")
+        self.assertTrue(self.ctx.eval("Store.cards()[0]._local"))
+        self.assertEqual(self.ctx.eval("Store.encounters().length"), 1)
+        for reason in ("manual", "boot", "upload", "foreground"):
+            r = settle(self.ctx.eval(f"Sync.start({{reason: '{reason}'}})"))
+            self.assertEqual(r["skipped"], "local", reason)
+        self.assertEqual(self.ctx.eval("__gets + __puts + __lists"), 0)
+
+    def test_onedrive_still_queues_exactly_as_before(self):
+        self.ctx.eval("Store.setMode('onedrive'); Store.submitScorecard({spirit_id: 'B-1', scores: {}})")
+        self.assertEqual(self.ctx.eval("Store.queueCount()"), 1)
+        self.assertFalse(self.ctx.eval("'_local' in Store.cards()[0]"))
+
+    def test_a_bottle_added_here_gets_a_code_the_pc_never_issues(self):
+        self.ctx.eval("Store.setMode('local')")
+        a = self.ctx.eval("Store.addLocalSpirit({distillery: 'A Distillery', name: 'First', proof: '101', age: '12', paid: '80'})")
+        self.assertEqual((a["code"], a["display_name"], a["proof"], a["age"], a["paid"]),
+                         ("L-1", "A Distillery First", 101, 12, 80))
+        self.assertTrue(a["owned"])
+        self.assertEqual((a["status"], a["_sheet"]), ("Opened", "Bottle"))
+        self.assertEqual(self.ctx.eval("Store.addLocalSpirit({name: 'Second', age: 'NAS'}).code"), "L-2")
+        self.assertEqual(self.ctx.eval("Store.spirits()[1].age_label"), "NAS")
+        self.assertIsNone(self.ctx.eval("Store.spirits()[1].age"))
+
+    def test_a_removed_bottles_code_is_never_reissued(self):
+        """The same rule the PC keeps, for the same reason: reviews name a bottle by its code."""
+        self.ctx.eval("Store.addLocalSpirit({name: 'One'}); Store.addLocalSpirit({name: 'Two'})")
+        self.assertTrue(self.ctx.eval("Store.removeLocalSpirit('L-2')"))
+        self.assertEqual(self.ctx.eval("Store.addLocalSpirit({name: 'Three'}).code"), "L-3")
+        self.assertEqual(list(self.ctx.eval("Store.spirits().map(s => s.code)")), ["L-1", "L-3"])
+
+    def test_finishing_a_bottle_takes_it_out_of_stock_and_editing_keeps_the_rest(self):
+        self.ctx.eval("Store.addLocalSpirit({distillery: 'D', name: 'One', proof: '90'})")
+        done = self.ctx.eval("Store.updateLocalSpirit('L-1', {status: 'Finished'})")
+        self.assertEqual((done["status"], done["owned"], done["proof"], done["name"]),
+                         ("Finished", False, 90, "One"))
+        back = self.ctx.eval("Store.updateLocalSpirit('L-1', {status: 'Opened', name: 'Renamed'})")
+        self.assertEqual((back["owned"], back["display_name"]), (True, "D Renamed"))
+
+    def test_only_a_bottle_added_here_can_be_changed_here(self):
+        self.ctx.eval("Store.setSnapshot({spirits: [{code: 'B-1', name: 'From the PC'}]})")
+        self.assertIsNone(self.ctx.eval("Store.updateLocalSpirit('B-1', {name: 'Mine now'})"))
+        self.assertFalse(self.ctx.eval("Store.removeLocalSpirit('B-1')"))
+        self.assertEqual(self.ctx.eval("Store.spirits()[0].name"), "From the PC")
+
+    def test_a_sync_never_sweeps_away_a_bottle_added_here(self):
+        self.ctx.eval("Store.addLocalSpirit({name: 'Mine'})")
+        self.ctx.eval("Store.setSnapshot({spirits: [{code: 'B-1'}, {code: 'B-2'}]})")
+        self.assertEqual(list(self.ctx.eval("Store.spirits().map(s => s.code)")), ["B-1", "B-2", "L-1"])
+        self.ctx.eval("Store.setSnapshot({spirits: [{code: 'B-1'}]})")
+        self.assertEqual(list(self.ctx.eval("Store.spirits().map(s => s.code)")), ["B-1", "L-1"],
+                         "and it is not duplicated by the next one")
+
+    def test_a_backup_goes_out_and_comes_back(self):
+        self.ctx.eval("Store.setMode('local'); Store.addLocalSpirit({name: 'Kept'});"
+                      "Store.submitScorecard({spirit_id: 'L-1', scores: {}});"
+                      "var backup = Store.exportAll();")
+        other = engine()
+        other.eval("Store.addLocalSpirit({name: 'Overwritten'}); Store.spirits()")     # memoised
+        self.assertIsNone(other.eval("Store.importAll(" + json.dumps(self.ctx.eval("backup")) + ")"))
+        self.assertEqual(other.eval("Store.spirits()[0].name"), "Kept", "read through the memo")
+        self.assertEqual(other.eval("Store.cards().length"), 1)
+        self.assertEqual(other.eval("Store.mode()"), "local")
+
+    def test_a_wrong_file_changes_nothing(self):
+        self.ctx.eval("Store.addLocalSpirit({name: 'Still here'})")
+        for bad in ("not json at all", "[1, 2]", '{"something": "else"}',
+                    '{"wtb.snapshot": "{broken"}'):
+            self.assertIsInstance(self.ctx.eval("Store.importAll(" + json.dumps(bad) + ")"), str, bad)
+            self.assertEqual(self.ctx.eval("Store.spirits()[0].name"), "Still here", bad)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

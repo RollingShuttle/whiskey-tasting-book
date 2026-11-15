@@ -236,9 +236,11 @@ const Sync = (() => {
   }
 
   /** Every trigger comes through here. Resolves to the state when a run happened, and to
-      {skipped: why} when there was nothing to do — offline, signed out, or too soon with an
-      empty queue. Never rejects. */
+      {skipped: why} when there was nothing to do — a phone-only book, offline, signed out, or
+      too soon with an empty queue. Never rejects. */
   function start({ reason = "manual" } = {}) {
+    // A phone-only book has nothing to fetch and nowhere to send: no trigger starts a run.
+    if (Store.isLocal()) return Promise.resolve({ skipped: "local" });
     if (inflight) {
       // A card submitted mid-run may have missed the upload step; one more pass catches it.
       if (reason === "upload") {

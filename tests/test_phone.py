@@ -996,5 +996,55 @@ class TestSyncWiring(unittest.TestCase):
         self.assertIn("window.scrollY", block)
 
 
+
+class TestPhoneOnlyWiring(unittest.TestCase):
+    """The store's half of phone-only mode runs for real in test_phone_js.py. This pins what the
+    page does with it, and that the OneDrive road is still there to be chosen."""
+
+    def setUp(self):
+        self.src = code("app.js")
+
+    def test_both_arrangements_are_offered(self):
+        block = self.src[self.src.index("function modeCard("):self.src.index("function modeChooser(")]
+        self.assertIn('opt("local", "This phone only"', block)
+        self.assertIn('opt("onedrive", "OneDrive"', block)
+        sync = self.src[self.src.index("function renderSync("):self.src.index("const refresh =")]
+        self.assertEqual(sync.count("modeCard()"), 2, "shown in both modes, so either can be left")
+        self.assertIn("onclick: signInFlow", sync, "the OneDrive screen still signs in")
+        self.assertIn("onclick: refresh", sync)
+
+    def test_a_phone_that_has_not_chosen_is_asked_on_its_first_screen(self):
+        block = self.src[self.src.index("function emptyCollectionNote("):self.src.index("function localCard(")]
+        self.assertIn("return modeChooser()", block)
+        self.assertIn("emptyCollectionNote()", self.src[self.src.index("function renderCollection("):])
+
+    def test_leaving_onedrive_says_what_it_costs(self):
+        block = self.src[self.src.index("function chooseMode("):self.src.index("function applyMode(")]
+        self.assertEqual(block.count("window.confirm"), 2, "each direction is confirmed")
+        self.assertIn("not sent to the PC later", block)
+
+    def test_phone_only_adds_a_bottle_straight_in_and_onedrive_still_queues_it(self):
+        block = self.src[self.src.index("function renderAdd("):self.src.index("function startBarPour(")]
+        self.assertIn("Store.addLocalSpirit(bottleFields(fields))", block)
+        self.assertIn('Store.submitPending("Bottle", filled)', block)
+        self.assertLess(block.index("if (local) {"), block.index("Store.submitPending("),
+                        "the phone-only branch must return before the approval queue")
+
+    def test_a_phone_only_book_loads_no_sign_in_library(self):
+        boot = self.src[self.src.index("async function boot("):]
+        self.assertLess(boot.index("if (Store.isLocal()) return;"), boot.index("Graph.resume()"))
+
+    def test_a_backup_can_be_taken_and_put_back(self):
+        self.assertIn("Store.exportAll()", self.src)
+        self.assertIn("Store.importAll(", self.src)
+        block = self.src[self.src.index("function importBook("):self.src.index("function backupCard(")]
+        self.assertLess(block.index("window.confirm"), block.index("Store.importAll("),
+                        "an import overwrites the phone; it asks first")
+        self.assertIn('id="tab-sync-label"', text("index.html"))
+
+    def test_a_phone_only_card_is_not_waiting_for_anything(self):
+        self.assertIn("!c._sent && !c._local", self.src)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

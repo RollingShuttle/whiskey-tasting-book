@@ -503,14 +503,33 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
         # How many sittings each spirit has on record — drafts included, tombstones not. The picker
         # needs it for one decision: a Finished bottle with sittings is still listed, under its own
         # heading, because the reviews outlive the bottle; one without has nothing to show.
+        alias = _encounter_alias(journal)
         sittings = {}
         for t in journal.tastings():
-            sittings[t["spirit_id"]] = sittings.get(t["spirit_id"], 0) + 1
+            code = alias.get(t["spirit_id"], t["spirit_id"])
+            sittings[code] = sittings.get(code, 0) + 1
+        # Bar pours ride in their own list, not among the spirits: they are scored on the phone,
+        # at the bar, and nothing here can pour one — but a pour that was scored has a record,
+        # and the picker is where a person looks for it. Without this a bar pour was on the
+        # table and in the analysis and could not be found from the first screen at all.
+        pours = []
+        for e in journal.encounters():
+            if not e.get("code") or e.get("linked_bottle_code"):
+                continue                      # folded into the bottle it became (§2.1)
+            name = " ".join(p for p in (e.get("distillery"), e.get("name")) if p).strip()
+            pours.append({
+                "code": e["code"], "display_name": name or e.get("name"), "name": e.get("name"),
+                "distillery": e.get("distillery"), "type": e.get("type"),
+                "region": e.get("region"), "age": e.get("age"), "proof": e.get("proof"),
+                "venue": e.get("venue"), "_sheet": "Encounter", "owned": False, "status": None,
+                "sittings": sittings.get(e["code"], 0),
+            })
         return jsonify({
             "count": len(catalog),
             "generated_from": catalog.generated_from,
             "next_code": catalog.next_code,
             "spirits": [dict(sp, sittings=sittings.get(sp["code"], 0)) for sp in catalog.all()],
+            "encounters": pours,
         })
 
     @app.get("/api/spirit/<code>")
