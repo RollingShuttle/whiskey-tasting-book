@@ -22,6 +22,7 @@ ROOT = HERE.parent
 sys.path[:0] = [str(HERE), str(ROOT), str(ROOT / "tools")]
 
 import json
+import tempfile
 import unittest
 
 try:
@@ -64,7 +65,7 @@ var fetch = function () { return Promise.reject(new Error("no network in tests")
 var console = { log: function () {}, warn: function () {}, error: function () {} };
 """
 
-SHARED = ("config.js", "native.js", "store.js", "graph.js", "sync.js")
+SHARED = ("config.js", "native.js", "store.js", "graph.js", "sync.js", "xlsx.js")
 
 
 def engine():
@@ -556,6 +557,216 @@ class TestTypesAndAges(unittest.TestCase):
         self.assertEqual([old["age"], old["age_label"]], [18, None])
         back = self.js(f"Store.updateLocalSpirit('{gin['code']}', {{age: 'NAS'}})")
         self.assertEqual([back["age"], back["age_label"]], [None, "NAS"])
+
+
+BOTTLE_COLUMNS = ["Bottle Code", "Distillery", "Name", "Type", "Region", "Notes", "Release Year", "Age",
+                  "Rarity", "Proof", "ABV", "Entry Proof", "Barrel Proof", "Proof Diff", "Conc. Ratio",
+                  "Size (ml)", "Status", "Paid"]
+MINIATURE_COLUMNS = ["Bottle Code", "Distillery", "Name", "Notes", "Type", "Region", "Age", "Proof", "ABV",
+                     "Size (ml)", "Status"]
+SAMPLE_COLUMNS = ["Bottle Code", "Distillery", "Name", "Special note", "Comment", "Type", "Region",
+                  "Release Year", "Age", "Rarity", "Proof", "ABV", "Entry Proof", "Barrel Proof",
+                  "Proof Diff", "Conc. Ratio", "Size(oz)", "Bottle Type", "Quantity", "Status", "Picture"]
+AWKWARD = 'Twelve & <Co> "Cask" café ☕ 🥃'
+PHONE_BOTTLES = [
+    {"code": "L-1", "name": "House Red", "distillery": None, "type": "Red Wine", "region": "France",
+     "age": None, "age_label": "N/A", "proof": 27, "size_ml": 750, "status": "Opened", "paid": 18.5,
+     "_sheet": "Bottle", "_local": True},
+    {"code": "L-2", "name": AWKWARD, "distillery": "A Distillery", "type": "Single Malt",
+     "region": "Scotland", "age": 12, "age_label": None, "proof": 92, "size_ml": 700,
+     "status": "Unopened", "paid": 60, "_sheet": "Bottle", "_local": True},
+    {"code": "L-3", "name": "Gone", "distillery": "A Distillery", "type": "Rye", "age": None,
+     "age_label": "NAS", "proof": 100, "status": "Finished", "paid": 40, "_sheet": "Bottle", "_local": True},
+]
+TYPES = ["Bourbon", "Rye", "Single Malt", "Gin", "Red Wine"]
+
+
+@unittest.skipIf(MiniRacer is None, "pip install mini-racer to run the phone scripts for real")
+class TestExcelExport(unittest.TestCase):
+    """The phone writes its collection out as an .xlsx with no library: its own zip, its own
+    deflate, its own XML. Every byte of that is checked here by something that did not write it —
+    zlib, zipfile, openpyxl — and the shape of it by the PC's own loader, which is the only
+    honest meaning of "the same structure as the collection workbook"."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ctx = engine()
+        cls.ctx.eval(
+            "var hex = function (b) { var s = ''; for (var i = 0; i < b.length; i++)"
+            " s += (b[i] < 16 ? '0' : '') + b[i].toString(16); return s; };"
+            "var unhex = function (h) { var b = new Uint8Array(h.length / 2);"
+            " for (var i = 0; i < b.length; i++) b[i] = parseInt(h.substr(i * 2, 2), 16); return b; };")
+        cls.tmp = tempfile.TemporaryDirectory(prefix="xlsx-test-")
+        cls.addClassCleanup(cls.tmp.cleanup)
+        cls.n = 0
+
+    def book(self, spirits=PHONE_BOTTLES, types=TYPES):
+        """The workbook the phone would write, as a file on disk."""
+        data = bytes.fromhex(self.ctx.eval(
+            f"hex(Xlsx.collectionBook({json.dumps(spirits)}, {{types: {json.dumps(types)}}}))"))
+        type(self).n += 1
+        path = Path(self.tmp.name) / f"book-{self.n}" / "Tasting Book Collection.xlsx"
+        path.parent.mkdir()
+        path.write_bytes(data)
+        return path
+
+    def load(self, path):
+        import collection
+        return collection.Collection(path).load()
+
+    # -- the bytes --------------------------------------------------------
+    def test_the_compression_is_what_zlib_reads(self):
+        import random
+        import zlib
+        rnd = random.Random(7)
+        rows = b"".join(b'<row r="%d"><c><f>IF(K%d="","",K%d/2)</f></c></row>' % (r, r, r)
+                        for r in range(9, 900))
+        cases = [b"", b"a", b"abc", b"abcabcabc" * 400, b"x" * 100000, rows,
+                 bytes(rnd.randrange(256) for _ in range(70000)),       # nothing to find
+                 bytes(rnd.randrange(4) for _ in range(120000)),        # matches everywhere
+                 bytes(rnd.randrange(256) for _ in range(40000)) * 3]   # a match 40,000 back: too far
+        size = {}
+        for c in cases:
+            out = bytes.fromhex(self.ctx.eval(f"hex(Xlsx.deflate(unhex('{c.hex()}')))"))
+            self.assertEqual(zlib.decompress(out, -15), c, f"{len(c)} bytes did not survive")
+            size[c] = len(out)
+        self.assertLess(size[rows], len(rows) / 5, "rows of one formula are what a sheet is made of")
+
+    def test_the_text_is_utf8_whatever_is_in_it(self):
+        for s in ("", "plain", AWKWARD, "\ud83e\udd43 pair", "lone \ud83e surrogate"):
+            got = bytes.fromhex(self.ctx.eval(f"hex(Xlsx.utf8({json.dumps(s)}))"))
+            want = s.encode("utf-16", "surrogatepass").decode("utf-16", "replace").encode("utf-8")
+            self.assertEqual(got, want, s)
+
+    def test_the_file_is_a_sound_zip(self):
+        import zipfile
+        with zipfile.ZipFile(self.book()) as z:
+            self.assertIsNone(z.testzip(), "a CRC or a length is wrong")
+            names = z.namelist()
+            self.assertEqual(names[0], "[Content_Types].xml")
+            for n in (1, 2, 3):
+                self.assertIn(f"xl/worksheets/sheet{n}.xml", names)
+                self.assertIn(f"xl/tables/table{n}.xml", names)
+            self.assertTrue(all(i.compress_type in (0, 8) for i in z.infolist()))
+            self.assertLess(sum(i.compress_size for i in z.infolist()),
+                            sum(i.file_size for i in z.infolist()) / 4, "it is meant to be sent")
+
+    # -- the shape --------------------------------------------------------
+    def test_the_pc_reads_it_as_it_reads_the_master(self):
+        coll = self.load(self.book())
+        shape = {s: (t.name, t.ref, t.columns, sorted(t.calc_columns)) for s, t in coll.tables.items()}
+        self.assertEqual(shape, {
+            "Bottle": ("Collection", "B8:S308", BOTTLE_COLUMNS, ["Conc. Ratio", "Proof Diff"]),
+            "Miniature": ("Collection4", "B8:L308", MINIATURE_COLUMNS, ["ABV"]),
+            "Sample": ("SampleList", "B8:V603", SAMPLE_COLUMNS, ["ABV", "Conc. Ratio", "Proof Diff"]),
+        })
+        self.assertEqual(list(coll.tables), ["Bottle", "Miniature", "Sample"], "sheet order")
+        formulas = coll.formula_columns("Bottle")
+        self.assertEqual({k: (v["declared"], v["uses_a1_refs"]) for k, v in formulas.items()},
+                         {"ABV": (False, True), "Proof Diff": (True, False), "Conc. Ratio": (True, False)},
+                         "ABV is a filled-down formula on this sheet, the other two the table's own")
+        self.assertEqual(coll.first_empty_row("Bottle"), 12, "the rows below are there to be filled")
+        self.assertEqual(coll.first_empty_row("Sample"), 9)
+        self.assertEqual(coll.options("Type"), TYPES, "the drop-down is the phone's own list")
+        self.assertFalse([i for i in coll.issues if "malformed" in i.message],
+                         "a code the workbook's own rules reject")
+
+    def test_the_bottles_come_back_as_they_went_in(self):
+        rows = {r["code"]: r for r in self.load(self.book()).rows["Bottle"]}
+        self.assertEqual(sorted(rows), ["B-1", "B-2", "B-3"], "L-n on the phone is B-n in the workbook")
+        red, malt, gone = rows["B-1"], rows["B-2"], rows["B-3"]
+        self.assertEqual((red["name"], red["distillery"], red["type"], red["region"]),
+                         ("House Red", None, "Red Wine", "France"))
+        self.assertEqual((red["age"], red.get("age_label"), red["proof"], red["abv"]), (None, "N/A", 27, 13.5))
+        self.assertEqual((red["size_ml"], red["status"], red["paid"], red["owned"]), (750, "Opened", 18.5, True))
+        self.assertEqual(malt["name"], AWKWARD, "ampersands, brackets, quotes, accents and emoji")
+        self.assertEqual((malt["age"], malt.get("age_label"), malt["abv"]), (12, None, 46))
+        self.assertEqual((gone.get("age_label"), gone["status"], gone["owned"]), ("NAS", "Finished", False))
+        self.assertEqual([r["_row"] for r in (red, malt, gone)], [9, 10, 11])
+
+    def test_what_a_reader_that_cannot_calculate_sees(self):
+        """Quick Look on a phone and collection.py both read the value stored beside a formula.
+        A formula written without one shows as a blank until Excel itself opens the file."""
+        import openpyxl
+        path = self.book()
+        wb = openpyxl.load_workbook(path, data_only=True)
+        ws = wb["Bottle"]
+        self.assertEqual([ws["B8"].value, ws["S8"].value], ["Bottle Code", "Paid"])
+        self.assertEqual([ws["A9"].value, ws["A10"].value], [None, 2], "numbered by the distillery column")
+        self.assertEqual([ws["L9"].value, ws["L10"].value, ws["O10"].value], [13.5, 46, "N/A"])
+        self.assertEqual([ws["B2"].value, ws["T2"].value, ws["T5"].value, ws["V5"].value, ws["X5"].value],
+                         ["Bottle List", "Total Bottles", 2, 1, 78.5], "the finished one is not counted")
+        self.assertEqual(ws.freeze_panes, "A9")
+        self.assertIn("B2:S7", {str(m) for m in ws.merged_cells.ranges})
+        self.assertEqual(wb["Miniature"]["B2"].value, "Miniature List")
+        wb.close()
+        wb = openpyxl.load_workbook(path)                      # and the formulas themselves
+        ws = wb["Bottle"]
+        self.assertEqual(ws["L10"].value, '=IF(K10="","",K10/2)')
+        self.assertEqual(ws["L200"].value, '=IF(K200="","",K200/2)', "allocated rows carry them too")
+        self.assertTrue(ws["O10"].value.startswith('=IF(Collection[[#This Row],[Name]]="","",IF('))
+        lists = {str(d.sqref): d.formula1 for d in ws.data_validations.dataValidation}
+        self.assertEqual(lists["E9:E308"], '"Bourbon,Rye,Single Malt,Gin,Red Wine"')
+        self.assertEqual(lists["R9:R308"], '"Opened,Unopened,Finished,Removed"')
+        self.assertEqual(lists["N9:N308"], '"Yes,No"')
+        self.assertIn("France", lists["F9:F308"])
+        wb.close()
+
+    def test_the_pc_can_add_a_bottle_to_it(self):
+        """master_write.py fills a row that already exists inside the table and then verifies the
+        file. If it can do that here, the phone's workbook is one the PC app can live with."""
+        import master_write
+        path = self.book()
+        coll = self.load(path)
+        result = master_write.append_row(
+            path, "Bottle", {"Distillery": "Another Distillery", "Name": "From The Desk",
+                             "Type": "Bourbon", "Proof": 110, "Status": "Unopened"},
+            backup_dir=Path(self.tmp.name) / f"backups-{self.n}", coll=coll)
+        self.assertEqual((result["code"], result["row"]), ("B-4", 12))
+        rows = {r["code"]: r for r in self.load(path).rows["Bottle"]}
+        self.assertEqual(sorted(rows), ["B-1", "B-2", "B-3", "B-4"])
+        self.assertEqual((rows["B-4"]["name"], rows["B-4"]["proof"]), ("From The Desk", 110))
+
+    # -- the edges --------------------------------------------------------
+    def test_a_phone_bottle_never_takes_a_published_code(self):
+        """A phone that once synced holds bottles the PC numbered. One added here goes past
+        the highest of them, so L-1 can never come out as a B- number already in use."""
+        spirits = [{"code": "B-7", "name": "Published", "distillery": "A Distillery", "_sheet": "Bottle"},
+                   {"code": "M-2", "name": "A Mini", "distillery": "A Distillery", "proof": 80,
+                    "_sheet": "Miniature"},
+                   {"code": "L-1", "name": "Mine", "distillery": "A Distillery", "_local": True},
+                   {"code": "E-20261115-1", "name": "Odd", "distillery": "A Distillery", "_sheet": "Encounter"}]
+        coll = self.load(self.book(spirits))
+        self.assertEqual({r["name"]: r["code"] for r in coll.rows["Bottle"]},
+                         {"Published": "B-7", "Mine": "B-8", "Odd": "E-20261115-1"})
+        mini = coll.rows["Miniature"][0]
+        self.assertEqual((mini["code"], mini["abv"]), ("M-2", 40), "on the sheet its _sheet names")
+
+    def test_a_long_list_of_types_stays_inside_excel_s_limit(self):
+        """Excel takes 255 characters of drop-down and calls the file damaged at 256."""
+        types = [f"Type Number {n:02d}" for n in range(40)] + ["Has, a comma", 'Has "quotes"']
+        got = self.ctx.eval(f"Xlsx.listFormula({json.dumps(types)})")
+        self.assertLessEqual(len(got), 255)
+        self.assertTrue(got.startswith('"Type Number 00,Type Number 01,'))
+        self.assertNotIn("comma", got)
+        self.assertNotIn("quotes", got)
+        self.assertIsNone(self.ctx.eval("Xlsx.listFormula([])"))
+        self.assertEqual(self.load(self.book(types=types)).options("Type")[:2],
+                         ["Type Number 00", "Type Number 01"])
+
+    def test_a_collection_bigger_than_the_table_grows_it(self):
+        spirits = [{"code": f"L-{n}", "name": f"Bottle {n}", "distillery": "A Distillery", "proof": 90 + n % 20,
+                    "_local": True} for n in range(1, 321)]
+        coll = self.load(self.book(spirits))
+        self.assertEqual(coll.tables["Bottle"].ref, "B8:S353", "320 bottles and room for 25 more")
+        self.assertEqual(len(coll.rows["Bottle"]), 320)
+        self.assertEqual(coll.rows["Bottle"][-1]["code"], "B-320")
+        self.assertEqual(coll.first_empty_row("Bottle"), 329)
+
+    def test_an_empty_book_is_still_a_workbook(self):
+        coll = self.load(self.book([]))
+        self.assertEqual({s: len(r) for s, r in coll.rows.items()}, {"Bottle": 0, "Miniature": 0, "Sample": 0})
+        self.assertEqual(coll.first_empty_row("Bottle"), 9)
 
 
 if __name__ == "__main__":

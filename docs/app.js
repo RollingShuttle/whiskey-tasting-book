@@ -936,29 +936,71 @@ function localCard(q) {
 /** A copy out, and a copy back in. The share sheet where the phone has one (Save to Files,
     AirDrop, Mail); otherwise a download; and inside the native app, where neither may exist,
     the copy the app already keeps in Files. */
-async function exportBook() {
-  const text = Store.exportAll();
-  const name = `tasting-book-${Store.today()}.json`;
+function exportBook() {
+  return handOver(`tasting-book-${Store.today()}.json`, "application/json", Store.exportAll(),
+                  "Tasting Book backup");
+}
+
+/** The collection as an Excel workbook laid out like the PC's own (xlsx.js). Offered to a
+    phone-only book and to no other: with a PC behind the phone, the PC's workbook *is* the
+    collection, and a second file of the same shape without its photographs is only something to
+    mistake for it — which is also why the file is not given the master's name. Built before the
+    first await, so the share sheet opens inside the tap. */
+function exportWorkbook() {
+  const bytes = Xlsx.collectionBook(Store.spirits(), { types: Store.types() });
+  return handOver(`Tasting Book Collection ${Store.today()}.xlsx`, Xlsx.MIME, bytes, "Tasting Book collection");
+}
+
+/** Give the person a file. Inside the app the shell writes it into Files and raises the share
+    sheet over it; a browser that can share files does the same from here; anything else gets a
+    download. `data` is text or bytes. */
+async function handOver(name, mime, data, title) {
+  if (Native.caps.has("share")) {
+    const bytes = typeof data === "string" ? Xlsx.utf8(data) : data;
+    let packed = "";                                       // btoa wants a string of bytes
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      packed += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    try {
+      const r = await Native.request("file.share", { name, mime, base64: btoa(packed) });
+      if (!r || !r.ok) window.alert(`Could not make the file: ${(r && r.error) || "the app refused it"}`);
+    } catch (e) {
+      window.alert(`Could not make the file: ${(e && e.message) || e}`);
+    }
+    return;
+  }
   try {
-    const file = new File([text], name, { type: "application/json" });
+    const file = new File([data], name, { type: mime });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: "Tasting Book backup" });
+      await navigator.share({ files: [file], title });
       return;
     }
   } catch (e) {
     if (e && e.name === "AbortError") return;              // the sheet was dismissed
   }
-  if (Native.caps.has("backup")) {
+  if (Native.caps.has("backup") && mime === "application/json") {
+    // A shell from before it could share: the backup it mirrors is the copy there is.
     window.alert("Your book is already saved as tasting-book.json in the Files app, under "
       + "On My iPhone → Tasting Book. Copy that file to keep a backup.");
     return;
   }
-  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  const url = URL.createObjectURL(new Blob([data], { type: mime }));
   const a = el("a", { href: url, download: name });
   document.body.append(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+function workbookCard() {
+  return el("div", { class: "card" },
+    el("div", { class: "muted", style: "margin-bottom:8px" }, "Excel workbook"),
+    el("div", { class: "muted" },
+      "Your collection as a spreadsheet, laid out like the collection workbook the PC app reads: "
+      + "the same sheets, columns, formulas and drop-downs. Scores are not in it — the backup "
+      + "below has those."),
+    el("div", { class: "actions" },
+      el("button", { class: "btn", type: "button", onclick: exportWorkbook }, "Export to Excel")));
 }
 
 function importBook(file) {
@@ -1041,7 +1083,7 @@ function renderSync() {
   // Phone-only: no account, no queue, nothing to fetch. The screen is the choice itself, what
   // the phone holds, and the way to get a copy out of it.
   if (Store.isLocal()) {
-    fill(screens.sync, modeCard(), localCard(q), backupCard());
+    fill(screens.sync, modeCard(), localCard(q), workbookCard(), backupCard());
     return;
   }
 

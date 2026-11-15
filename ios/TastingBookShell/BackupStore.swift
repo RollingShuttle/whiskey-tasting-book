@@ -23,6 +23,20 @@ enum BackupStore {
         }
     }
 
+    /// Any other file the page makes for its owner (file.share): the collection as an Excel workbook, an
+    /// exported backup. Same folder, so it is in the Files app too. Returns where it went, for the sheet.
+    static func write(name: String, data: Data) -> URL? {
+        let safeName = (name as NSString).lastPathComponent
+        guard !safeName.isEmpty, safeName != ".", safeName != ".." else { return nil }
+        let url = directory.appendingPathComponent(safeName)
+        do {
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            return nil
+        }
+    }
+
     /// The most recently changed .json in the folder — the owner may also drop an exported file in there.
     static func latest() -> (name: String, text: String, savedAtMs: Double)? {
         let fm = FileManager.default

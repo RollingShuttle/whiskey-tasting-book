@@ -677,6 +677,17 @@ reads as a website someone bookmarked, and it breaks in specific ways in the bar
   pad cannot type them. An encounter file keeps the word in its one `age` field, as `store.py`
   writes it; every reader splits it into `age` (a number or null) and `age_label`, the way the
   collection's rows already are, so a word never sorts among the years.
+- **A phone-only book exports as a workbook.** `docs/xlsx.js` writes the collection out as an
+  `.xlsx` with the master's shape: sheets `Bottle`, `Miniature`, `Sample`; tables `Collection`,
+  `Collection4`, `SampleList` at `B8`, allocated to the same depth; the same columns, calculated
+  columns, drop-downs, frozen header and title band. `collection.py` loads it as it loads the
+  master and `master_write.py` can append to it — the tests hold it to both. Every formula carries
+  the value it comes to, because Quick Look and `collection.py` read values and do not calculate.
+  A bottle's `L-n` becomes the sheet's own `B-n`, moved past any code the PC published. Scores
+  are not in it; the JSON backup is still the copy that restores a phone. It is offered only in
+  `local` mode and is never named after the master: beside a real master it would be a
+  photograph-less file of the same shape, waiting to be mistaken for it. No library — the zip,
+  the DEFLATE and the XML are written out, synchronously, so the share sheet opens inside the tap.
 - **No page zoom.** This is an app, not a page: nothing on it needs the whole screen magnified,
   and a double-tap that zoomed was the one gesture that gave the web away. The native shell's
   WKWebView and the home-screen install honour the two scale flags; a Safari tab has ignored them

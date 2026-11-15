@@ -410,6 +410,11 @@ account: the bottles and the scores live on that phone.
    **Age** takes a number of years, or **NAS** or **N/A**.
 4. The last tab is called **Data** in this mode. **Export** makes a backup file (Save to Files,
    AirDrop, Mail); **Import** puts one back, on the same phone or a new one.
+5. **Export to Excel**, on the same tab, makes a spreadsheet of their collection laid out exactly
+   like your collection workbook — the same three sheets, columns, formulas and drop-downs — as
+   `Tasting Book Collection <date>.xlsx`. Their bottles are numbered `B-1`, `B-2`… in it (the
+   phone shows the same numbers as `L-1`, `L-2`). It holds the collection, not the scores, and it
+   cannot be imported back: the backup file is still the one that restores a phone.
 
 Two things to tell them. The phone holds the only copy, so export a backup now and then. And keep
 it on the Home Screen: iOS can clear the storage of a web page that goes unused for weeks, but

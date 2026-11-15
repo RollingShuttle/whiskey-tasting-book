@@ -64,7 +64,7 @@ app folder.
   applications*. Tokens live in the iOS keychain, never in the web view. Native refresh tokens
   default to 90 days of inactivity; the browser's are 24 hours — that is the daily sign-in, gone.
 - **The bridge** (`Bridge.swift` ↔ `docs/native.js`): the page posts requests
-  (`auth.status`, `auth.signIn`, `auth.token`, `auth.signOut`, `backup.save`, `backup.load`) and
+  (`auth.status`, `auth.signIn`, `auth.token`, `auth.signOut`, `backup.save`, `backup.load`, `file.share`) and
   Swift answers through `window.nativeEvent`. Without the shell, `Native.available` is false and
   `docs/graph.js` / `docs/store.js` take their old paths unchanged — a test pins that.
 - **Backup** (`BackupStore.swift`): every write to the page's storage is mirrored, debounced, to

@@ -30,7 +30,7 @@ import rubric as rubric_mod
 
 DOCS = ROOT / "docs"
 REQUIRED = ["index.html", "style.css", "app.js", "store.js", "graph.js", "sync.js", "config.js",
-            "analysis.js", "compare.js", "table.js",
+            "analysis.js", "compare.js", "table.js", "xlsx.js",
             "sw.js", "manifest.webmanifest", "rubric.json", "icon-180.png"]
 
 
@@ -773,7 +773,7 @@ class TestNativeShell(unittest.TestCase):
     # The protocol between docs/ and the shell. A message the web sends that is not here would be
     # ignored by Swift without a word; one here that the web never sends is dead weight.
     WEB_TO_NATIVE = {"ready", "auth.status", "auth.signIn", "auth.token", "auth.signOut",
-                     "backup.save", "backup.load"}
+                     "backup.save", "backup.load", "file.share"}
 
     def test_native_js_is_precached_and_loaded_before_what_uses_it(self):
         self.assertIn('"./native.js"', text("sw.js"))
@@ -1082,6 +1082,50 @@ class TestAddForm(unittest.TestCase):
         rule = re.search(r"\.age-row \.chip\s*\{[^}]*\}", self.css)
         self.assertIsNotNone(rule)
         self.assertIn("min-height: 44px", rule.group(0))
+
+
+class TestExcelExportWiring(unittest.TestCase):
+    """A phone-only book can be taken out as an Excel workbook shaped like the PC's. What the
+    file holds is checked by running the writer (test_phone_js.py); this is the wiring."""
+
+    def setUp(self):
+        self.js = code("app.js")
+        self.xlsx = code("xlsx.js")
+
+    def test_it_is_offered_to_a_phone_only_book_and_to_no_other(self):
+        """With a PC behind the phone the PC's workbook is the collection. A second file of the
+        same shape, without its photographs, is only something to mistake for it."""
+        self.assertEqual(self.js.count("workbookCard()"), 2, "defined once, used once")
+        self.assertIn("fill(screens.sync, modeCard(), localCard(q), workbookCard(), backupCard());", self.js)
+        self.assertIn('"Export to Excel"', self.js)
+
+    def test_the_file_is_not_given_the_master_s_name(self):
+        self.assertIn("`Tasting Book Collection ${Store.today()}.xlsx`", self.js)
+
+    def test_the_workbook_is_built_inside_the_tap(self):
+        """A share sheet opens only inside the tap that asked for it. Anything awaited first —
+        which is what a CompressionStream would be — spends the tap, so the whole writer is
+        synchronous, compression included."""
+        self.assertIn("function exportWorkbook() {", self.js)
+        self.assertNotIn("async function exportWorkbook", self.js)
+        self.assertIn("Xlsx.collectionBook(Store.spirits(), { types: Store.types() })", self.js)
+        for word in ("await ", "async ", "Promise", "CompressionStream"):
+            self.assertNotIn(word, self.xlsx)
+
+    def test_the_writer_needs_no_page_and_no_library(self):
+        for word in ("TextEncoder", "import ", "require("):
+            self.assertNotIn(word, self.xlsx)
+        # Whole words: "officedocument." is in every content type an .xlsx declares.
+        self.assertIsNone(re.search(r"(?<![A-Za-z])(document|window|navigator)\.", self.xlsx))
+        html = text("index.html")
+        self.assertLess(html.index('src="xlsx.js"'), html.index('src="app.js"'))
+        self.assertIn('"./xlsx.js"', text("sw.js"))
+
+    def test_the_backup_still_goes_out_and_comes_back(self):
+        """The workbook has no scores in it and cannot be imported. The backup is still the copy
+        that restores a phone."""
+        self.assertIn('"application/json", Store.exportAll()', self.js)
+        self.assertIn("Store.importAll(", self.js)
 
 
 if __name__ == "__main__":

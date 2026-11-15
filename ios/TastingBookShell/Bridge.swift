@@ -17,6 +17,8 @@
 //   backup.save {name, json}                       (no reply)
 //   backup.load {id}                               → backup.result {id, none:true}
 //                                                    | backup.result {id, name, text, savedAt}
+//   file.share {id, name, mime, base64}            → file.share.result {id, ok:true, name}
+//                                                    | file.share.result {id, ok:false, error}
 //   (unsolicited)                                  ← foreground, when the app comes back to the front
 //
 // The client id, authority and scopes ride along in every auth message rather than being compiled in:
@@ -27,7 +29,7 @@ import WebKit
 final class Bridge: NSObject, WKScriptMessageHandler {
     static let shared = Bridge()
     static let version = "1.0"
-    static let caps = ["auth", "backup"]
+    static let caps = ["auth", "backup", "share"]
 
     private weak var webView: WKWebView?
 
@@ -103,6 +105,18 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             } else {
                 reply(id, ["type": "backup.result", "none": true])
             }
+
+        case "file.share":
+            // A file the page made for its owner — the collection as a workbook, or a backup. Written
+            // into Documents first, so it is in the Files app whatever becomes of the sheet; and answered
+            // before the sheet is up, because how long a person looks at it is not the page's to wait on.
+            guard let name = body["name"] as? String, let base64 = body["base64"] as? String,
+                  let data = Data(base64Encoded: base64), let url = BackupStore.write(name: name, data: data) else {
+                reply(id, ["type": "file.share.result", "ok": false, "error": "the file could not be written"])
+                return
+            }
+            reply(id, ["type": "file.share.result", "ok": true, "name": url.lastPathComponent])
+            TopViewController.present(UIActivityViewController(activityItems: [url], applicationActivities: nil))
 
         default:
             break

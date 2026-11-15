@@ -40,9 +40,9 @@ WEB_FILES = ("native.js", "graph.js", "store.js", "sync.js", "app.js")
 
 # The protocol, as both halves have to speak it. Bridge.swift's header is the native statement of it.
 WEB_TO_NATIVE = {"ready", "auth.status", "auth.signIn", "auth.token", "auth.signOut",
-                 "backup.save", "backup.load"}
+                 "backup.save", "backup.load", "file.share"}
 NATIVE_TO_WEB = {"hello", "auth.status.result", "auth.result", "auth.token.result",
-                 "auth.signOut.result", "backup.result", "foreground"}
+                 "auth.signOut.result", "backup.result", "file.share.result", "foreground"}
 
 
 def text(path):
@@ -266,8 +266,8 @@ class TestTheShell(unittest.TestCase):
         self.assertEqual(types_the_shell_handles(), WEB_TO_NATIVE)
         self.assertEqual(types_the_shell_sends(), NATIVE_TO_WEB)
 
-    def test_the_bridge_announces_the_two_capabilities(self):
-        self.assertIn('static let caps = ["auth", "backup"]', text(SOURCES / "Bridge.swift"))
+    def test_the_bridge_announces_its_capabilities(self):
+        self.assertIn('static let caps = ["auth", "backup", "share"]', text(SOURCES / "Bridge.swift"))
         self.assertIn('static let version = "1.0"', text(SOURCES / "Bridge.swift"))
 
     def test_every_reply_echoes_the_request_id(self):
@@ -347,7 +347,7 @@ class TestTheProtocolAgainstThePage(unittest.TestCase):
     """The two halves are written separately and never compiled together. A type string that one
     side spells differently fails in the only way a bridge can: silently."""
 
-    NAME = re.compile(r"""['"`]((?:auth|backup)\.[A-Za-z][\w.]*|ready|hello|foreground)['"`]""")
+    NAME = re.compile(r"""['"`]((?:auth|backup|file)\.[A-Za-z][\w.]*|ready|hello|foreground)['"`]""")
 
     def names_the_page_spells_out(self):
         """Every quoted protocol-looking name in the web files. The page does not spell out every
@@ -418,6 +418,40 @@ class TestTheReadme(unittest.TestCase):
         for needle in ("update-mac.command", "TestFlight Internal Only", "Xcode Cloud",
                        "Product → Archive", "Develop", "airplane mode"):
             self.assertIn(needle, self.readme, f"README does not mention {needle}")
+
+
+class TestHandingOverAFile(unittest.TestCase):
+    """file.share: the page makes a file — the collection as a workbook, a backup — and the shell
+    puts it where its owner can reach it. Inside the app there is no download and no web share."""
+
+    def setUp(self):
+        self.bridge = swift_code("Bridge.swift")
+        self.store = swift_code("BackupStore.swift")
+
+    def test_the_page_asks_only_a_shell_that_can(self):
+        app = text(DOCS / "app.js")
+        self.assertIn('if (Native.caps.has("share"))', app)
+        self.assertIn('Native.request("file.share", { name, mime, base64: btoa(packed) })', app)
+
+    def test_the_file_is_written_before_the_sheet_is_raised(self):
+        """Written into Documents first, so it is in the Files app even if the sheet never
+        appears; and the page is answered before the sheet, so it never waits on a person."""
+        case = self.bridge[self.bridge.index('case "file.share":'):self.bridge.index("default:")]
+        self.assertLess(case.index("BackupStore.write(name: name, data: data)"),
+                        case.index("UIActivityViewController(activityItems: [url]"))
+        self.assertLess(case.index('"ok": true'), case.index("TopViewController.present("))
+        self.assertIn("Data(base64Encoded: base64)", case)
+
+    def test_a_refusal_is_answered_rather_than_dropped(self):
+        case = self.bridge[self.bridge.index('case "file.share":'):self.bridge.index("default:")]
+        self.assertIn('reply(id, ["type": "file.share.result", "ok": false', case)
+
+    def test_the_page_names_the_file_and_never_the_folder(self):
+        write = self.store[self.store.index("static func write(name: String, data: Data) -> URL?"):]
+        write = write[:write.index("static func latest()")]
+        self.assertIn("(name as NSString).lastPathComponent", write)
+        self.assertIn('safeName != ".."', write)
+        self.assertIn("try data.write(to: url, options: .atomic)", write)
 
 
 if __name__ == "__main__":

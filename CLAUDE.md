@@ -59,7 +59,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 611 tests, all passing
+python -m unittest discover -s tests    # 631 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -143,7 +143,7 @@ Re-run it after anything that touches collection.py or master_write.py.
 
 The iPhone client is built: `docs/` is the static bundle for GitHub Pages —
 `index.html`, `style.css`, `app.js` (screens), `analysis.js`, `compare.js`,
-`store.js` (local cache + upload queue),
+`store.js` (local cache + upload queue), `xlsx.js` (the Excel export),
 `graph.js` (MSAL + Graph), `sw.js`, `manifest.webmanifest`, `rubric.json`, `icon-180.png`.
 Analysis and Compare derive everything from the snapshot and `careers.json` — no fetch, no
 charting library, hand-written SVG — so they work with no signal. Two things the phone cannot
@@ -191,6 +191,20 @@ only the fallback, but keep it in step when you notice. Age is years on the numb
 **NAS** / **N/A** buttons. An encounter file keeps whichever it was in its one `age` field;
 `Store.asSpirit` on the phone and `_age_parts` in `app.py` split it into `age` + `age_label`
 wherever a pour becomes a row, because every list prints `age ? age + " yr" : age_label`.
+
+**A phone-only book exports as an Excel workbook** (15 Nov 2026): `docs/xlsx.js`, behind
+**Export to Excel** on the Data tab, `local` mode only. The file has the master's shape — the
+three sheets, tables `Collection` / `Collection4` / `SampleList` at `B8`, the same columns,
+calculated columns, drop-downs and allocated rows — and `tests/test_phone_js.py` holds it to
+that by running the writer in V8 and reading the result with zlib, zipfile, openpyxl,
+`collection.Collection(...).load()` and `master_write.append_row`. **If the master's layout
+changes, `SHEETS` in `xlsx.js` and the column lists in that test change with it.** It writes its
+own zip and DEFLATE and is synchronous throughout, because a share sheet only opens inside the
+tap that asked for it. `L-n` codes go out as the sheet's `B-n`. The file is never named
+`Whiskey Collection` — a test forbids the phone that name, and beside a real master a
+photograph-less twin is a hazard. Inside the iPhone app the file leaves through a third shell
+capability, `share` (`file.share` in `Bridge.swift`: written into Documents, then the share
+sheet); the Swift for it is, like the rest, not yet compiled here.
 
 Guarded by `tests/test_phone.py`, which checks the §9.2 rules that only fail on a phone: safe-area
 insets on every edge, 100dvh not 100vh, 16 px inputs, a 44 px score strip with
