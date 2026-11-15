@@ -184,6 +184,13 @@ body.keyboard .tabs { display: none; }
 .cat-val { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 1.05rem;
            color: var(--brass-bright); min-width: 2ch; text-align: right; }
 .cat-val.unset { color: var(--muted); }
+/* "+ note": small to look at, so the head stays one line; the ::before is what the finger
+   meets, and it is the 44 points a tap target should be. */
+.note-add {
+  position: relative; padding: 2px 10px; border-radius: 999px;
+  background: none; border: 1px solid var(--line); color: var(--muted); font-size: 0.74rem;
+}
+.note-add::before { content: ""; position: absolute; inset: -12px -10px; }
 
 /* 44 px tall, not the 26 px used on desktop. Ten segments across a 390 pt screen is ~33 pt
    each — under the guideline horizontally — so tap is backed by drag (§9.2). */

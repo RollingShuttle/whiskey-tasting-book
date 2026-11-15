@@ -1096,7 +1096,7 @@ class TestExcelExportWiring(unittest.TestCase):
         """With a PC behind the phone the PC's workbook is the collection. A second file of the
         same shape, without its photographs, is only something to mistake for it."""
         self.assertEqual(self.js.count("workbookCard()"), 2, "defined once, used once")
-        self.assertIn("fill(screens.sync, modeCard(), localCard(q), workbookCard(), backupCard());", self.js)
+        self.assertIn("fill(screens.sync, localCard(q), workbookCard(), backupCard(), modeCard());", self.js)
         self.assertIn('"Export to Excel"', self.js)
 
     def test_the_file_is_not_given_the_master_s_name(self):
@@ -1126,6 +1126,82 @@ class TestExcelExportWiring(unittest.TestCase):
         that restores a phone."""
         self.assertIn('"application/json", Store.exportAll()', self.js)
         self.assertIn("Store.importAll(", self.js)
+
+
+class TestScreensAreLaidOutForHowTheyAreUsed(unittest.TestCase):
+    """Three things the screens made harder than they needed to be: a scorecard nearly three
+    screens long, half the collection's filters off the edge of the phone, and a Sync screen that
+    opened on a setting chosen once."""
+
+    def setUp(self):
+        self.js = code("app.js")
+        self.css = text("style.css")
+        self.score = self.js[self.js.index("function renderScore()"):self.js.index("function fitNotes()")]
+
+    def test_a_category_note_is_folded_until_it_is_wanted(self):
+        """Ten note boxes open at once were a third of the card's height."""
+        self.assertIn('class: "note-add", hidden: written ? "" : null', self.score)
+        self.assertIn('spellcheck: "true", hidden: written ? null : ""', self.score)
+        self.assertIn("addNote.hidden = true; notes.hidden = false; notes.focus();", self.score)
+        self.assertLess(self.score.index("addNote,"), self.score.index("val),"), "in the head row, not a row of its own")
+
+    def test_a_note_opened_and_left_empty_folds_back(self):
+        blur = self.score[self.score.index('notes.addEventListener("blur"'):]
+        blur = blur[:blur.index("});") + 3]
+        self.assertIn("if (notes.value.trim()) return;", blur)
+        self.assertIn("notes.hidden = true;", blur)
+        self.assertIn("addNote.hidden = false;", blur)
+
+    def test_the_small_button_is_still_a_whole_finger_wide(self):
+        rule = re.search(r"\.note-add::before\s*\{[^}]*\}", self.css)
+        self.assertIsNotNone(rule, "the visible pill is ~20 px; the hit area is what makes it tappable")
+        self.assertIn("inset: -12px -10px", rule.group(0))
+
+    def test_a_sitting_being_corrected_shows_what_it_already_says(self):
+        """The boxes used to open empty on an edit: the notes and the venue were kept and sent
+        back unchanged, but could be neither read nor corrected."""
+        self.assertIn("}, written);", self.score)
+        self.assertIn('}, d.overall || "");', self.score)
+        self.assertIn("value: d.venue || null", self.score)
+        for opener in ('show("score", "Scorecard", { push: true });', 'show("score", "Edit sitting", { push: true });'):
+            after = self.js[self.js.index(opener) + len(opener):][:40]
+            self.assertIn("fitNotes();", after, "measured only once the screen is showing")
+
+    def test_two_labels_never_share_two_narrow_cells(self):
+        """A 20-point strip has cells about 14 points wide. A score of 16 beside the tick at 15
+        printed as "1516"."""
+        self.assertIn("const crowded = !showAll && v !== null && Math.abs(n - v) === 1;", self.score)
+        self.assertIn("(n % 5 === 0 && !crowded)", self.score)
+
+    def test_venue_comes_after_the_scores(self):
+        """Most pours are at home and leave it blank; it was the first thing on the card."""
+        self.assertLess(self.score.index("cats,"), self.score.index('el("span", {}, "Venue"), venue)'))
+        self.assertLess(self.score.index('el("span", {}, "Overall notes")'),
+                        self.score.index('el("span", {}, "Venue"), venue)'))
+        self.assertEqual(self.score.count('"Venue"'), 1)
+
+    def test_the_filters_asked_most_come_first_and_not_scored_is_one_of_them(self):
+        self.assertIn('[["all", "All"], ["instock", "In stock"], ["unscored", "Not scored"], ["scored", "Scored"],',
+                      self.js)
+        self.assertIn('app.filter === "unscored") spirits = spirits.filter((s) => s.owned !== false && !careerFor(s.code))',
+                      self.js)
+        self.assertIn('"Everything you have has been scored."', self.js)
+
+    def test_the_sync_screen_opens_on_what_it_is_for(self):
+        """"Where your book lives" is chosen once. It used to sit above the status and the
+        Refresh button on every visit."""
+        sync = self.js[self.js.index("function renderSync()"):self.js.index("const refresh = ")]
+        self.assertNotRegex(sync, r"fill\(screens\.sync,\s*modeCard\(\)")
+        self.assertRegex(sync, r"backupCard\(\),\s*modeCard\(\)\);")
+        self.assertLess(sync.index("waiting to upload"), sync.rindex("modeCard()"))
+
+    def test_a_comparison_can_start_from_the_bottle(self):
+        self.assertIn('CompareView.begin(code); setTab("compare");', self.js)
+        cmp_js = code("compare.js")
+        self.assertIn("return { render, begin, reset:", cmp_js)
+        self.assertIn("picking = codes.length < 2;", cmp_js)
+        self.assertIn('(up to " + MAX + ")', cmp_js, "the text said four where the limit is six")
+        self.assertNotIn("two to four", cmp_js)
 
 
 if __name__ == "__main__":

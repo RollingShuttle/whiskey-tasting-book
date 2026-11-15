@@ -134,7 +134,7 @@ const CompareView = (() => {
 
     if (items.length < 2) {
       fill(host, head, notice("ok",
-        "Choose two to four scored spirits and they line up category by category, each axis "
+        "Choose two or more scored spirits (up to " + MAX + ") and they line up category by category, each axis "
         + "against its own maximum."));
       return;
     }
@@ -190,5 +190,13 @@ const CompareView = (() => {
     fill(host, head, el("div", { class: "card" }, totals), el("div", { class: "card" }, rows));
   }
 
-  return { render, reset: () => { codes = []; picking = false; query = ""; } };
+  /** From a bottle's own page: put it in, and while it is the only one, open straight on the
+      list of what to set beside it. The caller shows the Compare tab, which renders. */
+  function begin(code) {
+    if (!codes.includes(code) && codes.length < MAX) codes.push(code);
+    picking = codes.length < 2;
+    query = "";
+  }
+
+  return { render, begin, reset: () => { codes = []; picking = false; query = ""; } };
 })();

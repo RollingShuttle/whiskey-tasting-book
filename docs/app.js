@@ -228,9 +228,12 @@ function renderCollection() {
   });
 
   const chips = el("div", { class: "chips" },
-    ...[["all", "All"], ["instock", "In stock"], ["Bottle", "Bottles"],
-        ["Miniature", "Minis"], ["Sample", "Samples"], ["Encounter", "Bar"],
-        ["scored", "Scored"], ["gone", "Finished"]].map(([id, label]) =>
+    // Ordered by how often they are the question. Only the first four or so fit before the row
+    // scrolls, and "what have I not scored yet" is how a pour gets chosen — it used to have no
+    // chip at all, while Scored sat off the edge of the screen.
+    ...[["all", "All"], ["instock", "In stock"], ["unscored", "Not scored"], ["scored", "Scored"],
+        ["Bottle", "Bottles"], ["Miniature", "Minis"], ["Sample", "Samples"], ["Encounter", "Bar"],
+        ["gone", "Finished"]].map(([id, label]) =>
       el("button", { type: "button", class: `chip${app.filter === id ? " active" : ""}`,
         onclick: () => { app.filter = id; renderCollection(); } }, label)));
 
@@ -254,6 +257,8 @@ function paintRows() {
   } else {
     spirits = spirits.filter((s) => !goneSpirit(s));
     if (app.filter === "scored") spirits = spirits.filter((s) => careerFor(s.code));
+    // Something you hold and have not scored. A bar pour is not held, so it is never "to do".
+    else if (app.filter === "unscored") spirits = spirits.filter((s) => s.owned !== false && !careerFor(s.code));
     else if (app.filter === "instock") spirits = spirits.filter((s) => s.owned !== false);
     else if (app.filter !== "all") spirits = spirits.filter((s) => s._sheet === app.filter);
   }
@@ -270,8 +275,9 @@ function paintRows() {
   list.replaceChildren();
   if (!spirits.length) {
     list.append(el("li", { class: "empty" },
-      app.filter === "gone" && !terms.length
-        ? "No finished bottle was scored while it lasted." : "Nothing matches."));
+      app.filter === "gone" && !terms.length ? "No finished bottle was scored while it lasted."
+        : app.filter === "unscored" && !terms.length ? "Everything you have has been scored."
+        : "Nothing matches."));
     return;
   }
   for (const s of spirits) {
@@ -363,6 +369,14 @@ function openDetail(code, { push = true } = {}) {
           `${s.status} — no more pours to score from this one. Its sittings stay on the books.`)
       : el("button", { class: "btn wide", type: "button", onclick: () => openScore(code) },
           "Score a pour"),
+
+    // The way into a comparison used to be the Compare tab and nowhere else — but the thought
+    // "how does this stand against the others" arrives here, looking at the bottle.
+    career
+      ? el("button", { class: "btn wide ghost", type: "button", style: "margin-top:10px",
+                       onclick: () => { CompareView.begin(code); setTab("compare"); } },
+          "Compare with others")
+      : null,
 
     s._local ? localBottleCard(s, sittings.length) : null,
 
@@ -478,6 +492,7 @@ function editSitting(card) {
   delete app.draft.notes.overall;
   renderScore();
   show("score", "Edit sitting", { push: true });
+  fitNotes();
 }
 
 function removeSitting(card, spirit) {
@@ -520,6 +535,7 @@ function openScoreFor(s, venue = "") {
   };
   renderScore();
   show("score", "Scorecard", { push: true });
+  fitNotes();
 }
 
 function renderScore() {
@@ -549,7 +565,10 @@ function renderScore() {
       segs.forEach((seg, n) => {
         seg.classList.toggle("filled", v !== null && (n === 0 ? v === 0 : n <= v));
         seg.classList.toggle("sel", v !== null && n === v);
-        seg.classList.toggle("tick", n === 0 || showAll || n % 5 === 0 || n === v);
+        // On a 20-point strip the cells are too narrow for two labels side by side: a score of
+        // 16 printed "1516". The fifth next to the score gives way to it.
+        const crowded = !showAll && v !== null && Math.abs(n - v) === 1;
+        seg.classList.toggle("tick", n === v || showAll || n === 0 || (n % 5 === 0 && !crowded));
       });
       val.textContent = v === null ? "–" : String(v);
       val.classList.toggle("unset", v === null);
@@ -574,16 +593,32 @@ function renderScore() {
     strip.addEventListener("pointerup", () => { dragging = false; });
     strip.addEventListener("pointercancel", () => { dragging = false; });
 
+    /* The note is folded away until it is wanted. Ten boxes open at once made the card nearly
+       three screens long, and a pour gets a note against two or three categories, not ten. One
+       that already says something — a sitting being corrected — opens with the card, with its
+       words in it; one opened and left empty folds itself back when the keyboard goes. */
+    const written = d.notes[c.key] || "";
     const notes = el("textarea", {
-      rows: "1", placeholder: "notes", autocapitalize: "sentences", autocorrect: "on",
-      spellcheck: "true",
+      rows: "1", placeholder: `${c.label} notes`, autocapitalize: "sentences", autocorrect: "on",
+      spellcheck: "true", hidden: written ? null : "",
       oninput: (e) => { d.notes[c.key] = e.target.value; grow(e.target); },
+    }, written);
+    const addNote = el("button", {
+      type: "button", class: "note-add", hidden: written ? "" : null,
+      "aria-label": `Add a note on ${c.label}`,
+      onclick: () => { addNote.hidden = true; notes.hidden = false; notes.focus(); },
+    }, "+ note");
+    notes.addEventListener("blur", () => {
+      if (notes.value.trim()) return;
+      notes.hidden = true;
+      addNote.hidden = false;
     });
 
     cats.append(el("div", { class: "cat" },
       el("div", { class: "cat-head" },
         el("span", { class: "cat-name" }, c.label),
         el("span", { class: "cat-max" }, `/ ${c.max}`),
+        addNote,
         val),
       strip, notes));
     paint();
@@ -593,6 +628,12 @@ function renderScore() {
     rows: "2", placeholder: "Overall impression",
     autocapitalize: "sentences", autocorrect: "on", spellcheck: "true",
     oninput: (e) => { d.overall = e.target.value; grow(e.target); },
+  }, d.overall || "");
+  // Below the scores, not above them: most pours are at home and leave it blank, and it used to
+  // be the first thing on the card. It shows what it holds — a bar pour arrives with its venue.
+  const venue = el("input", {
+    type: "text", value: d.venue || null, placeholder: "blank = home", autocapitalize: "words",
+    oninput: (e) => { d.venue = e.target.value; },
   });
 
   const submit = el("button", { class: "btn", id: "submit", type: "button", disabled: true,
@@ -602,20 +643,23 @@ function renderScore() {
     el("div", { class: "card", style: `border-left:3px solid ${accentFor(d.spirit.type)}` },
       el("div", { class: "spirit-name" }, d.spirit.name || d.spirit.display_name),
       el("div", { class: "spirit-meta" }, [d.spirit.distillery, d.spirit.type]
-        .filter(Boolean).join(" · ")),
-      el("label", { class: "field" }, el("span", {}, "Venue"),
-        el("input", { type: "text", value: "", placeholder: "blank = home",
-                      autocapitalize: "words",
-                      oninput: (e) => { d.venue = e.target.value; } }))),
+        .filter(Boolean).join(" · "))),
     cats,
-    el("div", { class: "card" }, el("label", { class: "field" },
-      el("span", {}, "Overall notes"), overall)),
+    el("div", { class: "card" },
+      el("label", { class: "field" }, el("span", {}, "Overall notes"), overall),
+      el("label", { class: "field" }, el("span", {}, "Venue"), venue)),
     el("div", { class: "total-bar" },
       el("span", { class: "total-num incomplete", id: "total" }, "0"),
       el("span", { class: "total-of", id: "total-of" },
         `/ ${app.rubric.max_total}`),
       el("span", { style: "margin-left:auto" }, submit)));
   updateTotal();
+}
+
+/** A note that came with the card needs its box as tall as its words. Called once the screen is
+    showing: while it is hidden a box has no height to measure, and would be set to none. */
+function fitNotes() {
+  screens.score.querySelectorAll("textarea").forEach((ta) => { if (ta.value && !ta.hidden) grow(ta); });
 }
 
 function updateTotal() {
@@ -1083,7 +1127,7 @@ function renderSync() {
   // Phone-only: no account, no queue, nothing to fetch. The screen is the choice itself, what
   // the phone holds, and the way to get a copy out of it.
   if (Store.isLocal()) {
-    fill(screens.sync, modeCard(), localCard(q), workbookCard(), backupCard());
+    fill(screens.sync, localCard(q), workbookCard(), backupCard(), modeCard());
     return;
   }
 
@@ -1125,7 +1169,6 @@ function renderSync() {
   })();
 
   fill(screens.sync,
-    modeCard(),
     !Graph.configured()
       ? notice("warn", "Sign-in is not configured yet. Add the Application (client) ID from "
           + "guide/SETUP.md Part 3 to config.js and redeploy. Scoring works without it — cards queue "
@@ -1185,7 +1228,10 @@ function renderSync() {
         el("button", { class: "btn wide", type: "button",
                        disabled: !online || !signedIn || S.running,
                        onclick: flush }, "Upload now")) : null),
-    backupCard());
+    backupCard(),
+    // Last: it is chosen once. What the screen is opened for — is it in step, what is waiting —
+    // comes first.
+    modeCard());
 }
 
 // ---------------------------------------------------------------- sync wiring

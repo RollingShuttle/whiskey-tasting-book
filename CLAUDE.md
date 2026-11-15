@@ -59,7 +59,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 631 tests, all passing
+python -m unittest discover -s tests    # 640 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -205,6 +205,16 @@ tap that asked for it. `L-n` codes go out as the sheet's `B-n`. The file is neve
 photograph-less twin is a hazard. Inside the iPhone app the file leaves through a third shell
 capability, `share` (`file.share` in `Bridge.swift`: written into Documents, then the share
 sheet); the Swift for it is, like the rest, not yet compiled here.
+
+**Phone layout, 15 Nov 2026** (these depart from the §10 mockups, with the owner's say-so). The
+scorecard folds each category's note behind `+ note` (`.note-add`, whose `::before` is the
+44-point hit area) and puts Venue after the scores; a card opened for correction now shows the
+notes and venue it holds — it used to keep them and show empty boxes — and `fitNotes()` sizes
+them *after* `show()`, because a hidden box measures as nothing. Collection chips are ordered by
+use and include `unscored`. `renderSync` ends with `modeCard()` rather than starting with it.
+`CompareView.begin(code)` is the way in from a bottle's page. Merging Table into Collection as a
+List | Table switch has been mocked up and is waiting on the owner's answer — do not start it
+unasked.
 
 Guarded by `tests/test_phone.py`, which checks the §9.2 rules that only fail on a phone: safe-area
 insets on every edge, 100dvh not 100vh, 16 px inputs, a 44 px score strip with

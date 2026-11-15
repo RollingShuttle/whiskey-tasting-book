@@ -688,6 +688,15 @@ reads as a website someone bookmarked, and it breaks in specific ways in the bar
   `local` mode and is never named after the master: beside a real master it would be a
   photograph-less file of the same shape, waiting to be mistaken for it. No library — the zip,
   the DEFLATE and the XML are written out, synchronously, so the share sheet opens inside the tap.
+- **Screens are laid out for how they are used** (15 Nov 2026, after the §10 mockups). On the
+  scorecard a category's note is folded behind **+ note** in the category's own head row and
+  opens with the card only when it already says something; left empty, it folds back. Venue sits
+  below the scores with the overall note. Ten open boxes and a venue field first made the card
+  2.7 screens long; it is under two. The collection's filters run in the order they are asked —
+  All, In stock, **Not scored**, Scored, then the kinds — because only four fit before the row
+  scrolls. The Sync screen opens on its status and the queue; *Where your book lives*, chosen
+  once, is last. A bottle's page offers **Compare with others**, which opens the comparison on
+  that bottle with the picker up.
 - **No page zoom.** This is an app, not a page: nothing on it needs the whole screen magnified,
   and a double-tap that zoomed was the one gesture that gave the web away. The native shell's
   WKWebView and the home-screen install honour the two scale flags; a Safari tab has ignored them
