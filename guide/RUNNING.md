@@ -413,6 +413,10 @@ Two things to tell them. The phone holds the only copy, so export a backup now a
 it on the Home Screen: iOS can clear the storage of a web page that goes unused for weeks, but
 leaves an installed one alone.
 
+If your friend would rather have the real app than a Home Screen page, TestFlight can give it to
+him: `ios/README.md`, "Giving the app to a friend". The app asks the same first question and
+works the same way.
+
 Your own phone is unaffected: one that has ever synced stays on **OneDrive**, and the same last
 tab shows both choices under *Where your book lives*. Switching is a tap and a confirmation. What
 is scored in phone-only mode stays on the phone — it is not sent to the PC later — and bottles

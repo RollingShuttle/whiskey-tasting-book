@@ -119,6 +119,48 @@ TestFlight clock without anyone touching anything. Let Xcode Cloud manage the bu
 generate; `copy-web.sh` runs inside the build as it does locally. After that, every push to `main`
 becomes a TestFlight update on both phones about twenty minutes later.
 
+## Giving the app to a friend
+
+The app needs nothing of yours to run: on first launch it asks where the book should live, and
+**On this phone only** needs no Microsoft account and no PC (guide/RUNNING.md, "Sharing it with a
+friend"). What a friend needs is a way to install it. Two routes; the first is the one to use for
+one or two people.
+
+**Route 1 — add him as an internal tester (no review, about five minutes).** The same thing that
+was done for the second phone, and it works with the builds as they are made now.
+
+1. appstoreconnect.apple.com → **Users and Access** → **+**. His name and the email of **his Apple
+   ID**; role **Marketing**; under *Apps* tick **only Tasting Book**. Invite.
+2. He accepts the email invitation (it asks him to sign in with that Apple ID).
+3. The app → **TestFlight** → **Internal Testing** → your group → **Testers +** → tick him.
+4. He installs **TestFlight** from the App Store and opens the invitation email on the phone →
+   **View in TestFlight** → **Install**. Updates then arrive on their own, including the weekly
+   build that renews the 90-day clock.
+
+What it costs: he becomes a user on your App Store Connect team, with the Marketing role, for
+this one app. He can see the app's pages there; he cannot see your other apps, your agreements or
+your money. Up to 100 people can be added this way.
+
+**Route 2 — external testing (for people who should not be on your team, or more than a few).**
+Builds made as *TestFlight Internal Only* **cannot** be given to external testers, so this route
+changes how the build is made:
+
+1. Xcode Cloud workflow → the Archive action → *Distribution Preparation*: **App Store Connect**
+   instead of *TestFlight (Internal Testing Only)*. (By hand: Organizer → Distribute App →
+   **TestFlight & App Store**.) Run a build.
+2. TestFlight → **External Testing** → **+** → a group → add that build. Fill in **Test
+   Information**: a feedback email, and a description such as: *"A personal whiskey tasting
+   scorecard. On first launch choose 'On this phone only' — no account or sign-in is needed. Add a
+   bottle under Add, then score it."* Untick **Sign-in required**.
+3. **Submit for Review**. The first build of a version waits for Beta App Review, usually a day or
+   so; later builds of the same version normally go straight through.
+4. Add him by email, or turn on the group's **Public Link** and send it.
+5. In the Xcode Cloud workflow add a post-action **TestFlight External Testing** → that group, or
+   his copy stops opening when its build turns 90 days old.
+
+Either way his data is his phone's: the app keeps a copy as `tasting-book.json` in Files → On My
+iPhone → Tasting Book, and the Data tab exports one.
+
 ## Files
 
 - `TastingBookShell/TastingBookShellApp.swift` — entry; the web view full-screen on #12100E
