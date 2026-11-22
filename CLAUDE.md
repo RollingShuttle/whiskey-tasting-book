@@ -59,7 +59,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 654 tests, all passing
+python -m unittest discover -s tests    # 660 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -225,6 +225,13 @@ bar and the body and leaves the search box alone, so typing keeps its cursor. Th
 and its ranking lens are each one `pickerChip` — a chip with an invisible 16 px `<select>` over
 it — in place of two scrolling rows of chips; a header tap still sorts and turns the sort
 round. The list has its own short set of orders (`LIST_SORTS`), opening in shelf order.
+
+**Compare keeps a key in sight** (21 Nov 2026). The bars carry no names, so once the card of
+totals scrolled away a category was anonymous bars. `.cmp-frozen` is a zero-height sticky marker
+under the header and `.cmp-key` hangs from it — the same bottles in the same order, name, code
+and score — so its arrival moves nothing on the page. An `IntersectionObserver` on the card
+(`watch()` in `docs/compare.js`, one at a time) turns it on only while the card is out of sight
+above; there is no scroll listener. Past four bottles the code is dropped for room.
 
 Guarded by `tests/test_phone.py`, which checks the §9.2 rules that only fail on a phone: safe-area
 insets on every edge, 100dvh not 100vh, 16 px inputs, a 44 px score strip with

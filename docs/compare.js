@@ -187,7 +187,47 @@ const CompareView = (() => {
         + "Refresh there first, then Sync here. Refreshing here alone cannot produce them."));
     }
 
-    fill(host, head, el("div", { class: "card" }, totals), el("div", { class: "card" }, rows));
+    /* The key: the same bottles in the same order, frozen under the header once the card above
+       has scrolled away. The bars carry no names — each is told from the next by its place in
+       the group — so two screens down a category was four anonymous bars. It is a short strip
+       rather than the card itself held in place: the card is a quarter of the screen. A tap
+       goes back to the top, where the medals and Remove are. Past four bottles there is no
+       room for the code beside the score, and the name has to do. */
+    const key = el("div", {
+      class: "cmp-key" + (items.length > 4 ? " many" : ""),
+      style: "grid-template-columns:repeat(" + items.length + ",minmax(0,1fr))",
+      onclick: () => window.scrollTo({ top: 0, behavior: "smooth" }),
+    },
+      ...items.map((it) => el("div", {
+        class: "cmp-key-col", style: "border-bottom-color:" + accentFor(it.spirit.type) },
+        el("div", { class: "cmp-key-name" }, it.spirit.name || it.spirit.display_name || it.code),
+        el("div", { class: "cmp-key-sub" },
+          el("span", { class: "cmp-key-code" }, (it.spirit._encounter ? "Bar" : it.code) + " · "),
+          el("b", {}, it.career.score.toFixed(1))))));
+    const frozen = el("div", { class: "cmp-frozen", "aria-hidden": "true" }, key);
+    const card = el("div", { class: "card" }, totals);
+
+    fill(host, head, frozen, card, el("div", { class: "card" }, rows));
+    watch(card, frozen);
+  }
+
+  /* The strip shows exactly while the card is out of sight above. The card is watched, not the
+     scroll: nothing runs while a finger is dragging, only as its last edge crosses the header.
+     The strip hangs from an element of no height, so its coming and going moves nothing on the
+     page. One watcher at a time — every repaint makes a new card. */
+  let watcher = null;
+  function watch(card, frozen) {
+    if (watcher) watcher.disconnect();
+    watcher = null;
+    if (typeof IntersectionObserver === "undefined") return;       // no key; the card is still there
+    const bar = document.querySelector(".bar");
+    const under = bar ? Math.round(bar.getBoundingClientRect().bottom) : 0;
+    watcher = new IntersectionObserver(([entry]) => {
+      // Out of sight *above*: a hidden screen is out of sight too, and has no height.
+      frozen.classList.toggle("on", !entry.isIntersecting && entry.boundingClientRect.height > 0
+        && entry.boundingClientRect.bottom <= under + 1);
+    }, { rootMargin: "-" + under + "px 0px 0px 0px" });
+    watcher.observe(card);
   }
 
   /** From a bottle's own page: put it in, and while it is the only one, open straight on the

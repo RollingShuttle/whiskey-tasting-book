@@ -369,6 +369,33 @@ select:focus { outline: 2px solid var(--brass-bright); border-color: transparent
   margin-top: 8px; background: none; border: 0; color: var(--muted);
   font-size: 0.7rem; text-decoration: underline; min-height: 34px;
 }
+/* The key that stays under the header once the card of totals has scrolled away. .cmp-frozen
+   has no height — it only marks the place and sticks there — and the strip hangs from it across
+   the whole width of the screen, so nothing below moves when it appears. */
+.cmp-frozen { position: sticky; top: calc(var(--bar-h) + var(--safe-t)); height: 0; z-index: 5; }
+.cmp-key {
+  position: absolute; top: 0;
+  left: calc(-14px - var(--safe-l)); right: calc(-14px - var(--safe-r));
+  padding: 8px calc(14px + var(--safe-r)) 8px calc(14px + var(--safe-l));
+  display: grid; gap: 8px; align-items: end;
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line);
+  opacity: 0; visibility: hidden; transition: opacity .15s ease, visibility .15s;
+}
+.cmp-frozen.on .cmp-key { opacity: 1; visibility: visible; }
+.cmp-key-col { min-width: 0; text-align: center; padding-bottom: 5px; border-bottom: 2px solid var(--line); }
+.cmp-key-name {
+  font-family: var(--serif); font-size: 0.76rem; line-height: 1.2;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+.cmp-key-sub {
+  margin-top: 2px; color: var(--muted); font-size: 0.68rem; font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cmp-key-sub b { color: var(--brass-bright); font-weight: 600; }
+.cmp-key.many .cmp-key-code { display: none; }
+
 .cmp-axes { display: flex; flex-direction: column; gap: 14px; }
 .cmp-axis-head {
   display: flex; justify-content: space-between; font-size: 0.82rem; margin-bottom: 5px;

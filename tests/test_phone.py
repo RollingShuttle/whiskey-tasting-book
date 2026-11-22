@@ -1295,5 +1295,60 @@ class TestOneCollectionTwoViews(unittest.TestCase):
         self.assertNotIn("TableView", sync)
 
 
+class TestTheCompareKeyStaysInSight(unittest.TestCase):
+    """The bars carry no names: each is told from the next by its place in the group. Two screens
+    down, with the card of totals scrolled away, a category was four anonymous bars. A short key
+    of the same bottles in the same order now stays under the header."""
+
+    def setUp(self):
+        self.js = code("compare.js")
+        self.css = text("style.css")
+
+    def rule(self, selector):
+        block = self.css[self.css.index(selector + " {"):]
+        return block[:block.index("}")]
+
+    def test_the_key_is_the_same_bottles_in_the_same_order(self):
+        key = self.js[self.js.index('class: "cmp-key"'):self.js.index("const frozen = ")]
+        self.assertIn("...items.map((it) =>", key, "built from the list the bars are built from")
+        self.assertIn("it.spirit.name || it.spirit.display_name || it.code", key)
+        self.assertIn("it.career.score.toFixed(1)", key)
+        self.assertIn("accentFor(it.spirit.type)", key, "the bar's own colour, under its name")
+
+    def test_two_bottles_of_one_name_are_still_told_apart(self):
+        """Three bottles in this collection share a name. The code goes beside the score while
+        there is room for it — up to four across."""
+        self.assertIn('(it.spirit._encounter ? "Bar" : it.code) + " · "', self.js)
+        self.assertIn('(items.length > 4 ? " many" : "")', self.js)
+        self.assertIn(".cmp-key.many .cmp-key-code { display: none; }", self.css)
+
+    def test_it_takes_no_room_so_nothing_moves_when_it_appears(self):
+        """A strip that pushed the page down as it arrived would jolt the bars being read."""
+        frozen = self.rule(".cmp-frozen")
+        self.assertIn("position: sticky", frozen)
+        self.assertIn("top: calc(var(--bar-h) + var(--safe-t))", frozen, "directly under the header")
+        self.assertIn("height: 0", frozen)
+        self.assertIn("position: absolute", self.rule(".cmp-key"))
+
+    def test_it_shows_only_while_the_card_above_is_out_of_sight(self):
+        key = self.rule(".cmp-key")
+        self.assertIn("opacity: 0", key)
+        self.assertIn("visibility: hidden", key)
+        self.assertIn(".cmp-frozen.on .cmp-key { opacity: 1; visibility: visible; }", self.css)
+        self.assertLess(self.js.index("fill(host, head, frozen, card,"), self.js.index("watch(card, frozen);"))
+
+    def test_the_card_is_watched_not_the_scroll(self):
+        """Nothing runs while a finger is dragging: only as the card's last edge crosses."""
+        watch = self.js[self.js.index("function watch("):]
+        self.assertIn("new IntersectionObserver(", watch)
+        self.assertIn("if (watcher) watcher.disconnect();", watch, "every repaint makes a new card")
+        self.assertIn('rootMargin: "-" + under + "px 0px 0px 0px"', watch, "measured from the header's foot")
+        self.assertIn("entry.boundingClientRect.height > 0", watch, "a hidden screen is not 'scrolled away'")
+        self.assertNotIn('addEventListener("scroll"', self.js)
+
+    def test_a_tap_on_it_goes_back_to_the_card(self):
+        self.assertIn('onclick: () => window.scrollTo({ top: 0, behavior: "smooth" })', self.js)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

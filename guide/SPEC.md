@@ -705,6 +705,10 @@ reads as a website someone bookmarked, and it breaks in specific ways in the bar
   round. The list can be ordered too — it opens in shelf order. One difference between the
   views is deliberate: the list is where a pour is chosen, so a finished bottle appears only
   under Finished; the table is a record, so one that earned a score keeps its greyed row.
+- **Compare keeps its key in sight.** The per-category bars are told apart only by their order,
+  so when the card of totals has scrolled under the header a short strip takes its place there:
+  each bottle's name, code and score, in the bars' order, over the bar's own colour. It occupies
+  no height in the page, so nothing shifts as it appears, and a tap on it returns to the card.
 - **No page zoom.** This is an app, not a page: nothing on it needs the whole screen magnified,
   and a double-tap that zoomed was the one gesture that gave the web away. The native shell's
   WKWebView and the home-screen install honour the two scale flags; a Safari tab has ignored them
