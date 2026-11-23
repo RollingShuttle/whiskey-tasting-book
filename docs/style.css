@@ -460,17 +460,48 @@ select:focus { outline: 2px solid var(--brass-bright); border-color: transparent
   margin: 0; padding: 0; border: none; opacity: 0; font-size: 16px;
 }
 
-/* The ranking lens, when it is any set of categories: which ones the score is taken over. */
-.lenspicker {
-  display: flex; flex-wrap: wrap; gap: 10px 16px;
-  padding: 10px 12px; margin-bottom: 8px;
-  background: var(--surface-2); border-radius: 10px;
+/* ---------------------------------------------------------------- every score (Compare)
+   A spreadsheet in a pane of its own: the pane scrolls both ways, and the header row and the
+   name column stay where they are while the figures move under them. The pane takes what is
+   left of the screen between the header and the tab bar, so the page itself does not scroll and
+   the frozen row has something to be frozen against. */
+.scores {
+  display: flex; flex-direction: column;
+  height: calc(100dvh - var(--bar-h) - var(--safe-t) - var(--tabs-h) - var(--safe-b) - 28px);
 }
-.lenschoice {
-  display: inline-flex; align-items: center; gap: 7px;
-  color: var(--muted); font-size: 0.8rem; min-height: 44px;
+body.keyboard .scores { height: calc(100dvh - var(--bar-h) - var(--safe-t) - 28px); }
+.stable-wrap {
+  flex: 1 1 auto; min-height: 0; overflow: auto; -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain; margin-top: 10px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
 }
-.lenschoice input { accent-color: var(--brass); width: 20px; height: 20px; }
+.stable { border-collapse: separate; border-spacing: 0; font-size: 0.8rem; }
+.stable th, .stable td {
+  padding: 8px 10px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid var(--line); background: var(--surface);
+}
+.stable th {
+  position: sticky; top: 0; z-index: 2; vertical-align: bottom;
+  color: var(--muted); font-weight: 500; font-size: 0.7rem; background: var(--surface-2);
+}
+.stable th.sorted, .stable td.sorted { color: var(--brass-bright); }
+.stable .s-max { display: block; font-size: 0.62rem; font-weight: 400; opacity: 0.8; }
+.stable .s-word { text-align: center; }
+/* The name column: frozen at the left, and the corner cell above it over both. */
+.stable .s-name {
+  position: sticky; left: 0; z-index: 1; text-align: left; white-space: normal;
+  width: 8.6rem; min-width: 8.6rem; max-width: 8.6rem;
+  border-left: 3px solid transparent; border-right: 1px solid var(--line);
+}
+.stable th.s-name { z-index: 3; }
+.stable .s-title {
+  font-family: var(--serif); font-size: 0.84rem; line-height: 1.2;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+.stable .s-sub { color: var(--muted); font-size: 0.64rem; margin-top: 1px; }
+.stable tbody tr.gone td > * { opacity: 0.6; }
+.stable .medal { font-size: 0.62rem; }
+
 
 /* One sitting in full: what each category was given, and what was written against it. */
 .qrow.sitting {

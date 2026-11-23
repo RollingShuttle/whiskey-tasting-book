@@ -72,7 +72,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 668 tests, all passing
+python -m unittest discover -s tests    # 672 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -229,15 +229,28 @@ use and include `unscored`. `renderSync` ends with `modeCard()` rather than star
 
 **Collection and Table are one tab** (approved from a mockup, 15 Nov 2026): five tabs, and the
 Collection screen has a `List | Table` switch (`app.view`, remembered in `meta.view`). There is
-one search box and one set of chips; `shownSpirits(record)` in `app.js` is the only place the
-row set is decided, and `TableView.render(host, spirits)` draws what it is handed —
-`docs/table.js` has no search or filter of its own any more. `record` is the table's one
-difference: a finished bottle that earned a score keeps its greyed row in the ranking, where the
-list leaves it to the Finished chip. `paintRows()` (the name predates the table) repaints the
-bar and the body and leaves the search box alone, so typing keeps its cursor. The table's sort
-and its ranking lens are each one `pickerChip` — a chip with an invisible 16 px `<select>` over
-it — in place of two scrolling rows of chips; a header tap still sorts and turns the sort
-round. The list has its own short set of orders (`LIST_SORTS`), opening in shelf order.
+one search box and one set of chips; `shownSpirits()` in `app.js` is the only place the row set
+is decided, and `TableView.render(host, spirits)` draws what it is handed — `docs/table.js` has
+no search or filter of its own, and both views show the same rows. `paintRows()` (the name
+predates the table) repaints the bar and the body and leaves the search box alone, so typing
+keeps its cursor. The table's sort is one `pickerChip` — a chip with an invisible 16 px
+`<select>` over it — in place of a scrolling row of chips; a header tap still sorts and turns
+the sort round. The list has its own short set of orders (`LIST_SORTS`), opening in shelf order.
+
+**Scores live under Compare, not in the collection's table** (22 Nov 2026). The Compare tab
+opens on **All scores** (`renderScores` / `paintScores` in `docs/compare.js`): one row for every
+spirit that has a score — finished bottles and bar pours included — with Total, Medal, Flavor
+total (the rubric's `flavour` categories only, offered when there are others to leave out),
+every category, Sittings, Best, Worst and Score / $. The columns are built from the rubric.
+Any header sorts, and so does the picker; blanks always sink, and ties go to the bottle with
+more sittings. It is a spreadsheet pane: `.scores` takes the height between the header and the
+tab bar, `.stable-wrap` scrolls both ways inside it, and `th` (top) and `.s-name` (left) are
+sticky — which needs `border-collapse: separate` and the pane, not the page, as the scroller.
+**Side by side** is the tab's second view: the older bars for two to six chosen spirits, with
+their frozen key; `CompareView.begin(code)` opens that one. The collection's table
+(`docs/table.js`) is now only the bottles — no score, medal, best, worst or score-per-dollar,
+and no ranking lens; `lensPresets`, `lensIsEverything` and `sameKeys` went with it, leaving
+`flavourKeys`, `lensMax` and `lensScore` for the Flavor total. It opens sorted by name.
 
 **Compare keeps a key in sight** (21 Nov 2026). The bars carry no names, so once the card of
 totals scrolled away a category was anonymous bars. `.cmp-frozen` is a zero-height sticky marker
@@ -309,9 +322,9 @@ row opens its sittings in the table via `TableView.focusTastings`, the phone's d
 offers no Score button), and one never scored appears nowhere, because there is nothing to show.
 `/api/spirits` carries a per-spirit `sittings` count for that decision.
 
-`docs/table.js` is the phone's table: sortable, no column chooser, scrolling sideways rather than
-being squeezed. Proof and release year are shown on the score sheet, both tables and both compare
-views, because three bottles in this collection are called George T. Stagg and those two fields are
+`docs/table.js` is the phone's collection table: sortable, no column chooser, scrolling sideways
+rather than being squeezed. Proof and release year are shown on the score sheet, the tables and
+both compare views, because three bottles in this collection are called George T. Stagg and those two fields are
 what separate one release from the next.
 
 `tools/update.py` / `update.bat` (+ `tests/test_update.py`) is the updater: fast-forward pull, reinstall only

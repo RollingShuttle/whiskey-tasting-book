@@ -1,9 +1,14 @@
 /* Whiskey Tasting Book — the collection as a table, on the phone (SPEC.md §4.3, §9.2).
 
    The table is the Collection screen's second view, not a tab of its own: the same bottles, the
-   same search box and the same filters as the list beside it, drawn as rows of figures to rank
-   by. What is in it is decided by the collection (app.js, `shownSpirits`); how it is ordered and
-   what its score is taken over are decided here.
+   same search box and the same filters as the list beside it, drawn as rows of facts. What is in
+   it is decided by the collection (app.js, `shownSpirits`); how it is ordered is decided here.
+
+   It is the bottles and nothing about how they scored. Scores, medals and the breakdown behind
+   them are the Compare tab's table (compare.js), where every category has a column to sort on;
+   one column of score here was a second, thinner copy of that. The one thing kept is `n`, how
+   many sittings a bottle has had — a fact about the bottle, and the quickest way to see which
+   have never been poured.
 
    The desktop table sorts on every field and has a column chooser to keep that manageable. A
    phone is 375 points across, so the sorting is what comes over and the chooser does not: the
@@ -12,16 +17,15 @@
    that is not one of the columns it normally carries. Sorting by something you cannot see is the
    failure this avoids — a list silently reordered by a number that is nowhere on screen.
 
-   Two of the columns are worked out here rather than stored: value per ounce and score per dollar,
-   the two the spreadsheet could never produce. */
+   One column is worked out here rather than stored: value per ounce, which the spreadsheet could
+   never produce. */
 "use strict";
 
 const TableView = (() => {
   const ML_PER_OZ = 29.5735;
 
-  let sort = "score";
-  let desc = true;
-  let lens = null;          // {id, keys, custom} — set on first use, once the rubric is loaded
+  let sort = "name";
+  let desc = false;
 
   const num = (v) => {
     if (v === null || v === undefined || v === "") return null;
@@ -30,14 +34,9 @@ const TableView = (() => {
   };
   const round1 = (v) => (v === null ? null : Math.round(v * 10) / 10);
 
-  /** Every field the desktop can sort on, in the order it offers them. `show` is what appears in
-      the cell; `of` is the number or string the sort actually runs on. */
+  /** Every fact the desktop can sort a bottle on, in the order it offers them. `show` is what
+      appears in the cell; `of` is the number or string the sort actually runs on. */
   const FIELDS = [
-    { key: "score", label: "Score", core: true, num: true,
-      of: (r) => r.score, show: (r) => (r.score === null ? "—" : r.score.toFixed(1)) },
-    // Suppressed unless the lens is the whole card: the bands are defined against 100, so a
-    // medal beside a flavour-only score would be claiming something the number cannot support.
-
     { key: "name", label: "Name", core: true,
       of: (r) => r.name.toLowerCase(), show: (r) => r.name },
     { key: "code", label: "Code", core: true,
@@ -63,17 +62,6 @@ const TableView = (() => {
       of: (r) => r.paid, show: (r) => (r.paid === null ? "—" : "$" + r.paid) },
     { key: "value_per_oz", label: "$ / oz", num: true,
       of: (r) => r.valuePerOz, show: (r) => (r.valuePerOz === null ? "—" : "$" + r.valuePerOz) },
-    { key: "score_per_dollar", label: "Score / $", num: true,
-      of: (r) => r.scorePerDollar,
-      show: (r) => (r.scorePerDollar === null ? "—" : r.scorePerDollar.toFixed(3)) },
-    // `high` rather than `num`: a medal is ordered, so the first tap should lead with Diamond,
-    // but it is a word and belongs left-aligned with the other words.
-    { key: "medal", label: "Medal", high: true,
-      of: (r) => r.medalRank, show: (r) => r.medal || "—" },
-    { key: "best", label: "Best", num: true,
-      of: (r) => r.best, show: (r) => (r.best === null ? "—" : r.best) },
-    { key: "worst", label: "Worst", num: true,
-      of: (r) => r.worst, show: (r) => (r.worst === null ? "—" : r.worst) },
     { key: "rarity", label: "Rarity",
       of: (r) => (r.spirit.rarity || "").toLowerCase(), show: (r) => r.spirit.rarity || "—" },
     { key: "status", label: "Status",
@@ -82,32 +70,12 @@ const TableView = (() => {
 
   const field = (key) => FIELDS.find((f) => f.key === key) || FIELDS[0];
 
-  /** The ranking starts on flavour alone: which is the better whiskey, not the better buy. */
-  function theLens() {
-    if (!lens) lens = { id: "flavour", keys: flavourKeys(), custom: false };
-    return lens;
-  }
-
-  /** Medals sort by standing, not alphabetically — Bronze before Diamond would be nonsense. */
-  function medalRank(name) {
-    if (!name || !app.rubric) return null;
-    const bands = app.rubric.bands || [];
-    const i = bands.findIndex((b) => b.name === name);
-    return i === -1 ? null : bands.length - i;
-  }
-
   function rows(spirits) {
     return spirits.map((s) => {
       const career = careerFor(s.code);
       const paid = num(s.paid);
       const oz = num(s.sizeoz) !== null ? num(s.sizeoz)
         : (num(s.size_ml) !== null ? num(s.size_ml) / ML_PER_OZ : null);
-      // The score shown and sorted on is the lens, not the stored total.
-      const means = categoryMeansFor(s.code);
-      const whole = lensIsEverything(lens.keys);
-      const score = whole
-        ? (career ? career.score : null)
-        : lensScore(means, lens.keys);
       return {
         code: s.code,
         spirit: s,
@@ -119,36 +87,28 @@ const TableView = (() => {
         year: num(s.release_year) === null ? null : Math.round(num(s.release_year)),
         paid,
         valuePerOz: paid !== null && oz ? round1(paid / oz) : null,
-        scorePerDollar: score !== null && paid ? Math.round((score / paid) * 1000) / 1000 : null,
-        score,
-        medal: whole && career ? career.medal : null,
-        medalRank: whole ? medalRank(career && career.medal) : null,
-        best: career && career.best !== undefined ? career.best : null,
-        worst: career && career.worst !== undefined ? career.worst : null,
         n: career ? career.n : 0,
         owned: s.owned !== false,
       };
     });
   }
 
-  /** Nulls sink whichever way the column points: an unscored bottle is not a low score, and
-      floating them to the top of an ascending sort would bury everything that has one. */
+  /** Nulls sink whichever way the column points: a bottle with no price is not a cheap one, and
+      floating the blanks to the top of an ascending sort would bury everything that has a value. */
   function compare(a, b) {
     const f = field(sort);
     const x = f.of(a), y = f.of(b);
-    if (x === null && y === null) return tieBreak(a, b);
-    if (x === null || x === undefined) return 1;
-    if (y === null || y === undefined) return -1;
+    if ((x === null || x === undefined || x === "") && (y === null || y === undefined || y === "")) return tieBreak(a, b);
+    if (x === null || x === undefined || x === "") return 1;
+    if (y === null || y === undefined || y === "") return -1;
     if (x === y) return tieBreak(a, b);
     if (typeof x === "number" && typeof y === "number") return desc ? y - x : x - y;
     const c = String(x).localeCompare(String(y), undefined, { numeric: true });
     return desc ? -c : c;
   }
 
-  /** Same rule as the desktop: equal scores are separated by how many sittings stand behind
-      them, so a 90 from four nights outranks a 90 from one. */
+  /** Equal values fall back to the code, so the order is the same every time it is drawn. */
   function tieBreak(a, b) {
-    if (sort === "score" && a.n !== b.n) return b.n - a.n;
     return a.code.localeCompare(b.code, undefined, { numeric: true });
   }
 
@@ -159,64 +119,31 @@ const TableView = (() => {
     return core.includes(chosen) ? core : core.concat([chosen]);
   }
 
-  /** A field picked a second time turns round; a new one starts the way it is usually asked.
-      The collection repaints (app.js, `paintRows`): the bar above the table names the sort too. */
+  /** A field picked a second time turns round; a new one starts the way it is usually asked —
+      numbers from the top, words from A. The collection repaints (app.js, `paintRows`): the bar
+      above the table names the sort too. */
   function pick(key) {
     if (sort === key) desc = !desc;
-    else { sort = key; desc = !!(field(key).num || field(key).high); }
+    else { sort = key; desc = !!field(key).num; }
     paintRows();
   }
 
-  /** What the table adds to the collection's bar: what the score is taken over, and what the
-      rows are ordered by. Each is one chip that opens the phone's own picker. They were two
-      scrolling rows of chips — nineteen for the sort alone — standing between the filters and
-      the first row of figures. The picker chooses the field; its direction is turned by tapping
-      the column's header, and the sorted column is always on screen to be tapped.
-
-      The lens is which categories the ranking is taken over: flavour alone, flavour plus one of
-      the others, everything, or any set you pick. Aesthetics is the bottle and value is the
-      price, so leaving them out asks a different question. */
+  /** What the table adds to the collection's bar: what the rows are ordered by, as one chip that
+      opens the phone's own picker. It was a scrolling row of chips, one per field, standing
+      between the filters and the first row. The picker chooses the field; its direction is
+      turned by tapping the column's header, and the sorted column is always on screen to be
+      tapped. */
   function controls() {
-    const now = theLens();
-    const presets = lensPresets();
-    const active = now.custom ? null : presets.find((p) => sameKeys(p.keys, now.keys));
     return [
-      pickerChip(`${active ? active.label : "Custom"} ▾`,
-        presets.map((p) => [p.id, p.label]).concat([["custom", "Custom…"]]),
-        active ? active.id : "custom",
-        (id) => {
-          const p = presets.find((x) => x.id === id);
-          lens = p ? { id: p.id, keys: p.keys, custom: false } : { ...lens, id: "custom", custom: true };
-          paintRows();
-        }, "Rank by"),
       pickerChip(`${field(sort).label} ${desc ? "▾" : "▴"}`,
         FIELDS.map((f) => [f.key, f.label]), sort,
         (key) => { if (key !== sort) pick(key); }, "Sort by"),
     ];
   }
 
-  /** Any set of categories, ticked one by one: under the bar while Custom is the choice. */
-  function lensPicker() {
-    return el("div", { class: "lenspicker" },
-      ...(app.rubric.categories).map((c) => el("label", { class: "lenschoice" },
-        el("input", {
-          type: "checkbox", checked: lens.keys.includes(c.key),
-          onchange: (e) => {
-            const keys = e.target.checked
-              ? [...lens.keys, c.key]
-              : lens.keys.filter((k) => k !== c.key);
-            // Never leave nothing selected: every row would go blank with no way back.
-            lens = { ...lens, id: "custom", keys: keys.length ? keys : [c.key] };
-            paintRows();
-          },
-        }),
-        `${c.label || c.key} ${c.max}`)));
-  }
-
   /** Draw `spirits` — already searched and filtered by the collection — into `host`. */
   function render(host, spirits) {
     if (!host) return;
-    theLens();
     const list = rows(spirits).sort(compare);
     const cols = columns();
 
@@ -243,13 +170,11 @@ const TableView = (() => {
     }
 
     fill(host,
-      lens.custom ? lensPicker() : null,
       el("div", { class: "ptable-wrap" }, el("table", { class: "ptable" }, el("thead", {}, head), body)),
       el("div", { class: "chart-basis" },
         `${list.length} shown, sorted by ${field(sort).label.toLowerCase()}`
-        + (desc ? ", highest first" : ", lowest first")
-        + ` · score out of ${lensMax(lens.keys)}`
-        + (lensIsEverything(lens.keys) ? "" : " — medals need the whole card")));
+        + (field(sort).num ? (desc ? ", highest first" : ", lowest first") : (desc ? ", Z to A" : ", A to Z"))
+        + " · scores are under Compare"));
   }
 
   return { render, controls };

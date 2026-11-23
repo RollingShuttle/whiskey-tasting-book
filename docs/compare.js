@@ -1,10 +1,15 @@
 /* Whiskey Tasting Book — compare on the phone (SPEC.md §4.2, §9.2).
 
-   Two to four things side by side. On the desktop this is a wide grid; a phone is 375 points
-   across, so the same information is laid out as one row per category with a bar per spirit,
-   which reads down the screen instead of across it.
+   Two views of the same question — how do these stand against each other.
 
-   Each axis is drawn against its own maximum, so Flavor out of 20 and Balance out of 10 are
+   **All scores** is the tab as it opens: every spirit that has been scored, one row each, with
+   the whole breakdown across — the total, the medal, the flavour total, every category, and how
+   many sittings stand behind them. Any column sorts it. It is laid out like a spreadsheet,
+   because it is one: the header row and the name column stay put while the figures scroll under
+   them, so a number forty rows down and eight columns across still says whose it is and what.
+
+   **Side by side** is two to six chosen spirits as bars, one row per category with a bar per
+   spirit, each axis drawn against its own maximum — Flavor out of 20 and Balance out of 10 are
    comparable at a glance rather than one looking twice as good for being out of twice as much.
 
    Per-category means come from the PC in careers.json. The phone cannot derive them for a spirit
@@ -16,6 +21,11 @@ const CompareView = (() => {
   let codes = [];
   let picking = false;
   let query = "";
+
+  let view = "table";       // "table": every score · "bars": the chosen few, side by side
+  let sortKey = "total";
+  let desc = true;
+  let find = "";            // the table's own search
 
   // Wider than four, but not the desktop's dozen: the totals sit side by side across 375
   // points, and past six they are too narrow to read. The per-category bars stack, so they cope.
@@ -108,9 +118,189 @@ const CompareView = (() => {
     }
   }
 
+  // ------------------------------------------------------------------ every score, as a table
+  /** Medals sort by standing, not alphabetically — Bronze before Diamond would be nonsense. */
+  function medalRank(name) {
+    if (!name || !app.rubric) return null;
+    const bands = app.rubric.bands || [];
+    const i = bands.findIndex((b) => b.name === name);
+    return i === -1 ? null : bands.length - i;
+  }
+
+  /* The columns, built from the rubric so a category added to it gets a column here. `of` is
+     what the sort runs on, `show` what the cell says, `max` what the figure is out of.
+
+     Two totals stand first. "Total" is the whole card. "Flavor total" leaves out the categories
+     the rubric marks as not flavour — the bottle's looks and its price — which is the question
+     "which is the better whiskey" rather than "which was the better buy"; it is offered only
+     when the rubric has such categories to leave out. The medal is always the whole card's: the
+     bands are defined against 100. */
+  function columns() {
+    const cats = (app.rubric && app.rubric.categories) || [];
+    const flavour = flavourKeys();
+    const one = (v) => (v === null || v === undefined ? "—" : v.toFixed(1));
+    const whole = (v) => (v === null || v === undefined ? "—" : String(v));
+    return [
+      { key: "total", label: "Total", pick: "Total (the whole card)",
+        max: app.rubric ? app.rubric.max_total : 100, of: (r) => r.total, show: (r) => one(r.total) },
+      { key: "medal", label: "Medal", word: true, of: (r) => r.medalRank, show: (r) => r.medal || "—" },
+      ...(flavour.length && flavour.length < cats.length ? [{
+        key: "flavour", label: "Flavor total", pick: "Flavor total (no " + cats.filter((c) => !c.flavour)
+          .map((c) => (c.label || c.key).toLowerCase()).join(" or ") + ")",
+        max: lensMax(flavour), of: (r) => r.flavour, show: (r) => one(r.flavour) }] : []),
+      ...cats.map((c) => ({ key: "cat:" + c.key, label: c.label || c.key, max: c.max,
+        of: (r) => (r.cats ? r.cats[c.key] : null), show: (r) => one(r.cats ? r.cats[c.key] : null) })),
+      { key: "n", label: "Sittings", of: (r) => r.n, show: (r) => whole(r.n) },
+      { key: "best", label: "Best", of: (r) => r.best, show: (r) => whole(r.best) },
+      { key: "worst", label: "Worst", of: (r) => r.worst, show: (r) => whole(r.worst) },
+      { key: "per_dollar", label: "Score / $", of: (r) => r.perDollar,
+        show: (r) => (r.perDollar === null ? "—" : r.perDollar.toFixed(3)) },
+    ];
+  }
+
+  /** One row for every spirit that has a score: bottles, finished ones, bar pours. This is the
+      record of what was given, so nothing scored is left out of it. */
+  function scoreRows() {
+    const flavour = flavourKeys();
+    return knownSpirits().map((s) => {
+      const career = careerFor(s.code);
+      if (!career) return null;
+      const cats = categoriesFor(s.code);
+      const paid = Number(s.paid);
+      return {
+        code: s.code, spirit: s,
+        name: s.name || s.display_name || s.code,
+        sub: [s._encounter ? "Bar" : s.code, s.proof ? s.proof + " pf" : null,
+              s.release_year ? String(Math.round(s.release_year)) : null].filter(Boolean).join(" · "),
+        total: career.score, medal: career.medal || null, medalRank: medalRank(career.medal),
+        flavour: lensScore(cats, flavour), cats,
+        n: career.n || 0,
+        best: career.best === undefined ? null : career.best,
+        worst: career.worst === undefined ? null : career.worst,
+        perDollar: Number.isFinite(paid) && paid > 0 ? Math.round((career.score / paid) * 1000) / 1000 : null,
+        owned: s.owned !== false,
+      };
+    }).filter(Boolean);
+  }
+
+  /** Something with no figure is not a low figure: it goes last whichever way the column runs.
+      Equal figures are separated by how many sittings stand behind them, so a 90 from four
+      nights outranks a 90 from one — and then by code, so the order never shuffles. */
+  function ordered(list, col) {
+    const blank = (v) => v === null || v === undefined;
+    return list.sort((a, b) => {
+      const x = col ? col.of(a) : a.name.toLowerCase(), y = col ? col.of(b) : b.name.toLowerCase();
+      if (blank(x) || blank(y)) { if (blank(x) && blank(y)) return tie(a, b); return blank(x) ? 1 : -1; }
+      if (x === y) return tie(a, b);
+      if (typeof x === "number") return desc ? y - x : x - y;
+      const c = String(x).localeCompare(String(y), undefined, { numeric: true });
+      return desc ? -c : c;
+    });
+    function tie(a, b) {
+      if (a.n !== b.n) return b.n - a.n;
+      return a.code.localeCompare(b.code, undefined, { numeric: true });
+    }
+  }
+
+  /** A column picked a second time turns round. A new one starts from the top — the best score,
+      the highest medal — and the name from A. */
+  function sortBy(key) {
+    if (sortKey === key) desc = !desc;
+    else { sortKey = key; desc = key !== "name"; }
+    paintScores();
+  }
+
+  /** The switch between the tab's two views. */
+  function switcher() {
+    const way = (id, label) => el("button", {
+      type: "button", class: view === id ? "active" : "", "aria-pressed": String(view === id),
+      onclick: () => { if (view === id) return; view = id; picking = false; repaint(); },
+    }, label);
+    return el("div", { class: "viewswitch", role: "group", "aria-label": "Compare as" },
+      way("table", "All scores"), way("bars", "Side by side"));
+  }
+
+  function renderScores(host) {
+    const search = el("input", {
+      class: "search", type: "text", value: find, enterkeyhint: "search",
+      placeholder: "Search scored spirits", "aria-label": "Search scored spirits",
+      autocapitalize: "none", autocorrect: "off", spellcheck: "false",
+      oninput: (e) => { find = e.target.value; paintScores(); },
+    });
+    // The bar and the table are filled by paintScores, which a keystroke and a sort also call;
+    // the search box above them is left alone, so typing keeps its place.
+    fill(host, el("div", { class: "scores" },
+      el("div", { class: "viewbar", id: "cmp-bar" }),
+      search,
+      el("div", { class: "stable-wrap", id: "cmp-table" }),
+      el("div", { class: "chart-basis", id: "cmp-count" })));
+    paintScores();
+  }
+
+  function paintScores() {
+    const bar = document.getElementById("cmp-bar");
+    const wrap = document.getElementById("cmp-table");
+    const count = document.getElementById("cmp-count");
+    if (!bar || !wrap) return;
+    const cols = columns();
+    const col = cols.find((c) => c.key === sortKey) || null;      // null: by name
+    const label = col ? col.label : "Name";
+
+    fill(bar, switcher(), el("span", { class: "grow" }),
+      pickerChip(`${label} ${desc ? "▾" : "▴"}`,
+        cols.map((c) => [c.key, c.pick || c.label]).concat([["name", "Name"]]), col ? col.key : "name",
+        (key) => { if (key !== sortKey) sortBy(key); }, "Sort by"));
+
+    const terms = find.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const all = scoreRows();
+    const list = ordered(terms.length ? all.filter((r) => {
+      const hay = (r.code + " " + r.name + " " + (r.spirit.distillery || "") + " " + (r.spirit.type || "")).toLowerCase();
+      return terms.every((t) => hay.includes(t));
+    }) : all, col);
+
+    if (!all.length) {
+      fill(wrap, el("div", { class: "muted chart-empty" },
+        "Nothing has been scored yet. Score a pour and it is listed here, with its breakdown."));
+      if (count) count.textContent = "";
+      return;
+    }
+
+    const head = el("tr", {},
+      el("th", { class: "s-name" + (sortKey === "name" ? " sorted" : ""), onclick: () => sortBy("name") },
+        "Name", sortKey === "name" ? el("span", { class: "t-caret" }, desc ? " ▾" : " ▴") : null),
+      ...cols.map((c) => el("th", {
+        class: (c.word ? "s-word" : "") + (sortKey === c.key ? " sorted" : ""), onclick: () => sortBy(c.key) },
+        c.label, sortKey === c.key ? el("span", { class: "t-caret" }, desc ? " ▾" : " ▴") : null,
+        c.max ? el("span", { class: "s-max" }, "/ " + c.max) : null)));
+
+    const body = el("tbody", {});
+    if (!list.length) {
+      body.append(el("tr", {}, el("td", { class: "s-name muted" }, "Nothing scored matches.")));
+    }
+    for (const r of list) {
+      const tr = el("tr", { class: r.owned ? "" : "gone", onclick: () => openDetail(r.code) },
+        el("td", { class: "s-name", style: "border-left-color:" + accentFor(r.spirit.type) },
+          el("div", { class: "s-title" }, r.name), el("div", { class: "s-sub" }, r.sub)));
+      for (const c of cols) {
+        tr.append(el("td", { class: (c.word ? "s-word" : "") + (sortKey === c.key ? " sorted" : "") },
+          c.key === "medal" && r.medal
+            ? el("span", { class: "medal", style: "--m:" + (MEDAL_COLORS[r.medal] || "#9A9086") }, r.medal)
+            : c.show(r)));
+      }
+      body.append(tr);
+    }
+    fill(wrap, el("table", { class: "stable" }, el("thead", {}, head), body));
+    if (count) {
+      count.textContent = `${list.length} scored, by ${label.toLowerCase()}`
+        + (col && col.key !== "medal" ? (desc ? ", highest first" : ", lowest first")
+          : col ? (desc ? ", best first" : ", lowest first") : (desc ? ", Z to A" : ", A to Z"));
+    }
+  }
+
   // ------------------------------------------------------------------ render
   function render(host) {
     if (!host) return;
+    if (view === "table" && !picking) { renderScores(host); return; }
 
     if (picking) {
       fill(host,
@@ -133,7 +323,7 @@ const CompareView = (() => {
         : null);
 
     if (items.length < 2) {
-      fill(host, head, notice("ok",
+      fill(host, el("div", { class: "viewbar" }, switcher()), head, notice("ok",
         "Choose two or more scored spirits (up to " + MAX + ") and they line up category by category, each axis "
         + "against its own maximum."));
       return;
@@ -207,7 +397,7 @@ const CompareView = (() => {
     const frozen = el("div", { class: "cmp-frozen", "aria-hidden": "true" }, key);
     const card = el("div", { class: "card" }, totals);
 
-    fill(host, head, frozen, card, el("div", { class: "card" }, rows));
+    fill(host, el("div", { class: "viewbar" }, switcher()), head, frozen, card, el("div", { class: "card" }, rows));
     watch(card, frozen);
   }
 
@@ -230,13 +420,15 @@ const CompareView = (() => {
     watcher.observe(card);
   }
 
-  /** From a bottle's own page: put it in, and while it is the only one, open straight on the
-      list of what to set beside it. The caller shows the Compare tab, which renders. */
+  /** From a bottle's own page: side by side, with that bottle in — and while it is the only
+      one, open straight on the list of what to set beside it. The caller shows the Compare tab,
+      which renders. */
   function begin(code) {
+    view = "bars";
     if (!codes.includes(code) && codes.length < MAX) codes.push(code);
     picking = codes.length < 2;
     query = "";
   }
 
-  return { render, begin, reset: () => { codes = []; picking = false; query = ""; } };
+  return { render, begin, reset: () => { codes = []; picking = false; query = ""; view = "table"; } };
 })();

@@ -255,27 +255,35 @@ class TestPhoneTable(unittest.TestCase):
         self.assertIn('key: "proof"', src)
         self.assertIn('key: "year"', src)
 
-    def test_unscored_rows_sort_to_the_bottom_either_way(self):
-        """An unscored bottle is not a low score. Floating them to the top of an ascending sort
-        would bury everything that has one, so the null test must come before the direction is
-        applied rather than being folded into it."""
+    def test_blanks_sort_to_the_bottom_either_way(self):
+        """A bottle with no price is not a cheap one, and an unscored one is not a low score.
+        Floating the blanks to the top of an ascending sort would bury everything that has a
+        value, so the test for one comes before the direction is applied — in both tables."""
         src = code("table.js")
         block = src[src.index("function compare("):src.index("function tieBreak(")]
-        missing = block.index("x === null")
-        self.assertLess(missing, block.index("desc ?"),
-                        "nulls are ordered by the sort direction instead of always sinking")
+        self.assertLess(block.index("x === null"), block.index("desc ?"),
+                        "blanks are ordered by the sort direction instead of always sinking")
         self.assertIn("return 1;", block)
         self.assertIn("return -1;", block)
-
-    def test_it_sorts_on_every_field_the_desktop_does(self):
-        """The point of the tab. The desktop sorts on all of these; a phone that only sorts on
-        what happens to be on screen is a different, smaller thing."""
+        scores = code("compare.js")
+        block = scores[scores.index("function ordered("):scores.index("function sortBy(")]
+        self.assertLess(block.index("blank(x) || blank(y)"), block.index("desc ?"))
+    def test_it_sorts_on_every_fact_about_a_bottle(self):
+        """The desktop sorts on all of these; a phone that only sorts on what happens to be on
+        screen is a different, smaller thing."""
         src = code("table.js")
-        for key in ("score", "name", "code", "type", "proof", "year", "n", "region", "age",
-                    "paid", "value_per_oz", "score_per_dollar", "medal", "best", "worst",
-                    "rarity", "status", "conc_ratio", "proof_diff"):
+        for key in ("name", "code", "type", "proof", "year", "n", "region", "age", "paid",
+                    "value_per_oz", "rarity", "status", "conc_ratio", "proof_diff"):
             self.assertIn('key: "%s"' % key, src, "cannot sort by %s" % key)
 
+    def test_it_says_nothing_about_how_a_bottle_scored(self):
+        """Score and medal were one thin column here and are a whole table under Compare. Two
+        places to rank from would be two places to disagree."""
+        src = code("table.js")
+        for gone in ('key: "score"', 'key: "medal"', 'key: "best"', 'key: "worst"',
+                     'key: "score_per_dollar"', "lens", "categoryMeansFor", "medalRank"):
+            self.assertNotIn(gone, src)
+        self.assertIn('let sort = "name";', src, "with no score to lead with, it opens by name")
     def test_the_sorted_field_is_always_shown(self):
         """Sorting by something you cannot see is a list silently reordered by a number that is
         nowhere on the screen."""
@@ -285,30 +293,29 @@ class TestPhoneTable(unittest.TestCase):
 
     def test_medals_sort_by_standing_not_alphabetically(self):
         """Bronze before Diamond would be nonsense."""
-        src = code("table.js")
+        src = code("compare.js")
         self.assertIn("function medalRank(", src)
         self.assertIn("app.rubric.bands", src)
-
-    def test_the_first_tap_on_medal_leads_with_the_best(self):
-        """It is an ordered field even though it reads as a word, so it cannot take its default
-        direction from whether the column is right-aligned."""
-        src = code("table.js")
-        self.assertIn('key: "medal", label: "Medal", high: true', src)
-        self.assertIn("field(key).num || field(key).high", src)
-
+        self.assertIn('{ key: "medal", label: "Medal", word: true, of: (r) => r.medalRank', src)
+    def test_the_first_tap_on_a_score_leads_with_the_best(self):
+        """Every column of the scores table is a figure asked from the top — the highest total,
+        the best medal. Only the name starts from A."""
+        src = code("compare.js")
+        block = src[src.index("function sortBy("):src.index("function switcher(")]
+        self.assertIn("if (sortKey === key) desc = !desc;", block)
+        self.assertIn('desc = key !== "name";', block)
     def test_equal_scores_are_broken_the_way_the_desktop_breaks_them(self):
         """A 90 from four nights outranks a 90 from one."""
-        src = code("table.js")
-        block = src[src.index("function tieBreak("):src.index("function columns(")]
-        self.assertIn("a.n !== b.n", block)
-
-    def test_the_two_derived_columns_are_worked_out_here(self):
+        src = code("compare.js")
+        block = src[src.index("function ordered("):src.index("function sortBy(")]
+        self.assertIn("if (a.n !== b.n) return b.n - a.n;", block)
+        self.assertIn("a.code.localeCompare(b.code", block, "and then by code, so it never shuffles")
+    def test_the_two_derived_columns_are_worked_out_on_the_phone(self):
         """$ / oz and score / $ are the two the spreadsheet could never produce, and the phone is
-        not sent them — it has the price and the size, so it computes them."""
-        src = code("table.js")
-        self.assertIn("paid / oz", src)
-        self.assertIn("score / paid", src)
-
+        not sent them — it has the price and the size, so it computes them. The first is a fact
+        about the bottle; the second is about its score, and lives with the scores."""
+        self.assertIn("paid / oz", code("table.js"))
+        self.assertIn("career.score / paid", code("compare.js"))
     def test_the_strip_scrolls_rather_than_being_squeezed(self):
         self.assertIn("overflow-x: auto", text("style.css"))
         self.assertIn("ptable-wrap", code("table.js"))
@@ -416,10 +423,12 @@ class TestAnalysisAndCompare(unittest.TestCase):
         boot = code("app.js")
         self.assertIn("Store.careers()", boot)
 
-    def test_compare_and_the_table_fold_the_figures_the_same_way(self):
-        """One helper, so a comparison and a ranking cannot disagree about the same spirit."""
-        self.assertIn("categoryMeansFor(code)", code("compare.js"))
-        self.assertIn("categoryMeansFor(s.code)", code("table.js"))
+    def test_both_views_of_compare_fold_the_figures_the_same_way(self):
+        """One helper, so the table of every score and the bars side by side cannot disagree
+        about the same spirit."""
+        src = code("compare.js")
+        self.assertIn("const categoriesFor = (code) => categoryMeansFor(code);", src)
+        self.assertEqual(src.count("categoriesFor("), 2, "the table's rows, and the bars")
         shared = code("app.js")
         self.assertIn("function categoryMeansFor(", shared)
         self.assertIn("pc.categories", shared)
@@ -523,78 +532,41 @@ class TestAFinishedBottleIsLeftOutOnThePhone(unittest.TestCase):
         self.assertLess(block.index("goneSpirit(s)"), block.index("openScoreFor("))
 
 
-class TestTheRankingLens(unittest.TestCase):
+class TestPartScores(unittest.TestCase):
     """Aesthetics is the bottle and value is the price, so "which is the better whiskey" is a
-    different question from "which was the better buy". The desktop table can ask either; the
-    phone table now can too."""
+    different question from "which was the better buy". The Compare table answers both: a total
+    over the whole card, and one over the categories the rubric counts as flavour."""
 
-    def test_the_lens_is_built_from_the_rubric_not_hard_coded(self):
-        """Which categories count as flavour is config. A third non-flavour category one day
-        should generate its own chips rather than needing this rewritten."""
+    def test_what_counts_as_flavour_is_the_rubrics_to_say(self):
+        """`flavour: false` in config.yaml, not a list of names in the code."""
         src = code("app.js")
-        self.assertIn("(c) => c.flavour", src)
-        block = src[src.index("function lensPresets("):src.index("function lensScore(")]
-        self.assertNotIn("aesthetics", block, "the presets name a category instead of reading it")
-        self.assertNotIn("value", block.replace("flavour", ""), "same for value")
+        self.assertIn(".filter((c) => c.flavour).map((c) => c.key)", src)
+        for name in ("aesthetics", "value"):
+            self.assertNotIn(f'"{name}"', code("compare.js"), f"{name} is named in code")
 
-    def test_the_presets_cover_flavour_each_extra_and_everything(self):
-        src = code("app.js")
-        block = src[src.index("function lensPresets("):src.index("function lensScore(")]
-        self.assertIn('id: "flavour"', block)
-        self.assertIn("flavour+", block)
-        self.assertIn('id: "all"', block)
-        self.assertIn("for (const c of other) out.push", block)
+    def test_the_flavour_total_is_offered_only_when_there_is_something_to_leave_out(self):
+        src = code("compare.js")
+        self.assertIn("flavour.length && flavour.length < cats.length", src)
+        self.assertIn("max: lensMax(flavour)", src, "and says what it is out of")
+        self.assertIn("flavour: lensScore(cats, flavour)", src)
 
-    def test_any_set_can_be_chosen(self):
-        self.assertIn("lensPicker(", code("table.js"))
-
-    def test_an_empty_lens_is_impossible(self):
-        """Unticking the last category would blank every row with no way back."""
-        block = code("table.js")
-        block = block[block.index("function lensPicker("):]
-        self.assertIn("keys.length ? keys : [c.key]", block)
-
-    def test_a_partly_scored_spirit_scores_nothing_under_the_lens(self):
+    def test_a_partly_scored_spirit_scores_nothing_in_part(self):
         """Summing only the categories that happen to be filled in would read as a low score
         rather than an incomplete one."""
         block = code("app.js")
         block = block[block.index("function lensScore("):]
         self.assertIn("return null;", block[:400])
 
-    def test_medals_are_withheld_unless_the_lens_is_the_whole_card(self):
-        """The bands are defined against 100. A medal beside a flavour-only score would claim
-        something the number cannot support."""
-        src = code("table.js")
-        self.assertIn("lensIsEverything(lens.keys)", src)
-        self.assertIn("whole && career ? career.medal : null", src)
-
-    def test_the_table_says_what_the_score_is_out_of(self):
-        self.assertIn("lensMax(lens.keys)", code("table.js"))
-
-    def test_a_compare_column_is_identified_beyond_its_name(self):
-        """Two different bottles can carry the same name; the column has to say which is which."""
+    def test_the_medal_is_always_the_whole_cards(self):
+        """The bands are defined against 100. There is no medal for a part score to claim."""
         src = code("compare.js")
-        self.assertIn("cmp-sub", src)
-        self.assertIn("it.spirit.distillery, it.code", src)
+        self.assertIn("medal: career.medal || null, medalRank: medalRank(career.medal)", src)
 
-    def test_it_does_not_send_you_to_the_wrong_refresh(self):
-        """Per-category figures are computed on the PC. Telling the user to refresh the phone
-        sends them round a loop that cannot end, because refreshing here cannot produce them."""
+    def test_every_figure_says_what_it_is_out_of(self):
         src = code("compare.js")
-        block = src[src.index("Only the totals"):]
-        self.assertIn("Refresh there first", block[:300])
-
-    def test_each_axis_is_drawn_against_its_own_maximum(self):
-        """Otherwise Flavor out of 20 looks twice as good as Balance out of 10 (SPEC.md 4.2)."""
-        self.assertIn("cat.max) * 100", code("compare.js"))
-
-    def test_a_chart_says_how_many_points_it_stands_on(self):
-        """Three bottles is not a finding, and a chart that does not say so is making a claim it
-        cannot support."""
-        self.assertIn("chart-basis", code("analysis.js"))
-
-    def test_the_scatter_uses_career_scores(self):
-        self.assertIn("careerFor(s.code)", code("analysis.js"))
+        self.assertIn('c.max ? el("span", { class: "s-max" }, "/ " + c.max) : null', src)
+        self.assertIn("max: app.rubric ? app.rubric.max_total : 100", src)
+        self.assertIn("max: c.max", src)
 
 
 class TestFinishedBottlesOnThePhone(unittest.TestCase):
@@ -1245,15 +1217,14 @@ class TestOneCollectionTwoViews(unittest.TestCase):
         self.assertNotIn("Six tabs", self.css, "the labels were shrunk to fit six")
 
     def test_one_search_and_one_set_of_filters_serve_both(self):
-        """The table is handed what the collection is showing. It has no search box, no filter
-        and no idea what was typed."""
+        """The table is handed what the collection is showing — exactly what the list is handed.
+        It has no search box, no filter and no idea what was typed."""
         paint = self.fn("function paintRows()")
-        self.assertIn("TableView.render(body, shownSpirits(true))", paint)
+        self.assertIn("TableView.render(body, shownSpirits())", paint)
         self.assertIn("listSorted(shownSpirits())", paint)
         for gone in ('class: "search"', "let query", "let filter", "knownSpirits()"):
             self.assertNotIn(gone, self.table)
         self.assertIn("function render(host, spirits)", self.table)
-
     def test_the_switch_is_remembered(self):
         bar = self.fn("function paintViewBar(")
         self.assertIn('way("list", "List"), way("table", "Table")', bar)
@@ -1269,24 +1240,23 @@ class TestOneCollectionTwoViews(unittest.TestCase):
         self.assertNotIn('class: "search"', paint)
         self.assertNotIn("renderCollection()", paint)
 
-    def test_a_ranking_keeps_the_finished_bottles_the_list_leaves_out(self):
-        """The list is where a pour is chosen; the table is a record of what was drunk. A
-        finished bottle that earned a score keeps its greyed row in the table, as it always did."""
+    def test_a_finished_bottle_is_left_out_of_both_views_alike(self):
+        """While the table carried the score it kept finished bottles that had earned one, and
+        showed five rows more than the list under the same chip. It is the bottles now, so it
+        shows the list's rows; what a finished bottle scored is in the Compare tab's table."""
         shown = self.fn("function shownSpirits(")
-        self.assertIn("? spirits.filter((s) => !goneSpirit(s) || careerFor(s.code))", shown)
-        self.assertIn(": spirits.filter((s) => !goneSpirit(s));", shown)
-
-    def test_two_pickers_stand_where_two_rows_of_chips_stood(self):
-        """Nineteen sort chips and seven rank-by chips sat between the filters and the first row
-        of figures. Each is one chip now, opening the phone's own picker."""
-        controls = self.table[self.table.index("function controls("):self.table.index("function lensPicker(")]
-        self.assertEqual(controls.count("pickerChip("), 2)
+        self.assertIn("spirits = spirits.filter((s) => !goneSpirit(s));", shown)
+        self.assertNotIn("record", shown)
+        self.assertIn("function shownSpirits() {", self.js)
+    def test_one_picker_stands_where_a_row_of_chips_stood(self):
+        """A chip for every field sat between the filters and the first row. It is one chip now,
+        opening the phone's own picker."""
+        controls = self.table[self.table.index("function controls("):self.table.index("function render(")]
+        self.assertEqual(controls.count("pickerChip("), 1)
         self.assertIn("FIELDS.map((f) => [f.key, f.label])", controls, "every field, not only the columns")
-        self.assertIn('[["custom", "Custom…"]]', controls)
-        for old in ("sortbar", "lensbar", "sortlabel"):
+        for old in ("sortbar", "lensbar", "sortlabel", "lenspicker"):
             self.assertNotIn(old, self.table)
             self.assertNotIn(old, self.css)
-
     def test_a_header_tap_still_sorts_and_turns_the_sort_round(self):
         self.assertIn("onclick: () => pick(f.key)", self.table)
         pick = self.table[self.table.index("function pick("):self.table.index("function controls(")]
@@ -1355,7 +1325,7 @@ class TestTheCompareKeyStaysInSight(unittest.TestCase):
         self.assertIn("opacity: 0", key)
         self.assertIn("visibility: hidden", key)
         self.assertIn(".cmp-frozen.on .cmp-key { opacity: 1; visibility: visible; }", self.css)
-        self.assertLess(self.js.index("fill(host, head, frozen, card,"), self.js.index("watch(card, frozen);"))
+        self.assertLess(self.js.index("head, frozen, card, el("), self.js.index("watch(card, frozen);"))
 
     def test_the_card_is_watched_not_the_scroll(self):
         """Nothing runs while a finger is dragging: only as the card's last edge crosses."""
@@ -1368,6 +1338,90 @@ class TestTheCompareKeyStaysInSight(unittest.TestCase):
 
     def test_a_tap_on_it_goes_back_to_the_card(self):
         self.assertIn('onclick: () => window.scrollTo({ top: 0, behavior: "smooth" })', self.js)
+
+
+class TestEveryScoreIsATable(unittest.TestCase):
+    """The Compare tab opens on a table of everything that has been scored — the total, the
+    medal, and the whole breakdown across — sortable by any column. The bars for a chosen few
+    are its second view."""
+
+    def setUp(self):
+        self.js = code("compare.js")
+        self.css = text("style.css")
+
+    def rule(self, selector):
+        block = self.css[self.css.index(selector + " {"):]
+        return block[:block.index("}")]
+
+    def test_the_tab_opens_on_the_table(self):
+        self.assertIn('let view = "table";', self.js)
+        render = self.js[self.js.index("function render(host)"):]
+        self.assertIn('if (view === "table" && !picking) { renderScores(host); return; }', render[:260])
+        self.assertIn('way("table", "All scores"), way("bars", "Side by side")', self.js)
+
+    def test_a_bottles_own_page_still_opens_the_bars(self):
+        begin = self.js[self.js.index("function begin("):]
+        self.assertIn('view = "bars";', begin[:120])
+
+    def test_every_category_in_the_rubric_has_a_column(self):
+        """Built from the rubric, so a category added to it is a column here without a line of
+        code — and can be sorted on like the rest."""
+        cols = self.js[self.js.index("function columns("):self.js.index("function scoreRows(")]
+        self.assertIn('...cats.map((c) => ({ key: "cat:" + c.key, label: c.label || c.key, max: c.max,', cols)
+        for key in ('"total"', '"medal"', '"flavour"', '"n"', '"best"', '"worst"', '"per_dollar"'):
+            self.assertIn("key: " + key, cols)
+
+    def test_everything_scored_is_in_it(self):
+        """A record of what was given: finished bottles and bar pours are not left out of it the
+        way they are left out of a list of what can be poured."""
+        rows = self.js[self.js.index("function scoreRows("):self.js.index("function ordered(")]
+        self.assertIn("knownSpirits().map(", rows)
+        self.assertIn("if (!career) return null;", rows)
+        self.assertNotIn("goneSpirit", rows)
+
+    def test_any_column_sorts_it_from_its_header_or_from_the_picker(self):
+        paint = self.js[self.js.index("function paintScores("):self.js.index("function render(host)")]
+        self.assertIn("onclick: () => sortBy(c.key)", paint)
+        self.assertIn('onclick: () => sortBy("name")', paint)
+        self.assertIn("pickerChip(", paint)
+        self.assertIn('cols.map((c) => [c.key, c.pick || c.label]).concat([["name", "Name"]])', paint)
+
+    def test_the_header_row_and_the_name_column_stay_put(self):
+        """Forty rows down and eight columns across, a figure still has to say whose it is and
+        what it is. The pane scrolls both ways; the page does not."""
+        wrap = self.rule(".stable-wrap")
+        self.assertIn("overflow: auto", wrap)
+        self.assertIn("min-height: 0", wrap, "or the pane grows instead of scrolling")
+        head = self.rule(".stable th")
+        self.assertIn("position: sticky", head)
+        self.assertIn("top: 0", head)
+        name = self.rule(".stable .s-name")
+        self.assertIn("position: sticky", name)
+        self.assertIn("left: 0", name)
+        self.assertIn(".stable th.s-name { z-index: 3; }", self.css, "the corner sits over both")
+        self.assertIn("border-collapse: separate", self.rule(".stable"),
+                      "collapsed borders do not travel with a sticky cell")
+
+    def test_the_pane_fills_what_is_left_of_the_screen(self):
+        scores = self.rule(".scores")
+        self.assertIn("100dvh", scores)
+        self.assertIn("var(--tabs-h)", scores)
+        self.assertIn("var(--bar-h)", scores)
+        self.assertIn("body.keyboard .scores", self.css, "the tab bar is gone while the keyboard is up")
+
+    def test_two_bottles_of_one_name_are_told_apart(self):
+        rows = self.js[self.js.index("function scoreRows("):self.js.index("function ordered(")]
+        self.assertIn('s._encounter ? "Bar" : s.code', rows)
+        self.assertIn('s.proof ? s.proof + " pf" : null', rows)
+        self.assertIn("s.release_year ? String(Math.round(s.release_year)) : null", rows)
+
+    def test_typing_repaints_the_table_and_leaves_the_box_alone(self):
+        self.assertIn("oninput: (e) => { find = e.target.value; paintScores(); }", self.js)
+        paint = self.js[self.js.index("function paintScores("):self.js.index("function render(host)")]
+        self.assertNotIn('class: "search"', paint)
+
+    def test_a_row_opens_the_bottle(self):
+        self.assertIn('onclick: () => openDetail(r.code) },\n        el("td", { class: "s-name"', self.js)
 
 
 if __name__ == "__main__":

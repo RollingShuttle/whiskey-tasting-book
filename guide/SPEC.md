@@ -711,9 +711,18 @@ reads as a website someone bookmarked, and it breaks in specific ways in the bar
   one set of chips serve both, and the choice is remembered. The table's sort and its ranking
   lens are each a single chip that opens the phone's own picker, where there were two scrolling
   rows of chips (nineteen for the sort); tapping a column header still sorts, and turns the sort
-  round. The list can be ordered too — it opens in shelf order. One difference between the
-  views is deliberate: the list is where a pour is chosen, so a finished bottle appears only
-  under Finished; the table is a record, so one that earned a score keeps its greyed row.
+  round. The list can be ordered too — it opens in shelf order. Both views show the same rows.
+  The table is the bottles' facts only (22 Nov 2026): no score and no medal — those are the
+  Compare tab's.
+- **Compare opens on a table of every score.** One row per scored spirit — finished bottles and
+  bar pours included, since this is the record of what was given — and across it the total, the
+  medal, the flavor total (the whole card less the categories the rubric marks `flavour: false`),
+  every category of the rubric, the number of sittings, best, worst and score per dollar. Any
+  column sorts it, from its header or from a picker; a second tap turns the sort round; blanks
+  sink either way and equal figures go to the spirit with more sittings behind it. The header
+  row and the name column are frozen: the table scrolls in its own pane, both ways, and the page
+  does not. A row opens the bottle. **Side by side** — bars for two to six chosen spirits — is
+  the tab's second view, and is what a bottle's *Compare with others* opens.
 - **Compare keeps its key in sight.** The per-category bars are told apart only by their order,
   so when the card of totals has scrolled under the header a short strip takes its place there:
   each bottle's name, code and score, in the bars' order, over the bar's own colour. It occupies

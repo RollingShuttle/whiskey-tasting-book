@@ -169,39 +169,19 @@ function categoryMeansFor(code) {
   return Object.keys(out).length ? out : null;
 }
 
-/* ---------------------------------------------------------------- ranking lens
-   Which categories a ranking is taken over. Aesthetics is the bottle and value is the price, so
-   "which is the better whiskey" is a different question from "which was the better buy" — and on
-   the full card several spirits often tie where their flavour scores separate cleanly.
+/* ---------------------------------------------------------------- part scores
+   A score taken over some of the categories rather than all of them. Aesthetics is the bottle
+   and value is the price, so "which is the better whiskey" is a different question from "which
+   was the better buy" — and on the full card several spirits often tie where their flavour
+   totals separate cleanly. The Compare tab's table shows both.
 
-   Which categories count as flavour is config, not code (`flavour: false` in the rubric), so a
-   third non-flavour category one day would generate its own chips. */
-const sameKeys = (a, b) => a.length === b.length && a.every((k) => b.includes(k));
+   Which categories count as flavour is config, not code (`flavour: false` in the rubric). */
 const flavourKeys = () => (app.rubric?.categories || []).filter((c) => c.flavour).map((c) => c.key);
 
+/** What a set of categories is out of. */
 function lensMax(keys) {
   const by = Object.fromEntries((app.rubric?.categories || []).map((c) => [c.key, c.max]));
   return keys.reduce((a, k) => a + (by[k] || 0), 0);
-}
-const lensIsEverything = (keys) => lensMax(keys) === (app.rubric?.max_total ?? -1);
-
-/** Flavour, flavour plus each non-flavour, everything, and each non-flavour on its own. */
-function lensPresets() {
-  const cats = app.rubric?.categories || [];
-  const flavour = cats.filter((c) => c.flavour);
-  const other = cats.filter((c) => !c.flavour);
-  const keysOf = (l) => l.map((c) => c.key);
-  const total = (l) => l.reduce((a, c) => a + c.max, 0);
-
-  const out = [{ id: "flavour", label: `Flavour ${total(flavour)}`, keys: keysOf(flavour) }];
-  for (const c of other) {
-    out.push({ id: `flavour+${c.key}`,
-               label: `+ ${(c.label || c.key).toLowerCase()} ${total(flavour) + c.max}`,
-               keys: [...keysOf(flavour), c.key] });
-  }
-  out.push({ id: "all", label: `Everything ${total(cats)}`, keys: keysOf(cats) });
-  for (const c of other) out.push({ id: c.key, label: `${c.label || c.key} ${c.max}`, keys: [c.key] });
-  return out;
 }
 
 /** Sum a subset of per-category figures. Null when anything in the lens is unscored, so those
@@ -265,18 +245,14 @@ function renderCollection() {
     A Finished or Removed bottle is not offered: nothing can be poured from it, so nothing can be
     scored. The ones scored while they lasted keep a place under their own chip, because the
     sittings outlive the bottle; the ones never scored have nothing to show and are not listed.
-    `record` is the table's one difference: a ranking is a record of what was drunk, not a list
-    of what can be poured, so a finished bottle that earned a score keeps its row there, greyed,
-    as it always has. */
-function shownSpirits(record = false) {
+    (Every score ever given, finished bottles included, is the Compare tab's table.) */
+function shownSpirits() {
   const terms = app.query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   let spirits = knownSpirits();
   if (app.filter === "gone") {
     spirits = spirits.filter((s) => goneSpirit(s) && sittingsFor(s.code).length);
   } else {
-    spirits = record
-      ? spirits.filter((s) => !goneSpirit(s) || careerFor(s.code))
-      : spirits.filter((s) => !goneSpirit(s));
+    spirits = spirits.filter((s) => !goneSpirit(s));
     if (app.filter === "scored") spirits = spirits.filter((s) => careerFor(s.code));
     // Something you hold and have not scored. A bar pour is not held, so it is never "to do".
     else if (app.filter === "unscored") spirits = spirits.filter((s) => s.owned !== false && !careerFor(s.code));
@@ -348,7 +324,7 @@ function paintRows() {
   if (!body) return;
   const table = app.view === "table";
   paintViewBar(table);
-  if (table) { TableView.render(body, shownSpirits(true)); return; }
+  if (table) { TableView.render(body, shownSpirits()); return; }
 
   const terms = app.query.trim();
   const spirits = listSorted(shownSpirits());
