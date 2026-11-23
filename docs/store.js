@@ -59,14 +59,10 @@ const Store = (() => {
     mirror();
     return true;
   }
-  // Another tab of the web app (never the shell, which has one page) may write the same origin.
-  window.addEventListener("storage", (e) => {
-    if (e.key === null) cache.clear(); else cache.delete(e.key);
-  });
   // -- the shell's copy -----------------------------------------------------
   /* Debounced: a flight scored in a hurry writes several keys in a row, and one save after the
      burst is enough. The object is keyed by the storage key itself so restoring needs no
-     translation. The PWA has no shell, so none of this runs there. */
+     translation. With no shell — a browser opened to work on the screens — none of it runs. */
   const BACKUP_NAME = "tasting-book.json";
   const MIRROR_DELAY = 1000;
   let mirrorTimer = null;
@@ -100,7 +96,7 @@ const Store = (() => {
 
   /** The shell holds a backup and this web view holds nothing of ours — a first launch, a
       reinstall, an eviction — so put it back. Never over a live store, even a partial one: the
-      live one is the newer. Resolves false everywhere else, the PWA included, so boot() can
+      live one is the newer. Resolves false everywhere else, no shell included, so boot() can
       always await it. */
   async function restoreFromNative() {
     if (!nativeBackup()) return false;

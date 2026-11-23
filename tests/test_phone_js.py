@@ -769,5 +769,100 @@ class TestExcelExport(unittest.TestCase):
         self.assertEqual(coll.first_empty_row("Bottle"), 9)
 
 
+@unittest.skipIf(MiniRacer is None, "pip install mini-racer to run the phone scripts for real")
+class TestSignInIsTheApps(unittest.TestCase):
+    """graph.js for real. The phone client is the iPhone app: sign-in is asked of the shell over
+    the bridge, and with no shell — a desktop browser, to work on the screens — nothing is asked
+    of anything and the answer is simply "not signed in"."""
+
+    SHELL = """
+      var __asked = [];
+      var __reply = {
+        'auth.status': { signedIn: true, account: 'someone@example.com' },
+        'auth.signIn': { ok: true, account: 'someone@example.com' },
+        'auth.token': { ok: true, token: 'tok-1' },
+        'auth.signOut': { ok: true },
+      };
+      Native.caps.add('auth');
+      Native.request = function (type, fields) {
+        __asked.push([type, fields || null]);
+        return Promise.resolve(__reply[type]);
+      };
+    """
+
+    def setUp(self):
+        self.ctx = engine()
+
+    def settle(self, expr):
+        return self.ctx.eval(expr).get(timeout=2000)
+
+    def outcome(self, expr):
+        """'ok' or the error's message, for a promise that may reject."""
+        return self.settle(f"({expr}).then(function () {{ return 'ok'; }},"
+                           " function (e) { return 'rejected: ' + e.message; })")
+
+    def asked(self):
+        return json.loads(self.ctx.eval("JSON.stringify(__asked.map(function (a) { return a[0]; }))"))
+
+    def test_with_no_shell_it_is_simply_not_signed_in(self):
+        self.assertFalse(self.settle("Graph.resume()"))
+        self.assertFalse(self.ctx.eval("Graph.isSignedIn()"))
+        self.assertEqual(self.outcome("Graph.signIn()"), "rejected: signing in needs the iPhone app")
+        self.assertEqual(self.outcome("Graph.getJSON('snapshot/collection.json')"), "rejected: sign-in required")
+        self.assertEqual(self.outcome("Graph.signOut()"), "ok")
+
+    def test_the_shell_is_asked_who_is_signed_in(self):
+        self.ctx.eval(self.SHELL)
+        self.assertTrue(self.settle("Graph.resume()"))
+        self.assertEqual(self.ctx.eval("Graph.who()"), "someone@example.com")
+        self.assertEqual(self.asked(), ["auth.status"])
+
+    def test_signing_in_hands_the_shell_what_config_says(self):
+        self.ctx.eval(self.SHELL)
+        self.assertEqual(self.outcome("Graph.signIn()"), "ok")
+        self.assertTrue(self.ctx.eval("Graph.isSignedIn()"))
+        sent = json.loads(self.ctx.eval("JSON.stringify(__asked[0][1])"))
+        self.assertEqual(sent["clientId"], self.ctx.eval("CONFIG.CLIENT_ID"))
+        self.assertEqual(sent["scopes"], ["Files.ReadWrite.AppFolder"])
+        self.assertTrue(sent["redirectScheme"].startswith("msauth."))
+
+    def test_a_closed_sheet_is_a_cancellation_not_a_failure(self):
+        self.ctx.eval(self.SHELL)
+        self.ctx.eval("__reply['auth.signIn'] = { ok: false, cancelled: true };")
+        cancelled = self.settle("Graph.signIn().then(function () { return null; },"
+                                " function (e) { return e.cancelled; })")
+        self.assertTrue(cancelled)
+        self.assertFalse(self.ctx.eval("Graph.isSignedIn()"))
+
+    def test_a_file_is_fetched_with_the_shells_token(self):
+        self.ctx.eval(self.SHELL)
+        self.ctx.eval("var __calls = []; fetch = function (url, init) { __calls.push([url, init.headers.Authorization]);"
+                      " return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve({ spirits: [] }); } }); };")
+        self.settle("Graph.resume()")
+        got = self.settle("Graph.getJSON('snapshot/collection.json').then(JSON.stringify)")
+        self.assertEqual(json.loads(got), {"spirits": []})
+        url, auth = json.loads(self.ctx.eval("JSON.stringify(__calls[0])"))
+        self.assertEqual(auth, "Bearer tok-1")
+        self.assertTrue(url.endswith("/me/drive/special/approot:/snapshot/collection.json:/content"))
+
+    def test_a_lapsed_sign_in_is_told_from_a_dropped_connection(self):
+        """The queue keeps trying through a network error and stops to ask for a sign-in. Which
+        one it is, is this message."""
+        self.ctx.eval(self.SHELL)
+        self.settle("Graph.resume()")
+        self.ctx.eval("__reply['auth.token'] = { ok: false, interactive: true };")
+        self.assertEqual(self.outcome("Graph.getJSON('x.json')"), "rejected: sign-in required")
+        self.assertFalse(self.ctx.eval("Graph.isSignedIn()"), "the Sync screen goes back to offering Sign in")
+        self.ctx.eval("__reply['auth.token'] = { ok: false, error: 'the network is down' };")
+        self.assertEqual(self.outcome("Graph.getJSON('x.json')"), "rejected: the network is down")
+
+    def test_signing_out_forgets_the_account(self):
+        self.ctx.eval(self.SHELL)
+        self.settle("Graph.resume()")
+        self.assertEqual(self.outcome("Graph.signOut()"), "ok")
+        self.assertFalse(self.ctx.eval("Graph.isSignedIn()"))
+        self.assertEqual(self.asked(), ["auth.status", "auth.signOut"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -9,8 +9,9 @@
 
    No library: an .xlsx is a zip of XML, and both halves are written out here. Nothing in this
    file touches `document`, so it runs in V8 under the tests, where Python's zipfile, zlib and
-   openpyxl check every byte of it. Everything is synchronous on purpose — the share sheet has to
-   open inside the tap that asked for it, and an awaited CompressionStream would spend the tap. */
+   openpyxl check every byte of it. Everything is synchronous, its own DEFLATE included: the
+   platform's CompressionStream does not exist in that V8, and a writer the tests cannot run is
+   a writer nobody has checked. */
 "use strict";
 
 const Xlsx = (() => {

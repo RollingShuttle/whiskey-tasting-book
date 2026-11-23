@@ -1,27 +1,22 @@
 /* Whiskey Tasting Book — OneDrive transport (SPEC.md §9.1).
 
-   MSAL in the browser, authorization-code flow with PKCE, and exactly one scope:
-   Files.ReadWrite.AppFolder. That scope is the enforcement, not app discipline — it grants access
-   to OneDrive/Apps/<app name>/ and nothing else in the drive, so `Whiskey Collection.xlsx` is not
-   merely off-limits to this app, it is invisible to it.
+   Exactly one scope: Files.ReadWrite.AppFolder. That scope is the enforcement, not app discipline
+   — it grants access to OneDrive/Apps/<app name>/ and nothing else in the drive, so
+   `Whiskey Collection.xlsx` is not merely off-limits to this app, it is invisible to it.
 
-   Sign-in uses redirect rather than a popup: installed to the home screen there is no browser
-   chrome, and popups in a standalone web app are unreliable at best.
+   Signing in is the iPhone app's job (guide/IOS-APP.md): the shell signs in with
+   ASWebAuthenticationSession, keeps the tokens in the keychain, and is asked for them over the
+   bridge in native.js. Nothing here is on the critical path — the app opens and scores a pour
+   with no network at all, and only uploading waits on a token.
 
-   MSAL is loaded on demand. The app shell must open and score a pour with no network at all, so
-   nothing here is on the critical path until you actually sign in.
-
-   Inside the native iOS app (guide/IOS-APP.md) the browser library is not used at all: the shell
-   signs in with ASWebAuthenticationSession, keeps the tokens in the keychain, and is asked for
-   them over the bridge in native.js. That branch is taken only when the shell has said it can
-   ("auth" in Native.caps); on GitHub Pages every line below behaves exactly as it did. */
+   There is no browser sign-in. The page once carried Microsoft's browser library for a web
+   version served from GitHub Pages; that version is retired (boot() in app.js), and the library
+   went with it. Without the shell every function below answers "not signed in" — which is all a
+   desktop browser opening the page for development needs to be told. */
 "use strict";
 
 const Graph = (() => {
-  let msal = null;
-  let client = null;
   let account = null;
-  let loading = null;
 
   const configured = () => !!(CONFIG.CLIENT_ID && CONFIG.CLIENT_ID.trim());
 
@@ -32,104 +27,49 @@ const Graph = (() => {
      must both follow, or sign-in fails with a redirect_uri mismatch. */
   const NATIVE_REDIRECT_SCHEME = "msauth.com.mikeyang.whiskey";
 
-  /* True only inside the shell, and only once it has said it does sign-in. Checked on every call
-     rather than once: native.js is loaded in the browser too, where caps simply stays empty. */
+  /* True inside the shell, once it has said it does sign-in. Checked on every call rather than
+     once: the hello that fills Native.caps arrives after this script has loaded. */
   const native = () => typeof Native !== "undefined" && Native.caps.has("auth");
 
-  /* The shell reports an account as a display name; MSAL reports one as an object. Both are
-     kept in the one shape who() reads. */
+  /* The shell reports an account as a display name; who() reads it from this shape. */
   const nativeAccount = (name) => ({ username: name || "Microsoft account" });
 
-  function loadScript(src) {
-    return new Promise((resolve, reject) => {
-      const s = document.createElement("script");
-      s.src = src;
-      s.onload = resolve;
-      s.onerror = () => reject(new Error("could not load the Microsoft sign-in library"));
-      document.head.append(s);
-    });
-  }
-
-  async function ensure() {
-    if (native()) throw new Error("MSAL is not used inside the native shell");
-    if (client) return client;
-    if (!configured()) throw new Error("not configured");
-    if (!loading) {
-      loading = (async () => {
-        if (!window.msal) await loadScript(CONFIG.MSAL_SRC);
-        msal = window.msal;
-        client = new msal.PublicClientApplication({
-          auth: {
-            clientId: CONFIG.CLIENT_ID,
-            authority: CONFIG.AUTHORITY,
-            redirectUri: location.href.split("#")[0].split("?")[0],
-          },
-          cache: { cacheLocation: "localStorage" },
-        });
-        await client.initialize();
-        const result = await client.handleRedirectPromise();
-        if (result?.account) client.setActiveAccount(result.account);
-        account = client.getActiveAccount() || client.getAllAccounts()[0] || null;
-        if (account) client.setActiveAccount(account);
-        return client;
-      })();
-    }
-    return loading;
-  }
-
-  /** Safe to call on boot: resolves to false when not configured or not signed in. */
+  /** Safe to call on boot: resolves to false when not configured, not signed in, or not in the
+      app at all. */
   async function resume() {
-    if (!configured()) return false;
-    if (native()) {
-      try {
-        const r = await Native.request("auth.status");
-        account = r.signedIn ? nativeAccount(r.account) : null;
-      } catch { account = null; }
-      return !!account;
-    }
+    if (!configured() || !native()) return false;
     try {
-      await ensure();
-      return !!account;
-    } catch { return false; }
+      const r = await Native.request("auth.status");
+      account = r.signedIn ? nativeAccount(r.account) : null;
+    } catch { account = null; }
+    return !!account;
   }
 
   async function signIn() {
-    if (native()) {
-      const r = await Native.request("auth.signIn", {
-        clientId: CONFIG.CLIENT_ID,
-        authority: CONFIG.AUTHORITY,
-        scopes: CONFIG.SCOPES,
-        redirectScheme: NATIVE_REDIRECT_SCHEME,
-      }, { timeout: 0 });                 // a person is typing a password; this one may take minutes
-      if (!r.ok) {
-        // Cancelling the sheet is not a failure to report; anything else is.
-        const e = new Error(r.cancelled ? "sign-in cancelled" : (r.error || "sign-in failed"));
-        e.cancelled = !!r.cancelled;
-        throw e;
-      }
-      account = nativeAccount(r.account);
-      return;
+    if (!native()) throw new Error("signing in needs the iPhone app");
+    const r = await Native.request("auth.signIn", {
+      clientId: CONFIG.CLIENT_ID,
+      authority: CONFIG.AUTHORITY,
+      scopes: CONFIG.SCOPES,
+      redirectScheme: NATIVE_REDIRECT_SCHEME,
+    }, { timeout: 0 });                   // a person is typing a password; this one may take minutes
+    if (!r.ok) {
+      // Cancelling the sheet is not a failure to report; anything else is.
+      const e = new Error(r.cancelled ? "sign-in cancelled" : (r.error || "sign-in failed"));
+      e.cancelled = !!r.cancelled;
+      throw e;
     }
-    await ensure();
-    // Refresh tokens for browser apps are capped at 24 hours and Safari blocks the hidden-iframe
-    // renewal, so this reappears about once a day. It never blocks scoring — only uploading.
-    await client.loginRedirect({ scopes: CONFIG.SCOPES });
+    account = nativeAccount(r.account);
   }
 
   async function signOut() {
-    if (native()) {
-      await Native.request("auth.signOut");
-      account = null;
-      return;
-    }
-    if (!client) return;
-    await client.logoutRedirect({ account });
+    if (native()) await Native.request("auth.signOut");
+    account = null;
   }
 
-  /* One token per burst. The three snapshot files are fetched together, and inside the shell
-     each token() is a round trip to the keychain and sometimes to Microsoft; concurrent callers
-     share the one in flight. It is not kept past that — the shell is the one that knows when a
-     token has expired, and the browser's MSAL caches its own. */
+  /* One token per burst. The three snapshot files are fetched together, and each token() is a
+     round trip to the keychain and sometimes to Microsoft; concurrent callers share the one in
+     flight. It is not kept past that — the shell is the one that knows when a token has expired. */
   let tokenInflight = null;
   function token() {
     if (!tokenInflight) tokenInflight = acquireToken().finally(() => { tokenInflight = null; });
@@ -137,29 +77,17 @@ const Graph = (() => {
   }
 
   async function acquireToken() {
-    if (native()) {
-      const r = await Native.request("auth.token",
-        { clientId: CONFIG.CLIENT_ID, authority: CONFIG.AUTHORITY, scopes: CONFIG.SCOPES });
-      if (r.ok) return r.token;
-      // interactive means the refresh token is gone — expired, revoked, password changed — and
-      // only a person can put that right, so the sync screen goes back to offering Sign in.
-      // Anything else is the network, and the queue simply waits for the next attempt.
-      if (r.interactive) { account = null; throw new Error("sign-in required"); }
-      throw new Error(r.error || "could not get a token");
-    }
-    await ensure();
-    if (!account) throw new Error("not signed in");
-    try {
-      const r = await client.acquireTokenSilent({ scopes: CONFIG.SCOPES, account });
-      return r.accessToken;
-    } catch {
-      // No redirect from here. A token is asked for by automatic syncs — on boot, on coming back
-      // to the page — and a redirect at that moment would navigate away from a half-scored card,
-      // which lives only in memory. Forget the account instead, so the Sync screen offers Sign in,
-      // and only that button (loginRedirect, above) ever leaves the page.
-      account = null;
-      throw new Error("sign-in required");
-    }
+    // The queue tells a lapsed sign-in from a dropped connection by this message, and with no
+    // shell there is no sign-in to lapse: the answer is the same one.
+    if (!native()) { account = null; throw new Error("sign-in required"); }
+    const r = await Native.request("auth.token",
+      { clientId: CONFIG.CLIENT_ID, authority: CONFIG.AUTHORITY, scopes: CONFIG.SCOPES });
+    if (r.ok) return r.token;
+    // interactive means the refresh token is gone — expired, revoked, password changed — and
+    // only a person can put that right, so the sync screen goes back to offering Sign in.
+    // Anything else is the network, and the queue simply waits for the next attempt.
+    if (r.interactive) { account = null; throw new Error("sign-in required"); }
+    throw new Error(r.error || "could not get a token");
   }
 
   const url = (path) =>
@@ -185,7 +113,7 @@ const Graph = (() => {
     return (await r.json()).value || [];
   }
 
-  /** Safari reports a blocked or failed request as nothing more than "Load failed"; a Graph
+  /** WebKit reports a blocked or failed request as nothing more than "Load failed"; a Graph
       refusal carries its reason in the body. Both are put into the error, with the path, because
       the Sync screen shows this text and it has to be enough to act on. */
   async function send(path, init) {

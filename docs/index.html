@@ -2,27 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <!-- viewport-fit=cover is what lets the safe-area insets below mean anything (SPEC.md §9.2).
-       maximum-scale / user-scalable: this is an app, not a page — nothing on it needs the whole
-       screen magnified, and a double-tap that zoomed was the one gesture that felt like a web site.
-       The native shell's WKWebView and the home-screen install honour these two; a Safari tab has
-       ignored them since iOS 10, and there style.css's touch-action rule on html does the work. -->
+  <!-- The page of the Tasting Book iPhone app (guide/IOS-APP.md): the app's WKWebView loads it
+       from inside the app. viewport-fit=cover is what lets the safe-area insets below mean
+       anything (SPEC.md §9.2). maximum-scale / user-scalable: this is an app, not a page —
+       nothing on it needs the whole screen magnified, and a double-tap that zoomed was the one
+       gesture that felt like a web site. -->
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#12100E">
   <meta name="color-scheme" content="dark">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Tasting Book">
   <title>Whiskey Tasting Book</title>
-  <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <!-- Installed there is no browser chrome and no edge-swipe back, so every pushed screen
-       carries its own chevron (SPEC.md §9.2). -->
+  <!-- The app has no browser chrome and no edge-swipe back, so every pushed screen carries its
+       own chevron (SPEC.md §9.2). -->
   <header class="bar" id="bar">
     <button class="back" id="back" type="button" aria-label="Back" hidden>
       <span aria-hidden="true">&#8249;</span>

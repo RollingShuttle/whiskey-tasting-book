@@ -1,14 +1,15 @@
 /* Whiskey Tasting Book — the bridge to the native iOS shell (guide/IOS-APP.md).
 
-   The same docs/ bundle is served two ways: from GitHub Pages as a web app, and inside a
-   WKWebView by the native app. In the shell, Microsoft sign-in and a backup of local storage are
-   done in Swift — a web view has no safe place to keep a refresh token, and iOS may evict its
-   storage — so the page posts requests to Swift and Swift answers by calling window.nativeEvent.
+   The phone client is a page inside a WKWebView in the native app. Microsoft sign-in, a backup
+   of local storage and handing a file to the share sheet are done in Swift — a web view has no
+   safe place to keep a refresh token, iOS may evict its storage, and it cannot save a file — so
+   the page posts requests to Swift and Swift answers by calling window.nativeEvent.
 
-   Nothing here runs in the browser: without window.webkit.messageHandlers.native every call is a
-   no-op, `available` is false and `caps` stays empty, so graph.js and store.js take their old
-   paths unchanged. The handler is looked up on every call rather than once at load so that a
-   fake one can be injected afterwards by a test. */
+   Opened anywhere else — a desktop browser, to work on the screens — there is no
+   window.webkit.messageHandlers.native: every call is a no-op, `available` is false and `caps`
+   stays empty, so nothing signs in, nothing is mirrored and nothing is shared. The handler is
+   looked up on every call rather than once at load so that a fake one can be injected
+   afterwards by a test. */
 "use strict";
 
 const Native = (() => {
@@ -65,10 +66,10 @@ const Native = (() => {
     for (const fn of listeners.get(detail.type) || []) fn(detail);
   }
 
-  /* How long init() waits for the shell's hello. Only ever waited inside the shell — the browser
-     returns before the timer exists — so it costs the web app nothing, and generous is right: a
+  /* How long init() waits for the shell's hello. Only ever waited inside the shell — with no
+     handler it returns before the timer exists — and generous is right: a
      cold WKWebView answers in milliseconds, and a hello that arrives after init() gave up is
-     refused (see dispatch), so a wait that is too short would strand the app on the web paths. */
+     refused (see dispatch), so a wait that is too short would leave the app without its shell. */
   const HELLO_TIMEOUT = 3000;
   let decided = false;              // init() has settled, one way or the other
 

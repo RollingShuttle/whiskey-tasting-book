@@ -1044,13 +1044,8 @@ function localCard(q) {
        [Store.cards().length, "sitting"]].map(([n, word]) => `${n} ${word}${n === 1 ? "" : "s"}`).join(" · ")
       + (own !== Store.spirits().length ? ` (${own} added here)` : "")),
     el("div", { class: "muted", style: "margin-top:8px" },
-      // The Home Screen advice belongs to the web page. Inside the app nothing clears the store,
-      // and warning of it there would cast doubt on the one thing this card is here to settle.
       "Nothing is uploaded or fetched. Everything is stored on this phone and nowhere else, so "
-      + "export a backup now and then"
-      + (Native.caps.has("backup") ? "."
-        : " — and keep the app on your Home Screen: iOS may clear a web page's storage when it "
-          + "goes unused for weeks.")),
+      + "export a backup now and then."),
     q.length
       ? el("div", { class: "muted", style: "margin-top:8px" },
           `${q.length} item${q.length === 1 ? "" : "s"} from before ${q.length === 1 ? "is" : "are"} `
@@ -1058,63 +1053,40 @@ function localCard(q) {
       : null);
 }
 
-/** A copy out, and a copy back in. The share sheet where the phone has one (Save to Files,
-    AirDrop, Mail); otherwise a download; and inside the native app, where neither may exist,
-    the copy the app already keeps in Files. */
+/** A copy out, and a copy back in: the whole of what this phone holds, as one file. */
 function exportBook() {
-  return handOver(`tasting-book-${Store.today()}.json`, "application/json", Store.exportAll(),
-                  "Tasting Book backup");
+  return handOver(`tasting-book-${Store.today()}.json`, "application/json", Store.exportAll());
 }
 
 /** The collection as an Excel workbook laid out like the PC's own (xlsx.js). Offered to a
     phone-only book and to no other: with a PC behind the phone, the PC's workbook *is* the
     collection, and a second file of the same shape without its photographs is only something to
-    mistake for it — which is also why the file is not given the master's name. Built before the
-    first await, so the share sheet opens inside the tap. */
+    mistake for it — which is also why the file is not given the master's name. */
 function exportWorkbook() {
   const bytes = Xlsx.collectionBook(Store.spirits(), { types: Store.types() });
-  return handOver(`Tasting Book Collection ${Store.today()}.xlsx`, Xlsx.MIME, bytes, "Tasting Book collection");
+  return handOver(`Tasting Book Collection ${Store.today()}.xlsx`, Xlsx.MIME, bytes);
 }
 
-/** Give the person a file. Inside the app the shell writes it into Files and raises the share
-    sheet over it; a browser that can share files does the same from here; anything else gets a
-    download. `data` is text or bytes. */
-async function handOver(name, mime, data, title) {
-  if (Native.caps.has("share")) {
-    const bytes = typeof data === "string" ? Xlsx.utf8(data) : data;
-    let packed = "";                                       // btoa wants a string of bytes
-    for (let i = 0; i < bytes.length; i += 0x8000) {
-      packed += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-    }
-    try {
-      const r = await Native.request("file.share", { name, mime, base64: btoa(packed) });
-      if (!r || !r.ok) window.alert(`Could not make the file: ${(r && r.error) || "the app refused it"}`);
-    } catch (e) {
-      window.alert(`Could not make the file: ${(e && e.message) || e}`);
-    }
+/** Give the person a file: the app writes it into Files and raises the share sheet over it
+    (Save to Files, AirDrop, Mail). `data` is text or bytes. Only the app can do this — a page
+    in a desktop browser, which is how these screens are looked at while they are worked on, is
+    told so rather than left with a button that does nothing. */
+async function handOver(name, mime, data) {
+  if (!Native.caps.has("share")) {
+    window.alert("Files are handed over by the iPhone app. This page is not running inside it.");
     return;
+  }
+  const bytes = typeof data === "string" ? Xlsx.utf8(data) : data;
+  let packed = "";                                         // btoa wants a string of bytes
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    packed += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
   }
   try {
-    const file = new File([data], name, { type: mime });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title });
-      return;
-    }
+    const r = await Native.request("file.share", { name, mime, base64: btoa(packed) });
+    if (!r || !r.ok) window.alert(`Could not make the file: ${(r && r.error) || "the app refused it"}`);
   } catch (e) {
-    if (e && e.name === "AbortError") return;              // the sheet was dismissed
+    window.alert(`Could not make the file: ${(e && e.message) || e}`);
   }
-  if (Native.caps.has("backup") && mime === "application/json") {
-    // A shell from before it could share: the backup it mirrors is the copy there is.
-    window.alert("Your book is already saved as tasting-book.json in the Files app, under "
-      + "On My iPhone → Tasting Book. Copy that file to keep a backup.");
-    return;
-  }
-  const url = URL.createObjectURL(new Blob([data], { type: mime }));
-  const a = el("a", { href: url, download: name });
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 function workbookCard() {
@@ -1364,18 +1336,16 @@ function onSync(s) {
   window.scrollTo(0, y);
 }
 
-/** In the browser, signing in leaves the page and boot() picks everything up when it comes
-    back. Inside the native shell the page never moves, so what boot() would have done on return
-    — pull the snapshot, try the queue — is done here, and a failure is said out loud rather than
-    left in a log nobody opens. In the browser the redirect has happened before this resumes. */
+/** The app's sign-in sheet comes up over the page and goes away again; the page never moves.
+    So what follows a sign-in — pull the snapshot, try the queue — is done here, and a failure
+    is said out loud rather than left in a log nobody opens. */
 async function signInFlow() {
   try {
     await Graph.signIn();
   } catch (e) {
     Store.setMeta({ lastError: String(e.message || e) });
-    // Only inside the shell. In the browser the redirect either leaves the page or MSAL throws
-    // before anything is shown, and that has always been silent; keep it that way there.
-    if (!e.cancelled && Native.caps.has("auth")) window.alert(`Sign-in failed: ${e.message || e}`);
+    // Closing the sheet is not a failure, and is not announced as one.
+    if (!e.cancelled) window.alert(`Sign-in failed: ${e.message || e}`);
   }
   if (Graph.isSignedIn()) {
     if (!Store.meta().mode) { Store.setMode("onedrive"); applyMode(); }   // signing in is the choice
@@ -1419,11 +1389,49 @@ function updateNet() {
 }
 
 // ---------------------------------------------------------------- boot
+/* Where a page with no shell is still allowed to run: a browser on the machine it is being
+   worked on, served from this folder or opened as a file. */
+const DEV_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", ""]);
+
+/** What the old web address shows. The phone client was once a web app there, installable to
+    the Home Screen; it is the iPhone app now, and a page that went on half-working — scoring
+    into a browser's storage with no way to send it anywhere — would be worse than one that says
+    so. Whatever an old install left in this browser can still be taken away as a file, in the
+    shape the app's Import reads. */
+function retired() {
+  document.getElementById("tabs").remove();
+  document.getElementById("title").textContent = "Tasting Book";
+  for (const [key, node] of Object.entries(screens)) node.hidden = key !== "collection";
+  const held = Store.cards().length + Store.encounters().length + Store.queueCount()
+    + Store.spirits().filter((s) => s._local).length;
+  const save = () => {
+    const url = URL.createObjectURL(new Blob([Store.exportAll()], { type: "application/json" }));
+    const a = el("a", { href: url, download: `tasting-book-${Store.today()}.json` });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  };
+  fill(screens.collection, el("div", { class: "card" },
+    el("div", { class: "chart-title" }, "This is an iPhone app now"),
+    el("div", { class: "muted" },
+      "Whiskey Tasting Book no longer runs in a browser. Open the Tasting Book app on your "
+      + "iPhone instead."),
+    held ? el("div", { class: "muted", style: "margin-top:10px" },
+      "This browser still holds scorecards or bottles from when it did. Download them as a "
+      + "backup file; the app can read it under Backup, Import.") : null,
+    held ? el("div", { class: "actions" },
+      el("button", { class: "btn", type: "button", onclick: save }, "Download backup")) : null));
+}
+
 async function boot() {
-  // Inside the native shell the bridge has to be up before anything else: graph.js and store.js
-  // pick their path from what the shell says it can do, and a backup can only be put back into
-  // a store that is still empty — so both come before the first read. In the browser each
-  // resolves at once.
+  // This is the iPhone app's page. Anywhere else it is the retired web address — except on the
+  // machine it is worked on, where a desktop browser is how the screens are looked at.
+  if (!Native.available && !DEV_HOSTS.has(location.hostname)) { retired(); return; }
+
+  // The bridge has to be up before anything else: graph.js and store.js act on what the shell
+  // says it can do, and a backup can only be put back into a store that is still empty — so
+  // both come before the first read. With no shell each resolves at once.
   await Native.init();
   await Store.restoreFromNative();
 
@@ -1442,8 +1450,8 @@ async function boot() {
   document.addEventListener("focusout", () => document.body.classList.remove("keyboard"));
 
   // Every way the app comes back to life pulls what the PC published and pushes the queue:
-  // the browser's online and visible events, and the shell's foreground, which is both of those
-  // at once. Sync.start decides whether anything needs doing — a quick switch away and back
+  // the web view's online and visible events, and the shell's foreground, which is both of
+  // those at once. Sync.start decides whether anything needs doing — a quick switch away and back
   // does not fetch again — and onSync redraws the screen when something new has landed.
   window.addEventListener("online", () => { updateNet(); autoSync("online"); });
   window.addEventListener("offline", updateNet);
@@ -1468,15 +1476,9 @@ async function boot() {
   if (Store.meta().view === "table") app.view = "table";
   setTab("collection");
 
-  // The shell ships the bundle inside the app and updates it with the app; a service worker in
-  // there would keep serving the copy it cached first, however many times the app updated.
-  if (!Native.available && "serviceWorker" in navigator) {
-    navigator.serviceWorker.register("sw.js").catch(() => { /* http:// dev, or unsupported */ });
-  }
-
   // Not awaited: the screen is already up with what the phone holds, and the header's bar
   // says the rest is on its way.
-  // A phone-only book never signs in: no sign-in library to load, no token to ask for.
+  // A phone-only book never signs in: there is no token to ask for.
   if (Store.isLocal()) return;
   if (await Graph.resume()) {
     if (!Store.meta().mode) Store.setMode("onedrive");  // signed in before the choice existed

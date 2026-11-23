@@ -1,5 +1,9 @@
 # The iPhone app — what was built, and the Mac steps
 
+**22 Nov 2026 — the app is now the only phone client.** Where this file speaks of "the PWA" still
+running beside the app from GitHub Pages, read it as history: the web version is retired, the
+browser sign-in and the service worker are gone from `docs/`, and the old address shows a notice.
+
 **Status, 8 November 2026:** the app is built and committed under `ios/TastingBookShell`, with
 its web half in `docs/`. It has **not been compiled yet** — there is no Xcode on the Windows PC —
 so the first Mac session is the compile. `ios/README.md` is the step-by-step for that day; this
@@ -20,7 +24,7 @@ Sign-in moves out of the page into the **system browser sheet**, which is what l
 login last months rather than a day. Builds come from **Xcode Cloud** (included with your
 membership) and land on both phones through **TestFlight**, so the borrowed Mac is needed once —
 to compile, run the three acceptance tests, and create the cloud workflow. After that every update
-is a push to GitHub. GitHub Pages keeps serving the PWA unchanged from the same `docs/` folder.
+is a push to GitHub.
 
 ### Why not the Capacitor route the 2 November plan proposed
 
@@ -144,8 +148,7 @@ From then on your phone can also turn Developer Mode off: the TestFlight copy do
 ## 6. Afterwards
 
 - **Any change** (web code, Swift, settings): commit, push to `main`. Xcode Cloud builds,
-  TestFlight processes, both phones get an *Update*. `docs/` changes still want the `sw.js`
-  VERSION bump for the PWA, as always.
+  TestFlight processes, both phones get an *Update*.
 - **Clocks that no longer matter:** TestFlight's 90-day build expiry (the weekly build renews
   it); the one-year development profile (that copy is only the day-one proof).
 - **When a Mac is needed again:** only to debug on a cabled phone, or if the cloud workflow itself

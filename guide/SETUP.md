@@ -3,6 +3,13 @@
 Roughly 35 minutes across your PC and your iPhone. Nothing here installs a server or costs money.
 Work through it in order; Part 3 is the only fiddly one.
 
+> **22 Nov 2026 — the phone is the iPhone app, and the web version is retired.** This guide was
+> written when the phone client was a web page. What it says about the Microsoft account and the
+> app registration still holds. What it says about a **Single-page application** redirect URI,
+> about **hosting** the phone app, and about installing it through **Safari** does not: none of
+> that is needed any more. The app's own redirect is a different kind of entry, described in
+> `ios/README.md`; the Single-page application entry can be deleted from the registration.
+
 ---
 
 ## Part 1 — Confirm which Microsoft account owns your OneDrive (5 min)

@@ -428,7 +428,7 @@ whiskey-tasting/
   run.bat  update.bat  build_exe.bat
   static/                 the PC front end, bundled into the exe
     index.html  style.css  app.js  table.js  compare.js  analysis.js
-  docs/                   the iPhone client - GitHub Pages serves only / or /docs
+  docs/                   the iPhone client: the page the app in ios/ carries
   tests/                  one file per module
   tools/                  update, first-time setup, shortcut, verify_gate
   guide/                  SPEC.md (this file), RUNNING.md, SETUP.md
@@ -568,6 +568,15 @@ Requirements the user stated: browse the collection cleanly with sorting and fil
 score tastings, none of it disturbing the spreadsheet, and all of it working away from the computer.
 
 Read-only collection browsing plus queued writes — the phone never edits either workbook directly.
+
+**DECIDED 22 Nov 2026 — the phone client is the native iPhone app, and only that.** The page in
+`docs/` is what the app's web view shows (guide/IOS-APP.md); it is not served to browsers. The
+web app described below — a static host, MSAL.js in the page, a service worker, a Home Screen
+install — was built, used, and is retired: sign-in is the app's (ASWebAuthenticationSession, the
+keychain), the files are inside the app, and the old address shows a notice. Everything below
+about OneDrive, the app folder, the one scope and the queue stands unchanged; read the parts
+about hosting, MSAL, the service worker and `apple-touch-icon` as history. A desktop browser on
+the development machine may still open the page, to look at the screens — nothing more.
 
 **DECIDED 8 Sep 2026 — supersedes the 7 Sep decision.** The phone app is a **static web app on a
 free static host, storing data in OneDrive through the Microsoft Graph API**. The 7 Sep choice

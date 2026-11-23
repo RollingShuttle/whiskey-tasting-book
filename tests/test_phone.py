@@ -31,7 +31,7 @@ import rubric as rubric_mod
 DOCS = ROOT / "docs"
 REQUIRED = ["index.html", "style.css", "app.js", "store.js", "graph.js", "sync.js", "config.js",
             "analysis.js", "compare.js", "table.js", "xlsx.js",
-            "sw.js", "manifest.webmanifest", "rubric.json", "icon-180.png"]
+            "native.js", "rubric.json"]
 
 
 def text(name):
@@ -51,26 +51,28 @@ class TestBundle(unittest.TestCase):
         for name in REQUIRED:
             self.assertTrue((DOCS / name).exists(), f"docs/{name} is missing")
 
-    def test_the_service_worker_only_promises_files_that_exist(self):
-        """A precache list with a missing entry makes addAll reject and the app never installs."""
-        listed = re.findall(r'"\./([^"]*)"', text("sw.js"))
-        for name in listed:
-            if not name:
-                continue                     # "./" is the start URL, not a file
-            self.assertTrue((DOCS / name).exists(), f"sw.js caches {name}, which does not exist")
-
-    def test_the_manifest_is_valid_and_points_at_the_icon(self):
-        m = json.loads(text("manifest.webmanifest"))
-        self.assertEqual(m["display"], "standalone")
-        self.assertEqual(m["theme_color"], "#12100E")
-        src = m["icons"][0]["src"]
-        self.assertTrue((DOCS / src).exists())
-
-    def test_the_icon_is_a_real_180_square_png(self):
-        data = (DOCS / "icon-180.png").read_bytes()
-        self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
-        width, height = struct.unpack(">II", data[16:24])
-        self.assertEqual((width, height), (180, 180), "apple-touch-icon must be 180x180")
+    def test_nothing_of_the_web_install_is_left(self):
+        """The phone client was once installable from a web address. It is the iPhone app now,
+        and the files that existed only to install it are gone."""
+        for name in ("manifest.webmanifest", "icon-180.png"):
+            self.assertFalse((DOCS / name).exists(), f"docs/{name} is back")
+        html = text("index.html")
+        for tag in ("manifest", "apple-touch-icon", "apple-mobile-web-app", "mobile-web-app-capable"):
+            self.assertNotIn(tag, html)
+    def test_the_service_worker_only_takes_itself_away(self):
+        """An old install's service worker would serve the copy it cached for ever, and that copy
+        can no longer sign in. What is left at sw.js replaces it, empties its cache and removes
+        itself — and caches nothing, or it would be the thing it is there to end."""
+        sw = code("sw.js")
+        self.assertIn("self.skipWaiting()", sw)
+        self.assertIn("caches.delete(key)", sw)
+        self.assertIn("self.registration.unregister()", sw)
+        self.assertIn("client.navigate(client.url)", sw)
+        for kept in ('"fetch"', "addAll", "caches.open", "SHELL_FILES", "VERSION"):
+            self.assertNotIn(kept, sw)
+    def test_nothing_registers_a_service_worker(self):
+        for name in ("app.js", "store.js", "graph.js", "native.js", "sync.js"):
+            self.assertNotIn("serviceWorker", code(name), f"{name} registers one")
 
 
 class TestIosRules(unittest.TestCase):
@@ -79,11 +81,6 @@ class TestIosRules(unittest.TestCase):
     def setUp(self):
         self.html = text("index.html")
         self.css = text("style.css")
-
-    def test_home_screen_install_meta_is_present(self):
-        for meta in ("apple-mobile-web-app-capable", "mobile-web-app-capable",
-                     "apple-touch-icon", "theme-color"):
-            self.assertIn(meta, self.html, f"{meta} missing — installs badly")
 
     def test_the_viewport_covers_the_safe_areas(self):
         self.assertIn("viewport-fit=cover", self.html,
@@ -775,12 +772,10 @@ class TestNativeShell(unittest.TestCase):
     WEB_TO_NATIVE = {"ready", "auth.status", "auth.signIn", "auth.token", "auth.signOut",
                      "backup.save", "backup.load", "file.share"}
 
-    def test_native_js_is_precached_and_loaded_before_what_uses_it(self):
-        self.assertIn('"./native.js"', text("sw.js"))
+    def test_native_js_is_loaded_before_what_uses_it(self):
         html = text("index.html")
         self.assertLess(html.index('src="native.js"'), html.index('src="store.js"'))
         self.assertLess(html.index('src="native.js"'), html.index('src="graph.js"'))
-
     def test_the_bridge_is_a_plain_script(self):
         """The rest of the bundle is plain scripts; one ES module among them would load in a
         different order from the <script> tags and Native would not exist when store.js ran."""
@@ -789,11 +784,24 @@ class TestNativeShell(unittest.TestCase):
         self.assertNotIn("import ", src)
         self.assertIn("const Native = (() => {", src)
 
-    def test_no_service_worker_inside_the_shell(self):
-        """The app ships and updates its own bundle; a service worker there would keep serving
-        the copy it cached first, however many times the app updated."""
-        self.assertIn('if (!Native.available && "serviceWorker" in navigator)', code("app.js"))
+    def test_outside_the_app_the_page_is_not_an_app(self):
+        """The web version is retired. At any address but this machine's own, a browser is shown
+        where the app went — before the bridge is asked for anything, and before a line of the
+        app runs. The exception is how the screens are looked at while they are worked on."""
+        src = code("app.js")
+        boot = src[src.index("async function boot("):]
+        gate = "if (!Native.available && !DEV_HOSTS.has(location.hostname)) { retired(); return; }"
+        self.assertIn(gate, boot)
+        self.assertLess(boot.index(gate), boot.index("await Native.init()"))
+        self.assertIn('const DEV_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", ""]);', src)
 
+    def test_the_retired_page_lets_go_of_what_it_holds(self):
+        """An old install may still hold cards it never sent. They can be taken away as a file."""
+        src = code("app.js")
+        block = src[src.index("function retired("):src.index("async function boot(")]
+        self.assertIn("Store.exportAll()", block)
+        self.assertIn("This is an iPhone app now", block)
+        self.assertNotIn("setTab(", block, "no screen of the app is drawn")
     def test_boot_waits_for_the_shell_before_reading_storage(self):
         """A backup can only be restored into an empty store, so the restore has to run before
         the first read — and the bridge has to be up before the restore can ask for it."""
@@ -833,18 +841,26 @@ class TestNativeShell(unittest.TestCase):
         self.assertIn('"auth.signIn": "auth.result"', src)
         self.assertIn('"backup.load": "backup.result"', src)
 
-    def test_graph_adds_the_native_branch_and_keeps_the_browser_one(self):
-        """The PWA on GitHub Pages must behave exactly as before: MSAL, redirect flow and all."""
+    def test_sign_in_is_the_apps_and_only_the_apps(self):
+        """There was a browser path here once — Microsoft's library, a redirect and back. It went
+        with the web version; what is left asks the shell, or says it is not signed in."""
         src = code("graph.js")
         self.assertIn('Native.caps.has("auth")', src)
-        for kept in ("loginRedirect", "handleRedirectPromise", "MSAL_SRC", "acquireTokenSilent"):
-            self.assertIn(kept, src, f"the browser path lost {kept}")
-
-    def test_the_shell_never_loads_msal(self):
+        for gone in ("msal", "MSAL", "loginRedirect", "handleRedirectPromise", "acquireTokenSilent",
+                     "loadScript", "createElement"):
+            self.assertNotIn(gone, src, f"the browser path left {gone} behind")
+        self.assertNotIn("MSAL_SRC", text("config.js"))
+        self.assertNotIn("cdn.jsdelivr.net", text("config.js"), "nothing is fetched from a CDN")
+    def test_without_the_shell_nothing_is_asked_of_it(self):
+        """A desktop browser opened to work on the screens has no bridge. Each entry point says
+        so before it would post a message that nothing answers."""
         src = code("graph.js")
-        block = src[src.index("async function ensure("):src.index("async function resume(")]
-        self.assertLess(block.index("native()"), block.index("loadScript(CONFIG.MSAL_SRC)"))
-
+        resume = src[src.index("async function resume("):src.index("async function signIn(")]
+        self.assertLess(resume.index("!native()"), resume.index("Native.request("))
+        sign_in = src[src.index("async function signIn("):src.index("async function signOut(")]
+        self.assertLess(sign_in.index("if (!native()) throw"), sign_in.index("Native.request("))
+        token = src[src.index("async function acquireToken("):src.index("const url =")]
+        self.assertLess(token.index("if (!native())"), token.index("Native.request("))
     def test_the_redirect_scheme_is_the_bundle_id(self):
         """What Entra has on file under Mobile and desktop applications; the bundle id and this
         string have to move together."""
@@ -919,7 +935,6 @@ class TestSyncWiring(unittest.TestCase):
         order = [m for m in re.findall(r'<script src="([^"]+)">', html)]
         self.assertLess(order.index("graph.js"), order.index("sync.js"))
         self.assertLess(order.index("sync.js"), order.index("app.js"))
-        self.assertIn('"./sync.js"', text("sw.js"), "the PWA would open without its sync engine")
 
     def test_the_engine_needs_no_page(self):
         """So it can run in V8. The page's names stay in app.js."""
@@ -957,14 +972,12 @@ class TestSyncWiring(unittest.TestCase):
                         "subscribe before the first screen, or the first run's changes go unseen")
         self.assertNotIn("await refresh()", boot, "boot must not wait for the network")
 
-    def test_an_automatic_sync_never_leaves_the_page(self):
-        """In the browser build MSAL used to answer a lapsed token with acquireTokenRedirect — a
-        full-page navigation. Harmless when only the button asked; fatal once boot and coming
-        back to the page ask too, because a half-scored card lives only in memory."""
-        src = code("graph.js")
-        self.assertNotIn("acquireTokenRedirect", src)
-        self.assertIn("loginRedirect", src, "the Sign in button is the one navigation left")
-
+    def test_nothing_ever_leaves_the_page_to_sign_in(self):
+        """A half-scored card lives only in memory. The app's sign-in is a sheet over the page;
+        there is no redirect left anywhere that could navigate away from one."""
+        src = code("graph.js") + code("app.js")
+        for word in ("Redirect(", "location.href =", "location.assign", "location.replace"):
+            self.assertNotIn(word, src)
     def test_last_sync_means_everything_came_down(self):
         """A pull with a failed step must not move lastSync, or the next foreground would skip
         the retry — and the flush of old never set it at all after a failure."""
@@ -1102,16 +1115,13 @@ class TestExcelExportWiring(unittest.TestCase):
     def test_the_file_is_not_given_the_master_s_name(self):
         self.assertIn("`Tasting Book Collection ${Store.today()}.xlsx`", self.js)
 
-    def test_the_workbook_is_built_inside_the_tap(self):
-        """A share sheet opens only inside the tap that asked for it. Anything awaited first —
-        which is what a CompressionStream would be — spends the tap, so the whole writer is
-        synchronous, compression included."""
+    def test_the_writer_is_synchronous_so_the_tests_can_run_it(self):
+        """The platform's CompressionStream does not exist in the V8 the tests use. A writer that
+        needed it would be a writer nobody had checked, so the DEFLATE is its own."""
         self.assertIn("function exportWorkbook() {", self.js)
-        self.assertNotIn("async function exportWorkbook", self.js)
         self.assertIn("Xlsx.collectionBook(Store.spirits(), { types: Store.types() })", self.js)
         for word in ("await ", "async ", "Promise", "CompressionStream"):
             self.assertNotIn(word, self.xlsx)
-
     def test_the_writer_needs_no_page_and_no_library(self):
         for word in ("TextEncoder", "import ", "require("):
             self.assertNotIn(word, self.xlsx)
@@ -1119,13 +1129,23 @@ class TestExcelExportWiring(unittest.TestCase):
         self.assertIsNone(re.search(r"(?<![A-Za-z])(document|window|navigator)\.", self.xlsx))
         html = text("index.html")
         self.assertLess(html.index('src="xlsx.js"'), html.index('src="app.js"'))
-        self.assertIn('"./xlsx.js"', text("sw.js"))
 
     def test_the_backup_still_goes_out_and_comes_back(self):
         """The workbook has no scores in it and cannot be imported. The backup is still the copy
         that restores a phone."""
-        self.assertIn('"application/json", Store.exportAll()', self.js)
+        self.assertIn('"application/json", Store.exportAll())', self.js)
         self.assertIn("Store.importAll(", self.js)
+
+    def test_a_file_leaves_through_the_app_and_no_other_way(self):
+        """The browser's share sheet and its downloads went with the web version. One download
+        is left, on the page the old address shows, and nowhere in the app."""
+        hand = self.js[self.js.index("async function handOver("):self.js.index("function workbookCard(")]
+        self.assertIn('if (!Native.caps.has("share"))', hand)
+        self.assertIn('Native.request("file.share"', hand)
+        for gone in ("navigator.share", "canShare", "createObjectURL", "download:"):
+            self.assertNotIn(gone, hand)
+        self.assertEqual(self.js.count("createObjectURL"), 1)
+        self.assertNotIn("Home Screen", self.js)
 
 
 class TestScreensAreLaidOutForHowTheyAreUsed(unittest.TestCase):

@@ -12,9 +12,9 @@ There are two halves and they never talk to each other directly.
 ```
    YOUR PC                          ONEDRIVE                        YOUR IPHONE
    ───────                          ────────                        ───────────
-   the app you run                  a shared folder                 a web app you
-   on your own machine        <──>  both halves can          <──>   install to the
-                                    reach                           home screen
+   the app you run                  a shared folder                 the Tasting Book
+   on your own machine        <──>  both halves can          <──>   app, installed
+                                    reach                           from TestFlight
 
    reads your collection            small files, a few KB           never sees your
    workbook, writes the             each — no spreadsheet           collection workbook
@@ -291,100 +291,27 @@ that is recorded in two independent places so a sync clash cannot lose it.
 
 ## Part 2 — The phone app
 
-This one needs three things set up once. After that it is just an icon on your home screen.
+The phone app is a real iPhone app called **Tasting Book**, installed through TestFlight. It used
+to exist as a web page added to the Home Screen as well; that version was retired on 22 Nov 2026,
+and its old address now only says so.
 
-### Why it needs setting up at all
+### Getting it onto the phone
 
-The phone app is a web page, so it has to live at a web address — that is step A. And it needs
-permission to reach your OneDrive folder — that is steps B and C. Nothing runs on a server; the
-page is just files, and your phone talks to OneDrive directly.
+Building the app and putting it on TestFlight is done on a Mac, once: `ios/README.md` is the
+checklist, including the one entry the Microsoft registration needs for the app's sign-in. After
+that the phone gets each new build as an update in the TestFlight app.
 
-### Step A — put the app on the web (5 minutes)
+A change to the phone's screens reaches the phone only with a new build. There is nothing to
+refresh or clear.
 
-1. Go to **https://github.com/RollingShuttle/whiskey-tasting-book**
-2. Click **Settings** (the tab along the top of the repository).
-3. In the left-hand menu, click **Pages**.
-4. Under "Build and deployment", set **Source** to *Deploy from a branch*.
-5. Set **Branch** to `main`, and set the folder dropdown next to it to **`/docs`**.
-6. Click **Save**.
-
-Wait a minute or two, then reload that Settings → Pages page. It will show the address, which will
-be:
-
-```
-https://rollingshuttle.github.io/whiskey-tasting-book/
-```
-
-Open it on your computer first to check it loads. It will say there is no collection yet — that is
-correct, it has not been given permission to fetch one.
-
-### Step B — tell the app who it is (5 minutes)
-
-Your Microsoft app registration from `SETUP.md` Part 3 has an identifier. The app needs it.
-
-1. Go to **https://entra.microsoft.com** and sign in with your **personal** Microsoft account —
-   the one that has the whiskey files. Check the avatar in the top right before going further.
-2. Left menu → **Applications** → **App registrations** → click **Whiskey Tasting Book**.
-3. On the Overview page, copy the **Application (client) ID**. It looks like
-   `3f9a2c14-7b21-4c8e-9a55-1d2e3f4a5b6c`.
-4. In the project folder, open `docs/config.js` in any text editor. Find this line near the top:
-
-   ```
-   CLIENT_ID: "",
-   ```
-
-   Paste your ID between the quotes so it reads:
-
-   ```
-   CLIENT_ID: "3f9a2c14-7b21-4c8e-9a55-1d2e3f4a5b6c",
-   ```
-
-5. Save the file, then commit and push it so the deployed page picks it up:
-
-   ```
-   git add docs/config.js && git commit -m "Add the client ID" && git push
-   ```
-
-This identifier is **not a password**. Any app of this kind has to include it in plain view, and it
-is useless on its own — it only works from your registered web address, only for personal Microsoft
-accounts, and only for the one folder. There is no secret anywhere in this project, and there
-should never be.
-
-### Step C — let the app sign you in (3 minutes)
-
-Still in the Entra portal, on the same app registration:
-
-1. Left menu → **Authentication**.
-2. If there is already a **Single-page application** section, click **Add URI** under it. If not,
-   click **Add a platform** → **Single-page application**.
-3. Enter exactly:
-
-   ```
-   https://rollingshuttle.github.io/whiskey-tasting-book/
-   ```
-
-   The trailing slash matters.
-4. Click **Save** (or **Configure**).
-
-This is Microsoft's way of making sure sign-ins can only be sent back to a page you control.
-
-### Step D — install it on the iPhone (2 minutes)
-
-1. Open **Safari** on the iPhone. It has to be Safari — installing from Chrome does not give you a
-   proper app.
-2. Go to `https://rollingshuttle.github.io/whiskey-tasting-book/`
-3. Tap the **Share** button (the square with an arrow, at the bottom).
-4. Scroll down and tap **Add to Home Screen**, then **Add**.
-
-You now have an icon. Opening it from the icon runs it full screen with no browser bars.
-
-### Step E — first run on the phone
+### First run on the phone
 
 1. Make sure the PC app has been started and **Refresh** pressed at least once, and give OneDrive a
    minute to sync.
-2. Open the app from the home screen.
+2. Open **Tasting Book**.
 3. Tap **Sync** at the bottom.
-4. Tap **Sign in**. Sign in with your **personal** Microsoft account.
+4. Tap **Sign in**. Sign in with your **personal** Microsoft account. The sign-in is a sheet over
+   the app, and it lasts for months.
 5. The phone pulls the collection on its own as soon as you are signed in — the Sync screen shows
    each step as it lands (Collection, Scores, Rubric, Upload), and a thin brass line under the
    title shows the same thing from any screen.
@@ -400,8 +327,8 @@ cannot wait.
 The phone app can run entirely on its own. Nothing to install on a computer and no Microsoft
 account: the bottles and the scores live on that phone.
 
-1. Send your friend the Pages address from Step C. They open it in **Safari**, tap **Share**, then
-   **Add to Home Screen**.
+1. Add your friend as a tester (`ios/README.md`, "Giving the app to a friend"). They install
+   **TestFlight** from the App Store, accept the invitation, and install **Tasting Book**.
 2. The first screen asks where the book should live. They tap **On this phone only**.
 3. **Add → Bottle I bought** puts a bottle straight into their collection. **Add → Bar pour** scores
    something they do not own. Everything else — scoring, the table, compare, analysis — works as
@@ -416,13 +343,7 @@ account: the bottles and the scores live on that phone.
    phone shows the same numbers as `L-1`, `L-2`). It holds the collection, not the scores, and it
    cannot be imported back: the backup file is still the one that restores a phone.
 
-Two things to tell them. The phone holds the only copy, so export a backup now and then. And keep
-it on the Home Screen: iOS can clear the storage of a web page that goes unused for weeks, but
-leaves an installed one alone.
-
-If your friend would rather have the real app than a Home Screen page, TestFlight can give it to
-him: `ios/README.md`, "Giving the app to a friend". The app asks the same first question and
-works the same way.
+One thing to tell them. The phone holds the only copy, so export a backup now and then.
 
 Your own phone is unaffected: one that has ever synced stays on **OneDrive**, and the same last
 tab shows both choices under *Where your book lives*. Switching is a tap and a confirmation. What

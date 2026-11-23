@@ -1,40 +1,22 @@
-/* Bar basements have no signal. The shell is cached so the app opens and scores a pour with no
-   connection at all; the collection snapshot is cached separately because it is the one piece of
-   data scoring needs (SPEC.md §9.2). Uploads are never cached — they go through the queue. */
-const VERSION = "v28";
-const SHELL = "shell-" + VERSION;
-const SHELL_FILES = [
-  "./", "./index.html", "./style.css", "./config.js", "./native.js",
-  "./store.js", "./graph.js", "./sync.js", "./table.js", "./analysis.js", "./compare.js", "./xlsx.js", "./app.js",
-  "./rubric.json",
-  "./manifest.webmanifest", "./icon-180.png",
-];
+/* Whiskey Tasting Book — the last version of the web app's service worker.
 
-self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).then(() => self.skipWaiting()));
-});
+   The phone client was once a web app served from GitHub Pages, and this file cached it so it
+   opened with no signal. That version is retired: the phone client is the iPhone app
+   (guide/IOS-APP.md), which never loads this file — ios/copy-web.sh leaves it out.
 
-self.addEventListener("activate", (e) => {
-  e.waitUntil(caches.keys()
-    .then((keys) => Promise.all(keys.filter((k) => k !== SHELL).map((k) => caches.delete(k))))
-    .then(() => self.clients.claim()));
-});
+   A service worker outlives the page that registered it. An old install would go on serving the
+   copy it cached for ever, and that copy can no longer sign in — so anything scored in it would
+   sit in a queue with nowhere to go. This worker is what a browser still holding the old one
+   fetches in its place: it takes over at once, empties what was cached, removes itself, and
+   reloads the page, which then says where the app went (retired() in app.js).
 
-self.addEventListener("fetch", (e) => {
-  const url = new URL(e.request.url);
-  if (e.request.method !== "GET") return;                 // never cache a write
-  if (url.origin !== self.location.origin) return;        // Graph and the CDN go straight out
+   It exists only for the old address. Once GitHub Pages is switched off, delete it. */
+self.addEventListener("install", () => self.skipWaiting());
 
-  e.respondWith(
-    caches.match(e.request).then((hit) => {
-      const live = fetch(e.request).then((res) => {
-        if (res && res.ok) {
-          const copy = res.clone();
-          caches.open(SHELL).then((c) => c.put(e.request, copy));
-        }
-        return res;
-      }).catch(() => hit);
-      return hit || live;                                 // cache first, refresh behind
-    })
-  );
+self.addEventListener("activate", (event) => {
+  event.waitUntil((async () => {
+    for (const key of await caches.keys()) await caches.delete(key);
+    await self.registration.unregister();
+    for (const client of await self.clients.matchAll({ type: "window" })) client.navigate(client.url);
+  })());
 });

@@ -1,15 +1,14 @@
 # Tasting Book — the iPhone shell (TastingBookShell)
 
-Swift + WKWebView. The app is the phone client in `docs/` — the very files GitHub Pages serves —
-copied into the bundle at build time and served to the web view from `app://local/`. The native
-side does only two things the page cannot: a **Microsoft sign-in in the system browser sheet**,
-which lasts months instead of a day (the PWA's browser tokens are capped at 24 hours), and a
-**backup file** the Files app can see. Scoring, the upload queue, the offline cache, every screen:
+Swift + WKWebView. The app is the phone client in `docs/`, copied into the bundle at build time
+and served to the web view from `app://local/`. The native side does the three things the page
+cannot: a **Microsoft sign-in in the system browser sheet**, which lasts for months; a **backup
+file** the Files app can see; and the **share sheet**, for a file the page has made. Scoring, the upload queue, the offline cache, every screen:
 all the page, unchanged. The background for the decision is `guide/IOS-APP.md`.
 
 Page ↔ shell messages are listed at the top of `TastingBookShell/Bridge.swift`; the page's half is
 `docs/native.js`. The web page holds the Microsoft client id (`docs/config.js`) and passes it in
-every sign-in message, so there is one source of truth for both the PWA and the app.
+every sign-in message, so there is one place it lives.
 
 ## Before the Mac: the Entra step (10 minutes, on the PC, only you can do it)
 
@@ -28,8 +27,8 @@ Entra admin centre → **App registrations** → *Whiskey Tasting Book* → **Au
 and ignore the MSAL configuration snippets it shows below (this app does not use that library).
 The *Mobile and desktop applications* tile with that URI typed by hand makes the identical
 native-client entry; the iOS tile only saves the typing. Not *Web* (that expects a client secret)
-and not *Single-page application* (that expects a browser origin). Leave the existing GitHub
-Pages entry alone — the PWA still uses it. Keep *Personal Microsoft accounts only*. No secret is
+and not *Single-page application* (that expects a browser origin; the one already there belonged
+to the retired web version and can be deleted). Keep *Personal Microsoft accounts only*. No secret is
 created; there was never one.
 
 The scheme is `msauth.` + the bundle identifier. It needs no URL-type entry in the app, because
@@ -181,8 +180,7 @@ iPhone → Tasting Book, and the Data tab exports one.
 
 ## What the shell deliberately does not do
 
-No notifications, no Siri, no haptics, no share sheet, no App-Bound Domains, no live site: the page
-is bundled, so there is no second copy to keep in step and nothing that stops working when the wifi
-does. A service worker is not registered inside the app — the bundle is the cache — which is why
-`sw.js` stays out of it; the PWA on GitHub Pages keeps using it, and the `VERSION` bump rule in
-`CLAUDE.md` still applies to `docs/` changes.
+No notifications, no Siri, no haptics, no App-Bound Domains, no live site: the page is bundled, so
+there is no second copy to keep in step and nothing that stops working when the wifi does. There
+is no service worker — the bundle is the cache. The `sw.js` in `docs/` is not the app's: it is
+what the retired web address serves to end old installs, and `copy-web.sh` leaves it out.

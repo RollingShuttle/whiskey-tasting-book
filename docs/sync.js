@@ -1,7 +1,7 @@
 /* Whiskey Tasting Book — the sync engine (SPEC.md §9.1).
 
    One entry point, Sync.start(), for every reason a sync can begin: the Refresh button, a cold
-   start, the shell's foreground event, the browser's visible and online events, a card just
+   start, the shell's foreground event, the web view's visible and online events, a card just
    submitted. It pulls the three files the PC publishes, pushes the upload queue, and keeps a
    running account of itself in `state` — which step is doing what, what landed, what changed —
    that the Sync screen draws as a checklist and the header's thin bar follows. The account is

@@ -27,7 +27,7 @@ total, and a medal band: Diamond 90+, Gold 80+, Silver 70+, Bronze 60+.
 ```
 *.py                    the app: server, launcher, and the modules underneath them
 static/                 the PC front end, bundled into the exe
-docs/                   the iPhone client (GitHub Pages will only serve / or /docs)
+docs/                   the iPhone client: the page the app carries (the name is historical)
 ios/                    the iPhone app: a Swift shell around docs/, built in Xcode
 tests/                  one file per module — python -m unittest discover -s tests
 tools/                  scripts run by hand: update, first-time setup, shortcut, gate
@@ -51,7 +51,7 @@ update-mac.command                      the one thing you double-click on the Ma
 | `static/` | the PC front end — `app.js` (sheet + flights), `table.js`, `compare.js`, `analysis.js` | — |
 | `docs/` | the iPhone client — offline-first, syncs through OneDrive | `tests/test_phone.py` |
 
-660 tests, all passing. `python tools/verify_gate.py` runs the shipping gate in [guide/SPEC.md](guide/SPEC.md) §7.
+668 tests, all passing. `python tools/verify_gate.py` runs the shipping gate in [guide/SPEC.md](guide/SPEC.md) §7.
 
 ## Views
 
@@ -81,11 +81,11 @@ Discard control.
   editable first. The row fills a slot that already exists inside the Excel table, every
   photo and rich value is copied byte-for-byte, and a backup is taken before each write.
 
-The **iPhone client** in `docs/` is a static app for GitHub Pages: browse the collection,
-score a pour, queue a new bottle for approval. It scores with no signal — every card is
-written to the phone first and queued — and syncs through the OneDrive app folder, which its
-OAuth scope limits it to. To deploy: add your client ID to `docs/config.js`, register the
-Pages URL as an SPA redirect URI, and enable Pages on the `docs/` folder.
+The **iPhone client** is a native app (`ios/`) around the page in `docs/`: browse the
+collection, score a pour, queue a new bottle for approval. It scores with no signal — every card
+is written to the phone first and queued — and syncs through the OneDrive app folder, which its
+OAuth scope limits it to. It can also keep a whole book on the phone alone, with no PC and no
+account. It is installed through TestFlight (`ios/README.md`); there is no browser version.
 
 ## Run
 

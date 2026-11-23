@@ -216,11 +216,11 @@ class TestCopyWeb(unittest.TestCase):
         self.assertIn("set -e", self.script)
 
     def test_it_copies_from_docs(self):
-        """docs/ is the phone client, fixed by GitHub Pages; the shell has no copy of its own."""
+        """docs/ is the phone client; the shell has no copy of its own."""
         self.assertIn('SRC="$SRCROOT/../docs"', self.script)
 
     def test_it_leaves_the_service_worker_out(self):
-        """A service worker cannot register on the app:// scheme, and the bundle is the cache."""
+        """What is left at sw.js exists to end old web installs. It is nothing to the app."""
         self.assertRegex(self.script, r"sw\.js\)\s*;;")
 
     def test_it_keeps_no_list_of_file_names(self):
@@ -430,7 +430,7 @@ class TestHandingOverAFile(unittest.TestCase):
 
     def test_the_page_asks_only_a_shell_that_can(self):
         app = text(DOCS / "app.js")
-        self.assertIn('if (Native.caps.has("share"))', app)
+        self.assertIn('if (!Native.caps.has("share"))', app)
         self.assertIn('Native.request("file.share", { name, mime, base64: btoa(packed) })', app)
 
     def test_the_file_is_written_before_the_sheet_is_raised(self):

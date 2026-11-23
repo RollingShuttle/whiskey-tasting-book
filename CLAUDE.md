@@ -16,18 +16,31 @@ The eight app modules, the three `.bat` files, `update-mac.command` (double-clic
 in, and the `.bat` files are what gets double-clicked. Everything else has a folder — `tests/`,
 `tools/` (scripts run by hand), `guide/` (the documents above), `static/` (the PC front end,
 bundled into the exe), `docs/` and `ios/` (the iPhone app's Xcode project; it copies `docs/` into
-the app at build time, so `docs/` stays the one source for the PWA and the app).
+the app at build time, so `docs/` is the phone client's one source).
 
-**`docs/` is served two ways** — from GitHub Pages at an `https` origin, and inside the iPhone
-app at `app://local/`. Code there must not assume a browser origin: sign-in and the storage
-mirror go through `docs/native.js` when the shell is present (`Native.caps`), and take the old
-paths when it is not; a test pins the browser path, and `tests/test_ios.py` pins that the page
-and `ios/TastingBookShell/Bridge.swift` name the same messages. The Swift has never been
-compiled on this machine — `ios/README.md` lists the two most likely complaints and their fixes.
+**`docs/` is the iPhone app's page, and nothing else** (22 Nov 2026). The app's WKWebView loads
+it from inside the bundle at `app://local/`; sign-in, the storage mirror and handing a file to
+the share sheet go through `docs/native.js` to Swift (`Native.caps`: `auth`, `backup`, `share`),
+and `tests/test_ios.py` pins that the page and `ios/TastingBookShell/Bridge.swift` name the same
+messages. The Swift has never been compiled on this machine — `ios/README.md` lists the two most
+likely complaints and their fixes.
 
-Two of those names are fixed by something outside this repo and **cannot be renamed**: GitHub
-Pages serves only `/` or `/docs`, so the phone client has to be `docs/` however much it looks
-like documentation; and `static/` is what `build_exe.bat` copies in with
+**There is no browser version.** The phone client used to be a web app on GitHub Pages as well —
+Microsoft's browser sign-in library, a service worker, a Home Screen install. All of that is
+removed: `docs/graph.js` asks the shell or answers "not signed in", nothing registers a service
+worker, and `boot()` in `docs/app.js` shows a notice (`retired()`) at any address that is not the
+app. The one exception is `DEV_HOSTS` — `localhost`, `127.0.0.1`, a file opened from disk —
+because **a desktop browser is still how the screens are looked at while they are worked on**
+(`.claude/launch.json`, "phone"): no shell, so no sign-in, no sync, no mirror and no export, but
+every screen draws from seeded `localStorage`. Do not add a feature that only works in a browser,
+and do not break the page's ability to open without the shell. `docs/sw.js` is the old address's
+last service worker — it empties an old install's cache and unregisters itself — and exists only
+while GitHub Pages is still switched on; `ios/copy-web.sh` leaves it out of the app.
+
+Two of those names are fixed by something outside this folder and **should not be renamed**:
+the phone client is `docs/` however much it looks like documentation — GitHub Pages, which would
+serve only `/` or `/docs`, is why it was named so, and `ios/copy-web.sh`, the Xcode project and
+every phone test now point at it; and `static/` is what `build_exe.bat` copies in with
 `--add-data "%~dp0static;static"`, which `app.py` then resolves under `sys._MEIPASS`.
 
 Anything under `tools/` or `tests/` resolves the project root as `Path(__file__).parent.parent`.
@@ -59,7 +72,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 660 tests, all passing
+python -m unittest discover -s tests    # 668 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -141,18 +154,18 @@ backup. Codes are assigned at approval time on the PC, never on the phone.
 a SHA-256 comparison. It passed on 8 Sep 2026 — 198 photos and 5 richData parts intact.
 Re-run it after anything that touches collection.py or master_write.py.
 
-The iPhone client is built: `docs/` is the static bundle for GitHub Pages —
-`index.html`, `style.css`, `app.js` (screens), `analysis.js`, `compare.js`,
-`store.js` (local cache + upload queue), `xlsx.js` (the Excel export),
-`graph.js` (MSAL + Graph), `sw.js`, `manifest.webmanifest`, `rubric.json`, `icon-180.png`.
+The iPhone client is built: `docs/` is the page the app carries —
+`index.html`, `style.css`, `app.js` (screens), `table.js`, `analysis.js`, `compare.js`,
+`store.js` (local cache + upload queue), `xlsx.js` (the Excel export), `native.js` (the bridge),
+`graph.js` (the app's sign-in + Graph), `sync.js`, `config.js`, `rubric.json`.
 Analysis and Compare derive everything from the snapshot and `careers.json` — no fetch, no
 charting library, hand-written SVG — so they work with no signal. Two things the phone cannot
 derive are published for it: per-category means (it holds its own cards, not the journal) and the
 calibration series. `careers.json` is now `{careers: {code: {score, medal, n, categories}},
 calibration: [...]}` and is **persisted to localStorage**; it used to live only in memory, so
 closing the app blanked every published score until the next sync.
-**Bump `sw.js` VERSION whenever anything in `docs/` changes**, or an installed phone serves the
-cached old bundle for ever.
+A change in `docs/` reaches a phone with the next build of the app and no other way — there is
+no cache to invalidate and no version to bump (the `sw.js` VERSION rule went with the web app).
 
 `docs/sync.js` is the sync engine (8 Nov 2026): every trigger — the Refresh button, boot, the
 shell's foreground, the browser's visible and online events, a submitted card — goes through
@@ -163,12 +176,12 @@ only the files whose eTag changed; `meta.lastSync` moves only when every file ca
 upload stays in the queue carrying its reason instead of blocking the cards behind it. The module
 has no `document` and no `app` so `tests/test_phone_js.py` runs it in V8. `Store.read` is memoised
 per key (invalidated on write) — the collection screen used to parse the whole snapshot once per
-row. The page does not zoom: viewport `maximum-scale=1, user-scalable=no` for the shell and the
-home-screen install, `html { touch-action: pan-x pan-y }` for Safari.
+row. The page does not zoom: viewport `maximum-scale=1, user-scalable=no`, which the shell's
+WKWebView honours, and `html { touch-action: pan-x pan-y }` besides.
 **The phone has two arrangements** (14 Nov 2026), chosen under *Where your book lives* on the
 last tab and asked on the first screen of a phone that has neither chosen nor ever synced.
 `onedrive` is everything above. `local` ("This phone only") is for someone with no PC and no
-OneDrive: `Store.enqueue` is a no-op, `Sync.start` skips, `boot()` never loads MSAL, the Add
+OneDrive: `Store.enqueue` is a no-op, `Sync.start` skips, `boot()` never asks for a token, the Add
 form's bottle goes straight into the snapshot through `Store.addLocalSpirit` with an **`L-n`**
 code (a prefix the PC never issues; `meta.localHigh` keeps it from being reissued), and the tab
 is called Data and offers Export / Import (`Store.exportAll` / `importAll`, the same key-by-key
@@ -245,11 +258,12 @@ phone reads into `snapshot/` in the app folder (collection, rubric, careers) on
 `POST /api/refresh`; careers are published rather than derived so the phone never downloads
 the journal over bar wifi.
 
-**Not deployed yet — three steps, all yours:** put the Application (client) ID in
-`docs/config.js` (blank on purpose; a test enforces that, so relax it when you fill it in),
-add the Pages URL as a Single-page application redirect URI on the Entra registration, and
-turn on GitHub Pages for the `docs/` folder on `main`. Until then the app runs and scores;
-only uploading waits.
+**How it is deployed.** The phone gets the app through TestFlight (`ios/README.md`; a push to
+`main` is what Xcode Cloud builds, when that workflow is set up). The Application (client) ID is
+in `docs/config.js` and the Entra registration carries the app's `msauth.…://auth` redirect.
+GitHub Pages is still switched on for `docs/` and now serves only the retirement notice; it can
+be turned off in the repository's settings whenever the owner likes, and `docs/sw.js` deleted
+with it.
 
 All three sheets carry a **Status** column: `Unopened`/`Opened` mean the spirit is held,
 `Finished`/`Removed` mean it has left. The vocabulary lives in `collection.py`
@@ -318,8 +332,8 @@ master, and a conflicted copy of that is the one loss this project cannot undo.
 
 That is the whole of SPEC.md. Nothing in the build order is outstanding.
 
-The front end serves two clients from one codebase: the PC app at `127.0.0.1:8765`, and a
-static build in `docs/` deployed to GitHub Pages for the iPhone. Design is settled: see SPEC.md §5
+There are two front ends: the PC app at `127.0.0.1:8765` (`static/`), and the page in `docs/`
+that the iPhone app carries. Design is settled: see SPEC.md §5
 (tokens), §9.2 (iOS rules), §10 (the approved mockups — three PC screens, six phone screens). Build
 the phone client to iOS conventions; 44 pt touch targets, safe-area insets, 16 px inputs, its own
 back navigation, offline-first with a local queue.
