@@ -722,7 +722,9 @@ reads as a website someone bookmarked, and it breaks in specific ways in the bar
   sink either way and equal figures go to the spirit with more sittings behind it. The header
   row and the name column are frozen: the table scrolls in its own pane, both ways, and the page
   does not. A row opens the bottle. **Side by side** — bars for two to six chosen spirits — is
-  the tab's second view, and is what a bottle's *Compare with others* opens.
+  the tab's second view, and is what a bottle's *Compare with others* opens. The desktop's
+  Compare view opens on the same table (23 Nov 2026), drawn from `/api/table/collection`, with
+  its side-by-side grid as the second view; a row there opens the spirit's sittings.
 - **Compare keeps its key in sight.** The per-category bars are told apart only by their order,
   so when the card of totals has scrolled under the header a short strip takes its place there:
   each bottle's name, code and score, in the bars' order, over the bar's own colour. It occupies

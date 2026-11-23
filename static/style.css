@@ -487,6 +487,41 @@ input:disabled, textarea:disabled { color: var(--text); opacity: .8; cursor: def
   color: var(--muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums;
 }
 .cmp-foot { color: var(--muted); font-size: 12px; margin-top: 12px; line-height: 1.5; }
+.compare-view > .t-modes { margin-bottom: 14px; }
+
+/* Compare — every score, as a table. A pane of its own that scrolls both ways, so the header row
+   and the name column can stay where they are while the figures move under them: sixteen
+   columns of numbers are only readable while each still says whose it is and what it is. */
+.sc-count { color: var(--muted); font-size: 12px; margin-left: auto; }
+.sc-wrap {
+  overflow: auto; max-height: calc(100vh - 250px); min-height: 220px; margin-top: 14px;
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.sc-table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
+.sc-table th, .sc-table td {
+  padding: 8px 12px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid var(--line); background: var(--surface);
+}
+.sc-table th {
+  position: sticky; top: 0; z-index: 2; cursor: pointer; user-select: none; vertical-align: bottom;
+  color: var(--muted); font-weight: 500; font-size: 12px; background: var(--surface-2);
+}
+.sc-table th:hover { color: var(--text); }
+.sc-table th.sorted, .sc-table td.sorted { color: var(--brass-bright); }
+.sc-max { display: block; font-size: 11px; font-weight: 400; opacity: .8; }
+.sc-table .sc-word { text-align: center; }
+/* The name column: frozen at the left, and the corner cell above it over both. */
+.sc-table .sc-name {
+  position: sticky; left: 0; z-index: 1; text-align: left; white-space: normal;
+  min-width: 250px; max-width: 340px;
+  border-left: 3px solid transparent; border-right: 1px solid var(--line);
+}
+.sc-table th.sc-name { z-index: 3; }
+.sc-title { font-family: var(--serif); font-size: 14px; }
+.sc-sub { color: var(--muted); font-size: 11.5px; margin-top: 1px; }
+.sc-table tbody tr { cursor: pointer; }
+.sc-table tbody tr:hover td { background: var(--surface-2); }
+.sc-table tbody tr.gone td > * { opacity: .6; }
 
 .cmp-notes { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
 .cmp-notes-h { color: var(--muted); font-size: 12px; margin-bottom: 12px; }

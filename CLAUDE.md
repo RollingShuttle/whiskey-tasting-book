@@ -72,7 +72,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 672 tests, all passing
+python -m unittest discover -s tests    # 684 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -251,6 +251,21 @@ their frozen key; `CompareView.begin(code)` opens that one. The collection's tab
 (`docs/table.js`) is now only the bottles — no score, medal, best, worst or score-per-dollar,
 and no ranking lens; `lensPresets`, `lensIsEverything` and `sameKeys` went with it, leaving
 `flavourKeys`, `lensMax` and `lensScore` for the Flavor total. It opens sorted by name.
+
+**The desktop's Compare opens on the same table** (23 Nov 2026): `renderScores` / `paintScores`
+in `static/compare.js`, with **Side by side** — the existing columns of bars — as its second
+view. It needed no endpoint: `/api/table/collection` already returns every spirit joined to
+`career_score`, `medal`, `n`, `best`, `worst`, `score_per_dollar` and the exact `category_means`,
+and the table keeps the rows with a score. The Flavor total is summed from those exact means and
+rounded once. A row opens the spirit's sittings (`showSittingsFor`); a flight's *Compare pours*
+still opens Side by side. The desktop's own Table view is unchanged — it keeps its score columns,
+its ranking lens and its column chooser.
+
+`tools/demo_app.py` runs the desktop app on invented data in a temporary folder (a collection, a
+journal, a bar pour, a finished bottle; a master path that does not exist), served from `static/`
+as it is on disk. `.claude/launch.json` starts it as **"desktop"** on port 8799 — the way to look
+at a desktop screen without rebuilding the exe or touching the real journal, as "phone" is for
+`docs/`.
 
 **Compare keeps a key in sight** (21 Nov 2026). The bars carry no names, so once the card of
 totals scrolled away a category was anonymous bars. `.cmp-frozen` is a zero-height sticky marker

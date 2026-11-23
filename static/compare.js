@@ -1,10 +1,17 @@
 /* Whiskey Tasting Book — the compare view (SPEC.md §4.2, §3.6, §10).
-   2-4 things side by side, score rows aligned across columns, every bar drawn against its own
-   maximum so Flavor/20 reads at the same visual scale as Balance/10, per-axis deltas, and one
-   shared notes pane underneath.
 
-   Defaults to career scores. Pinning a single flight is an explicit toggle, so a head-to-head
-   from one night still works.
+   Two views of the same question — how do these stand against each other.
+
+   **All scores** is the view as it opens: every spirit that has been scored, one row each, with
+   the whole breakdown across — the total, the medal, the flavor total, every category, and how
+   many sittings stand behind them. Any column sorts it. The header row and the name column stay
+   put while the figures scroll under them. It is the phone's Compare table (docs/compare.js),
+   drawn from what /api/table/collection already returns.
+
+   **Side by side** is 2-4 things in columns, score rows aligned across them, every bar drawn
+   against its own maximum so Flavor/20 reads at the same visual scale as Balance/10, per-axis
+   deltas, and one shared notes pane underneath. It defaults to career scores; pinning a single
+   flight is an explicit toggle, so a head-to-head from one night still works.
 
    Loaded after app.js and reuses its helpers (el, api, state, accentFor). */
 "use strict";
@@ -20,6 +27,12 @@ const CompareView = (() => {
     picking: false,
     editing: false,        // the flight details form is open
     scored: null,          // codes that actually have a career score; null until fetched
+
+    view: "scores",        // "scores": every score, as a table · "side": the chosen few
+    rows: null,            // the table's rows; null until fetched
+    sort: "total",
+    desc: true,
+    find: "",
   };
   // The desktop grid gives each card its own column and scrolls, so the only reason to stop is
   // legibility. A flight is not bound by this at all: it has the pours it has.
@@ -27,8 +40,13 @@ const CompareView = (() => {
   const host = () => document.getElementById("compare-view");
 
   async function open(opts = {}) {
-    if (opts.session) { C.mode = "flight"; C.sessionId = opts.session; }
+    if (opts.session) { C.mode = "flight"; C.sessionId = opts.session; C.view = "side"; }
     host().hidden = false;
+    if (C.view === "scores") {
+      if (!C.rows) await loadScores();
+      render();
+      return;
+    }
     try { C.sessions = (await api("/api/sessions")).sessions || []; } catch { C.sessions = []; }
     await loadScored();
     await refresh();
@@ -104,7 +122,7 @@ const CompareView = (() => {
 
   /** Called from the flight header — "Compare pours" (§4.2: reachable directly from a session). */
   function fromSession(sessionId) {
-    C.mode = "flight"; C.sessionId = sessionId; C.picking = false;
+    C.mode = "flight"; C.sessionId = sessionId; C.picking = false; C.view = "side";
     showView("compare");
   }
 
@@ -120,7 +138,171 @@ const CompareView = (() => {
     }
   }
 
-  function invalidate() { C.data = null; C.scored = null; }
+  function invalidate() { C.data = null; C.scored = null; C.rows = null; }
+
+  // ------------------------------------------------------------- every score, as a table
+  /** The switch between the two views. Each loads what it needs the first time it is shown. */
+  function viewSwitch() {
+    const way = (view, label) => el("button", {
+      type: "button", class: `chip${C.view === view ? " active" : ""}`,
+      onclick: () => { if (C.view !== view) { C.view = view; open(); } },
+    }, label);
+    return el("div", { class: "t-modes" }, way("scores", "All scores"), way("side", "Side by side"));
+  }
+
+  /** One row per spirit, from the collection table's endpoint: it already joins every spirit —
+      bottles, retired ones, bar pours — to its career figures and its exact category means.
+      Only the scored ones are kept: this is the record of what was given. */
+  async function loadScores() {
+    try {
+      const data = await api("/api/table/collection");
+      C.rows = (data.rows || []).filter((r) => r.n > 0 && r.career_score !== null && r.career_score !== undefined);
+    } catch (e) {
+      C.rows = [];
+      showStatus("err", `Could not load the scores: ${e.body?.error || e.message}`);
+    }
+  }
+
+  /** Medals sort by standing, not alphabetically — Bronze before Diamond would be nonsense. */
+  function medalRank(name) {
+    const bands = state.config.rubric.bands || [];
+    const i = bands.findIndex((b) => b.name === name);
+    return i === -1 ? null : bands.length - i;
+  }
+
+  /* The columns, built from the rubric so a category added to it gets a column here. `of` is
+     what the sort runs on, `show` what the cell says, `max` what the figure is out of.
+
+     Two totals stand first. "Total" is the whole card. "Flavor total" leaves out the categories
+     the rubric marks as not flavour — the bottle's looks and its price — and is offered only
+     when the rubric has such categories to leave out. It is summed from the exact means and
+     rounded once (SPEC.md §3.6). The medal is always the whole card's. */
+  function scoreColumns() {
+    const rub = state.config.rubric;
+    const cats = rub.categories || [];
+    const flavour = flavourKeys();
+    const has = (v) => v !== null && v !== undefined;
+    const one = (v) => (has(v) ? Number(v).toFixed(1) : null);
+    const whole = (v) => (has(v) ? String(v) : null);
+    const mean = (r, key) => { const v = (r.category_means || {})[key]; return has(v) ? v : null; };
+    const flavourTotal = (r) => (flavour.every((k) => mean(r, k) !== null)
+      ? Math.round(flavour.reduce((a, k) => a + mean(r, k), 0) * 10) / 10 : null);
+    return [
+      { key: "total", label: "Total", max: rub.max_total, of: (r) => r.career_score, show: (r) => one(r.career_score) },
+      { key: "medal", label: "Medal", word: true, of: (r) => medalRank(r.medal), show: (r) => r.medal || null },
+      ...(flavour.length && flavour.length < cats.length ? [{
+        key: "flavour", label: "Flavor total",
+        max: cats.filter((c) => c.flavour).reduce((a, c) => a + c.max, 0),
+        of: flavourTotal, show: (r) => one(flavourTotal(r)) }] : []),
+      ...cats.map((c) => ({ key: `cat:${c.key}`, label: c.label || c.key, max: c.max,
+        of: (r) => mean(r, c.key), show: (r) => one(mean(r, c.key)) })),
+      { key: "n", label: "Sittings", of: (r) => r.n, show: (r) => whole(r.n) },
+      { key: "best", label: "Best", of: (r) => r.best, show: (r) => whole(r.best) },
+      { key: "worst", label: "Worst", of: (r) => r.worst, show: (r) => whole(r.worst) },
+      { key: "per_dollar", label: "Score / $", of: (r) => r.score_per_dollar,
+        show: (r) => (has(r.score_per_dollar) ? Number(r.score_per_dollar).toFixed(3) : null) },
+    ];
+  }
+
+  const rowName = (r) => r.name || r.display_name || r.code;
+
+  /** Something with no figure is not a low figure: it goes last whichever way the column runs.
+      Equal figures are separated by how many sittings stand behind them, so a 90 from four
+      nights outranks a 90 from one — and then by code, so the order never shuffles. */
+  function orderScores(list, col) {
+    const blank = (v) => v === null || v === undefined;
+    const tie = (a, b) => (a.n !== b.n ? b.n - a.n
+      : String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
+    return list.sort((a, b) => {
+      const x = col ? col.of(a) : rowName(a).toLowerCase(), y = col ? col.of(b) : rowName(b).toLowerCase();
+      if (blank(x) || blank(y)) { if (blank(x) && blank(y)) return tie(a, b); return blank(x) ? 1 : -1; }
+      if (x === y) return tie(a, b);
+      if (typeof x === "number") return C.desc ? y - x : x - y;
+      const c = String(x).localeCompare(String(y), undefined, { numeric: true });
+      return C.desc ? -c : c;
+    });
+  }
+
+  /** A column picked a second time turns round. A new one starts from the top — the best score,
+      the highest medal — and the name from A. */
+  function sortScores(key) {
+    if (C.sort === key) C.desc = !C.desc;
+    else { C.sort = key; C.desc = key !== "name"; }
+    paintScores();
+  }
+
+  function renderScores() {
+    const search = el("input", { class: "t-search", type: "text", value: C.find,
+      placeholder: "Search scored spirits…", "aria-label": "Search scored spirits",
+      oninput: (e) => { C.find = e.target.value; paintScores(); } });
+    // The table is filled by paintScores, which a keystroke and a sort also call; the search box
+    // above it is left alone, so typing keeps its place.
+    host().replaceChildren(
+      el("div", { class: "cmp-bar" }, viewSwitch(), search, el("span", { class: "sc-count", id: "sc-count" })),
+      el("div", { class: "sc-wrap", id: "sc-wrap" }),
+      el("div", { class: "cmp-foot" },
+        "One row for every spirit that has been scored, finished bottles and bar pours included. "
+        + "Click a column to sort by it, and again to turn it round; click a row for its sittings. "
+        + "The flavor total leaves out the categories that are not flavour, and is summed from "
+        + "exact means and rounded once (SPEC.md §3.6)."));
+    paintScores();
+  }
+
+  function paintScores() {
+    const wrap = document.getElementById("sc-wrap");
+    const count = document.getElementById("sc-count");
+    if (!wrap) return;
+    const all = C.rows || [];
+    if (!all.length) {
+      wrap.replaceChildren(el("div", { class: "table-loading" },
+        "Nothing has been scored yet. Score a pour and it is listed here, with its breakdown."));
+      if (count) count.textContent = "";
+      return;
+    }
+    const cols = scoreColumns();
+    const col = cols.find((c) => c.key === C.sort) || null;        // null: by name
+    const terms = C.find.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const list = orderScores(terms.length ? all.filter((r) => {
+      const hay = `${r.code} ${r.display_name || ""} ${r.name || ""} ${r.distillery || ""} ${r.type || ""}`.toLowerCase();
+      return terms.every((t) => hay.includes(t));
+    }) : all.slice(), col);
+
+    const arrow = (key) => (C.sort === key ? el("span", { class: "t-arrow" }, C.desc ? "▼" : "▲") : null);
+    const head = el("tr", {},
+      el("th", { class: `sc-name${C.sort === "name" ? " sorted" : ""}`, onclick: () => sortScores("name") },
+        "Name", arrow("name")),
+      ...cols.map((c) => el("th", {
+        class: `${c.word ? "sc-word" : ""}${C.sort === c.key ? " sorted" : ""}`, onclick: () => sortScores(c.key) },
+        c.label, arrow(c.key), c.max ? el("span", { class: "sc-max" }, `/ ${c.max}`) : null)));
+
+    const body = el("tbody", {});
+    if (!list.length) {
+      body.append(el("tr", {}, el("td", { class: "sc-name t-null" }, "Nothing scored matches.")));
+    }
+    for (const r of list) {
+      const sub = [r.source === "Encounter" ? "Bar pour" : r.source === "Retired" ? `${r.code} · retired` : r.code,
+                   r.distillery, r.proof ? `${r.proof} pf` : null,
+                   r.release_year ? String(Math.round(r.release_year)) : null].filter(Boolean).join(" · ");
+      const tr = el("tr", { class: r.owned === false ? "gone" : "", title: "Open its sittings",
+                            onclick: () => showSittingsFor(r.code) },
+        el("td", { class: "sc-name", style: `border-left-color:${accentFor(r.type)}` },
+          el("div", { class: "sc-title" }, rowName(r)), el("div", { class: "sc-sub" }, sub)));
+      for (const c of cols) {
+        const text = c.show(r);
+        tr.append(el("td", { class: `${c.word ? "sc-word" : ""}${C.sort === c.key ? " sorted" : ""}${text === null ? " t-null" : ""}` },
+          c.key === "medal" && r.medal
+            ? el("span", { class: "medal medal-sm", style: `--m:${state.medalColors[r.medal] || "var(--muted)"}` }, r.medal)
+            : (text === null ? "—" : text)));
+      }
+      body.append(tr);
+    }
+    wrap.replaceChildren(el("table", { class: "sc-table" }, el("thead", {}, head), body));
+    if (count) {
+      const label = col ? col.label.toLowerCase() : "name";
+      count.textContent = `${list.length} scored · by ${label}`
+        + (col ? (C.desc ? ", highest first" : ", lowest first") : (C.desc ? ", Z to A" : ", A to Z"));
+    }
+  }
 
   // ------------------------------------------------------------- selection
   function addCode(code) {
@@ -231,7 +413,8 @@ const CompareView = (() => {
 
   // ------------------------------------------------------------- the grid
   function render() {
-    const parts = [selector()];
+    if (C.view === "scores") { renderScores(); return; }
+    const parts = [viewSwitch(), selector()];
     const d = C.data;
 
     if (!d || !d.items.length) {

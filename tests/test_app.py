@@ -1902,5 +1902,127 @@ class TestNothingIsSilentlyTruncated(unittest.TestCase):
         self.assertIn("picker-count", self.source("app.js"))
 
 
+class TestCompareOpensOnEveryScore(AppCase):
+    """The Compare view opens on a table of everything that has been scored — the total, the
+    medal and the whole breakdown across — sortable by any column, as the phone's now does. The
+    columns of bars for a chosen few are its second view."""
+
+    def source(self, name="compare.js"):
+        src = (ROOT / "static" / name).read_text(encoding="utf-8")
+        src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
+        return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
+
+    def test_the_server_already_sends_what_a_row_needs(self):
+        """No endpoint of its own: the collection table's rows carry the career figures and the
+        exact category means. If one of these went missing the column would be dashes for ever,
+        so the values are checked, not the names."""
+        self._post({"spirit_id": "B-18", "scores": EXAMPLE_CARD})
+        row = {r["code"]: r for r in
+               self.c.get("/api/table/collection").get_json()["rows"]}["B-18"]
+        self.assertEqual((row["career_score"], row["n"], row["best"], row["worst"]), (66, 1, 66, 66))
+        self.assertEqual(row["medal"], "Bronze")
+        self.assertEqual(row["score_per_dollar"], 0.66, "66 points for 100 dollars")
+        self.assertEqual(row["category_means"], {k: float(v) for k, v in EXAMPLE_CARD.items()})
+        unscored = {r["code"]: r for r in
+                    self.c.get("/api/table/collection").get_json()["rows"]}["S-1"]
+        self.assertEqual(unscored["n"], 0, "and this is how an unscored row is told and left out")
+
+    def test_the_view_opens_on_the_table(self):
+        src = self.source()
+        self.assertIn('view: "scores",', src)
+        self.assertIn('if (C.view === "scores") { renderScores(); return; }', src)
+        self.assertIn('way("scores", "All scores"), way("side", "Side by side")', src)
+        self.assertIn('api("/api/table/collection")', src)
+        self.assertIn("r.n > 0 && r.career_score !== null", src, "only what has a score")
+
+    def test_a_flight_still_opens_side_by_side(self):
+        """"Compare pours" on a flight is a head-to-head from one night; it must not land on a
+        table of the whole collection."""
+        src = self.source()
+        opened = src[src.index("async function open("):src.index("function flightForm(")]
+        self.assertIn('C.sessionId = opts.session; C.view = "side";', opened)
+        pinned = src[src.index("function fromSession("):src.index("async function loadScored(")]
+        self.assertIn('C.view = "side";', pinned)
+
+    def test_every_category_in_the_rubric_has_a_column(self):
+        src = self.source()
+        cols = src[src.index("function scoreColumns("):src.index("const rowName")]
+        self.assertIn("...cats.map((c) => ({ key: `cat:${c.key}`, label: c.label || c.key, max: c.max,", cols)
+        for key in ('"total"', '"medal"', '"flavour"', '"n"', '"best"', '"worst"', '"per_dollar"'):
+            self.assertIn("key: " + key, cols)
+        for name in ("aesthetics", "value"):
+            self.assertNotIn(f'"{name}"', cols, "what is not flavour is the rubric's to say")
+
+    def test_the_flavor_total_is_summed_exactly_and_rounded_once(self):
+        """Ten rounded means added up drift by as much as half a point (SPEC.md §3.6)."""
+        src = self.source()
+        cols = src[src.index("function scoreColumns("):src.index("const rowName")]
+        self.assertIn("Math.round(flavour.reduce((a, k) => a + mean(r, k), 0) * 10) / 10", cols)
+        self.assertIn("flavour.every((k) => mean(r, k) !== null)", cols,
+                      "a spirit missing a category has no flavor total, not a low one")
+        self.assertIn("flavour.length && flavour.length < cats.length", cols)
+
+    def test_any_column_sorts_it_and_blanks_always_sink(self):
+        src = self.source()
+        self.assertIn("onclick: () => sortScores(c.key)", src)
+        order = src[src.index("function orderScores("):src.index("function sortScores(")]
+        self.assertLess(order.index("blank(x) || blank(y)"), order.index("C.desc ?"))
+        self.assertIn("a.n !== b.n ? b.n - a.n", order, "a 90 from four nights outranks a 90 from one")
+        pick = src[src.index("function sortScores("):src.index("function renderScores(")]
+        self.assertIn('C.desc = key !== "name";', pick, "a score starts from the top, a name from A")
+
+    def test_medals_sort_by_standing(self):
+        src = self.source()
+        self.assertIn("of: (r) => medalRank(r.medal)", src)
+        self.assertIn("state.config.rubric.bands", src)
+
+    def test_the_header_row_and_the_name_column_stay_put(self):
+        css = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
+
+        def rule(selector):
+            block = css[css.index(selector + " {"):]
+            return block[:block.index("}")]
+        self.assertIn("overflow: auto", rule(".sc-wrap"))
+        self.assertIn("max-height: calc(100vh", rule(".sc-wrap"), "the pane scrolls, so the header has something to stick to")
+        self.assertIn("position: sticky", rule(".sc-table th"))
+        self.assertIn("position: sticky", rule(".sc-table .sc-name"))
+        self.assertIn("left: 0", rule(".sc-table .sc-name"))
+        self.assertIn("border-collapse: separate", rule(".sc-table"))
+
+    def test_a_row_opens_its_sittings_and_typing_keeps_its_place(self):
+        src = self.source()
+        self.assertIn("onclick: () => showSittingsFor(r.code)", src)
+        self.assertIn("oninput: (e) => { C.find = e.target.value; paintScores(); }", src)
+        paint = src[src.index("function paintScores("):src.index("function addCode(")]
+        self.assertNotIn('class: "t-search"', paint, "the box is not redrawn under the cursor")
+
+    def test_a_new_score_is_in_the_table_the_next_time_it_is_opened(self):
+        src = self.source()
+        self.assertIn("function invalidate() { C.data = null; C.scored = null; C.rows = null; }", src)
+
+
+class TestTheDemoApp(unittest.TestCase):
+    """tools/demo_app.py runs the desktop app on invented data so a screen can be looked at. It
+    must not be able to reach anything real."""
+
+    def test_everything_it_touches_is_temporary(self):
+        src = (ROOT / "tools" / "demo_app.py").read_text(encoding="utf-8")
+        self.assertIn("tempfile.TemporaryDirectory(", src)
+        self.assertIn('master=str(folder / "no-such-workbook.xlsx")', src)
+        self.assertIn('app_folder=str(folder / "journal")', src)
+        self.assertNotIn("OneDrive", src.split('"""', 2)[2], "no real path appears in the code")
+
+    def test_it_builds_a_table_worth_looking_at(self):
+        import demo_app
+        with tempfile.TemporaryDirectory(prefix="demo-test-") as tmp:
+            client = demo_app.build(Path(tmp)).test_client()
+            rows = client.get("/api/table/collection").get_json()["rows"]
+        scored = [r for r in rows if r["n"]]
+        self.assertGreater(len(scored), 15)
+        self.assertIn("Encounter", {r["source"] for r in scored}, "a bar pour, scored")
+        self.assertTrue(any(r["owned"] is False and r["source"] == "Bottle" for r in scored),
+                        "a finished bottle that was scored while it lasted")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
