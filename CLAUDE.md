@@ -72,7 +72,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 684 tests, all passing
+python -m unittest discover -s tests    # 708 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -223,8 +223,8 @@ sheet); the Swift for it is, like the rest, not yet compiled here.
 scorecard folds each category's note behind `+ note` (`.note-add`, whose `::before` is the
 44-point hit area) and puts Venue after the scores; a card opened for correction now shows the
 notes and venue it holds — it used to keep them and show empty boxes — and `fitNotes()` sizes
-them *after* `show()`, because a hidden box measures as nothing. Collection chips are ordered by
-use and include `unscored`. `renderSync` ends with `modeCard()` rather than starting with it.
+them *after* `show()`, because a hidden box measures as nothing. `renderSync` ends with
+`modeCard()` rather than starting with it.
 `CompareView.begin(code)` is the way in from a bottle's page.
 
 **Collection and Table are one tab** (approved from a mockup, 15 Nov 2026): five tabs, and the
@@ -236,6 +236,25 @@ predates the table) repaints the bar and the body and leaves the search box alon
 keeps its cursor. The table's sort is one `pickerChip` — a chip with an invisible 16 px
 `<select>` over it — in place of a scrolling row of chips; a header tap still sorts and turns
 the sort round. The list has its own short set of orders (`LIST_SORTS`), opening in shelf order.
+
+**The collection's filters combine** (24 Nov 2026). There was one row of chips with one lit at a
+time, so "bourbon or rye, opened, not scored yet" could not be asked. `app.filters` is now
+`{scored, status[], kind[], type[], region[], rarity[]}`: any of the choices in one filter will
+do, and every filter with a choice must hold. **The rule is `Store.passes(s, filters, {gone,
+sittings, scored})` in `docs/store.js`** — kept out of `app.js` so `tests/test_phone_js.py` runs
+it for real — and `Store.filterChoices` builds each filter's choices from what the phone holds.
+The standing rules live in it: a gone bottle shows only when Finished is asked for, and only if
+it has a sitting; a bar pour has no status, so asking for one leaves it out. On the screen
+(`paintFilters` in `app.js`) the row under the search box shows what is in force, each chip
+taking itself off, and its first chip opens a panel of every group; with nothing in force the row
+offers three shortcuts (In stock, Not scored, Scored). `paintRows` does not repaint the filters,
+so typing leaves them alone; a finished sync repaints both.
+
+**The desktop table's filters take several values** (24 Nov 2026): each facet in
+`static/table.js` (`T.filters.type` and the rest) is a list, drawn as a button that opens ticks
+(`facetMenu`, a `<details>` kept open across the redraw by `T.openFacet`). Scored is
+all / scored / not scored. A facet is applied only to a list that offers it — a status ticked on
+the collection used to go on filtering "Every review" unseen.
 
 **Scores live under Compare, not in the collection's table** (22 Nov 2026). The Compare tab
 opens on **All scores** (`renderScores` / `paintScores` in `docs/compare.js`): one row for every

@@ -714,6 +714,14 @@ reads as a website someone bookmarked, and it breaks in specific ways in the bar
   round. The list can be ordered too — it opens in shelf order. Both views show the same rows.
   The table is the bottles' facts only (22 Nov 2026): no score and no medal — those are the
   Compare tab's.
+- **The collection's filters combine** (24 Nov 2026). Scored, Status, Type, Kind, Region and
+  Rarity are each a group of choices: within a group any of the choices will do, across groups
+  all must hold — "bourbon or rye, opened, not scored" is three groups. The row under the search
+  box shows what is in force and each chip there takes itself off; its first chip opens the
+  panel of every choice, built from what the phone holds. A finished bottle is listed only when
+  Finished is chosen, and only if it was scored while it lasted. Both views, list and table, are
+  narrowed alike. The desktop's table does the same with its drop-downs, each of which now takes
+  several ticks, and can ask for what is not scored.
 - **Compare opens on a table of every score.** One row per scored spirit — finished bottles and
   bar pours included, since this is the record of what was given — and across it the total, the
   medal, the flavor total (the whole card less the categories the rubric marks `flavour: false`),

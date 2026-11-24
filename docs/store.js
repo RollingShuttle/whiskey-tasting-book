@@ -211,6 +211,61 @@ const Store = (() => {
     return types().find((x) => x.toLowerCase() === s.toLowerCase()) || s;
   }
 
+  // -- the collection's filters ----------------------------------------------
+  /* What the Collection screen can be narrowed by. Each filter is a set of choices: within one,
+     any of the choices will do (Bourbon or Rye); across them, every one must hold (…and Opened,
+     and not scored). `scored` alone is a single choice — a spirit cannot be both. The rule lives
+     here, away from the page, so that the tests run it rather than read it. */
+  const noFilters = () => ({ scored: "", status: [], kind: [], type: [], region: [], rarity: [] });
+  const sameWord = (a, b) => String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
+  const countFilters = (f) => (f.scored ? 1 : 0)
+    + f.status.length + f.kind.length + f.type.length + f.region.length + f.rarity.length;
+
+  /** Does a spirit pass the filters? `facts` are the three things only the page can say:
+      whether the bottle is gone (Finished or Removed), whether it has any sitting, and whether
+      it has a score.
+
+      A gone bottle is offered only when Finished is asked for — nothing can be poured from it —
+      and then only if it was scored while it lasted; one never scored has nothing to show
+      anywhere. A bar pour has no status, so asking for one leaves bar pours out. */
+  function passes(s, f, { gone, sittings, scored }) {
+    if (gone) {
+      if (!f.status.some((v) => sameWord(v, "Finished")) || !sittings) return false;
+    } else if (f.status.length && !f.status.some((v) => sameWord(v, s.status))) {
+      return false;
+    }
+    if (f.kind.length && !f.kind.includes(s._sheet)) return false;
+    for (const key of ["type", "region", "rarity"]) {
+      if (f[key].length && !f[key].some((v) => sameWord(v, s[key]))) return false;
+    }
+    if (f.scored && (f.scored === "yes") !== !!scored) return false;
+    return true;
+  }
+
+  /** The choices each filter offers, from what the phone holds — a type nobody has is not a
+      choice. Types run in the workbook's own order (types()); rarity in its order of scarcity;
+      regions alphabetically; kinds as the sheets come. */
+  const RARITY_ORDER = ["common", "uncommon", "rare", "unicorn", "impossible", "dusty"];
+  function filterChoices(list) {
+    const present = (key) => {
+      const seen = new Map();
+      for (const s of list) {
+        const v = String((s && s[key]) ?? "").trim();
+        if (v && !seen.has(v.toLowerCase())) seen.set(v.toLowerCase(), v);
+      }
+      return seen;
+    };
+    const type = present("type"), region = present("region"), rarity = present("rarity");
+    const kinds = new Set(list.map((s) => s && s._sheet));
+    const rank = (v) => { const i = RARITY_ORDER.indexOf(v.toLowerCase()); return i === -1 ? RARITY_ORDER.length : i; };
+    return {
+      type: types().filter((t) => type.has(t.toLowerCase())),
+      region: [...region.values()].sort((a, b) => a.localeCompare(b)),
+      rarity: [...rarity.values()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b)),
+      kind: ["Bottle", "Miniature", "Sample", "Encounter"].filter((k) => kinds.has(k)),
+    };
+  }
+
   /** An age as the form or an encounter file hands it over — "12", 12, "NAS", "N/A", nothing —
       split the way the PC's snapshot splits it: years as a number, anything else as the label
       shown in their place. One field cannot be both: a list that sorts on it would sort "NAS" in
@@ -554,6 +609,7 @@ const Store = (() => {
     snapshot, setSnapshot, spirits, rubric, setRubric, careers, setCareers,
     mode, isLocal, setMode, addLocalSpirit, updateLocalSpirit, removeLocalSpirit,
     types, canonicalType,
+    noFilters, countFilters, passes, filterChoices,
     exportAll, importAll,
     queue, enqueue, drop, noteFailure, queueCount,
     cards, cardsFor, addCard, markSent, reviseCard, deleteCard, buried,

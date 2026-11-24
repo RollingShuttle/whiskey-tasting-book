@@ -513,13 +513,17 @@ class TestAFinishedBottleIsLeftOutOnThePhone(unittest.TestCase):
         return block[:block.index("\nfunction ")]
 
     def test_the_ordinary_lists_leave_finished_bottles_out(self):
-        self.assertIn("spirits.filter((s) => !goneSpirit(s))", self.block("function shownSpirits("))
-
-    def test_the_finished_chip_needs_a_sitting(self):
-        self.assertIn("goneSpirit(s) && sittingsFor(s.code).length",
-                      self.block("function shownSpirits("))
-        self.assertIn('["gone", "Finished"]', code("app.js"))
-
+        """The rule is Store.passes's, and the collection asks it of every spirit."""
+        self.assertIn("Store.passes(s, app.filters, {", self.block("function shownSpirits("))
+        rule = code("store.js")
+        rule = rule[rule.index("function passes("):rule.index("const RARITY_ORDER")]
+        self.assertIn("if (gone) {", rule)
+        self.assertIn('if (!f.status.some((v) => sameWord(v, "Finished")) || !sittings) return false;', rule)
+    def test_finished_needs_a_sitting(self):
+        """A finished bottle never scored has nothing to show, under Finished or anywhere."""
+        shown = self.block("function shownSpirits(")
+        self.assertIn("sittings: gone ? sittingsFor(s.code).length > 0 : false", shown)
+        self.assertIn('["Finished", "Finished"]', code("app.js"))
     def test_the_detail_screen_offers_no_card_for_one(self):
         block = self.block("function openDetail(")
         i = block.index('"Score a pour"')
@@ -579,16 +583,18 @@ class TestFinishedBottlesOnThePhone(unittest.TestCase):
         self.assertIn('class: "tag"', src)
 
     def test_there_is_a_filter_for_what_you_still_have(self):
+        """In stock is the kinds that are owned: a bar pour was never on the shelf, and a
+        finished bottle is left out already."""
         src = code("app.js")
-        self.assertIn('["instock", "In stock"]', src)
-        self.assertIn('s.owned !== false', src)
-
+        self.assertIn('["In stock", { kind: owned }]', src)
+        self.assertIn('.kind.filter((k) => k !== "Encounter")', src)
     def test_a_missing_owned_flag_is_not_read_as_gone(self):
         """Older snapshots have no owned field, and hiding a real bottle is the worse mistake."""
         src = code("app.js")
-        self.assertIn("s.owned !== false", src)
+        self.assertIn("s.owned === false", src)
         self.assertNotIn("!s.owned", src)
-
+        for name in ("table.js", "compare.js"):
+            self.assertIn("owned: s.owned !== false", code(name))
     def test_a_bar_pour_never_counts_as_stock(self):
         self.assertIn("owned: false", code("store.js"))
 
@@ -1172,13 +1178,14 @@ class TestScreensAreLaidOutForHowTheyAreUsed(unittest.TestCase):
                         self.score.index('el("span", {}, "Venue"), venue)'))
         self.assertEqual(self.score.count('"Venue"'), 1)
 
-    def test_the_filters_asked_most_come_first_and_not_scored_is_one_of_them(self):
-        self.assertIn('[["all", "All"], ["instock", "In stock"], ["unscored", "Not scored"], ["scored", "Scored"],',
-                      self.js)
-        self.assertIn('app.filter === "unscored") spirits = spirits.filter((s) => s.owned !== false && !careerFor(s.code))',
-                      self.js)
+    def test_the_filters_asked_most_are_one_tap_and_not_scored_is_one_of_them(self):
+        """With nothing in force the row offers the three asked most, so they are still a single
+        tap; each stands for the filters it sets."""
+        short = self.js[self.js.index("function filterShortcuts("):self.js.index("function paintFilters(")]
+        self.assertIn('["Not scored", { scored: "no" }]', short)
+        self.assertIn('["Scored", { scored: "yes" }]', short)
+        self.assertLess(short.index('"In stock"'), short.index('"Not scored"'))
         self.assertIn('"Everything you have has been scored."', self.js)
-
     def test_the_sync_screen_opens_on_what_it_is_for(self):
         """"Where your book lives" is chosen once. It used to sit above the status and the
         Refresh button on every visit."""
@@ -1245,7 +1252,7 @@ class TestOneCollectionTwoViews(unittest.TestCase):
         showed five rows more than the list under the same chip. It is the bottles now, so it
         shows the list's rows; what a finished bottle scored is in the Compare tab's table."""
         shown = self.fn("function shownSpirits(")
-        self.assertIn("spirits = spirits.filter((s) => !goneSpirit(s));", shown)
+        self.assertIn("Store.passes(s, app.filters, {", shown)
         self.assertNotIn("record", shown)
         self.assertIn("function shownSpirits() {", self.js)
     def test_one_picker_stands_where_a_row_of_chips_stood(self):
@@ -1280,8 +1287,9 @@ class TestOneCollectionTwoViews(unittest.TestCase):
         self.assertIn("(a === null) - (b === null)", ordered, "no value is not a low value: it goes last")
 
     def test_a_finished_sync_repaints_whichever_view_is_up(self):
+        """And the filters with it: a sync can change which types there are to choose from."""
         sync = self.js[self.js.index("function onSync("):self.js.index("async function signInFlow(")]
-        self.assertIn("renderCollection() : paintRows()", sync)
+        self.assertIn("else { paintFilters(); paintRows(); }", sync)
         self.assertNotIn("TableView", sync)
 
 
@@ -1422,6 +1430,74 @@ class TestEveryScoreIsATable(unittest.TestCase):
 
     def test_a_row_opens_the_bottle(self):
         self.assertIn('onclick: () => openDetail(r.code) },\n        el("td", { class: "s-name"', self.js)
+
+
+class TestTheCollectionsFiltersCombine(unittest.TestCase):
+    """One row of chips, one lit at a time, could not ask "bourbon or rye, opened, not scored
+    yet" — which is how a pour is chosen. Each filter is a group of choices now: any of the
+    choices in a group will do, and every group with a choice must hold. The rule itself is
+    Store.passes, run for real in test_phone_js.py; this is the wiring."""
+
+    def setUp(self):
+        self.js = code("app.js")
+        self.css = text("style.css")
+
+    def fn(self, start):
+        block = self.js[self.js.index(start):]
+        return block[:block.index("\nfunction ")]
+
+    def test_every_filter_is_a_group_built_from_what_the_phone_holds(self):
+        groups = self.fn("function filterGroups(")
+        self.assertIn("Store.filterChoices(knownSpirits())", groups, "a type nobody has is not a choice")
+        for key in ("scored", "status", "type", "kind", "region", "rarity"):
+            self.assertIn('key: "%s"' % key, groups)
+        self.assertIn(".filter((g) => g.options.length)", groups, "an empty group is not drawn")
+
+    def test_a_choice_is_a_toggle_and_scored_is_one_or_the_other(self):
+        toggle = self.fn("function toggleFilter(")
+        self.assertIn('if (key === "scored") f.scored = f.scored === value ? "" : value;', toggle)
+        self.assertIn("f[key].includes(value) ? f[key].filter((v) => v !== value) : [...f[key], value]", toggle)
+        self.assertIn("paintFilters();", toggle)
+        self.assertIn("paintRows();", toggle)
+
+    def test_what_is_in_force_is_on_the_row_and_comes_off_with_a_tap(self):
+        paint = self.fn("function paintFilters(")
+        self.assertIn("onclick: () => toggleFilter(a.key, a.value)", paint)
+        self.assertIn("`Filters · ${active.length}`", paint)
+        self.assertIn('onclick: () => set({}) }, "Clear")', paint)
+        active = self.fn("function activeFilters(")
+        self.assertIn("for (const value of f[key])", active,
+                      "read from the filters, so a choice a sync removed can still be taken off")
+
+    def test_the_panel_is_the_whole_set_and_says_how_they_combine(self):
+        paint = self.fn("function paintFilters(")
+        self.assertIn("panel.hidden = !app.filterOpen;", paint)
+        self.assertIn("...filterGroups().map(", paint)
+        self.assertIn('"aria-pressed": String(isOn(g, value))', paint)
+        self.assertIn("Within a group, any of your choices will do. Across groups, all of them must hold.", paint)
+        self.assertIn("`Show ${shownSpirits().length}`", paint, "the list is under the panel, out of sight")
+
+    def test_both_views_are_narrowed_by_the_same_filters(self):
+        paint = self.fn("function paintRows()")
+        self.assertIn("TableView.render(body, shownSpirits())", paint)
+        self.assertIn("listSorted(shownSpirits())", paint)
+        self.assertNotIn("app.filter ", self.js)
+        self.assertNotIn("app.filter=", self.js)
+
+    def test_typing_does_not_redraw_the_filters(self):
+        """The search box, the chips and the panel are not the rows'; a keystroke repaints rows."""
+        self.assertNotIn("paintFilters()", self.fn("function paintRows()"))
+        render = self.fn("function renderCollection(")
+        self.assertLess(render.index("paintFilters();"), render.rindex("paintRows();"))
+
+    def test_an_empty_list_says_why_when_one_filter_explains_it(self):
+        why = self.fn("function emptyBecause(")
+        self.assertIn('"No finished bottle was scored while it lasted."', why)
+        self.assertIn('"Nothing matches these filters."', why)
+
+    def test_a_filter_in_force_looks_different_from_one_being_chosen(self):
+        self.assertIn(".chip.on { border-color: var(--brass); color: var(--brass-bright); }", self.css)
+        self.assertIn(".fopts { display: flex; flex-wrap: wrap;", self.css)
 
 
 if __name__ == "__main__":

@@ -11,8 +11,11 @@ const TableView = (() => {
     data: {},                        // mode -> {columns, rows}
     sort: {},                        // mode -> {key, dir}
     visible: {},                     // mode -> Set of column keys
-    filters: { q: "", type: "", region: "", rarity: "", status: "", source: "",
-               owned: "all", scored: false },
+    // Each facet is a list: any of the values ticked will do, and every facet that has one
+    // ticked must hold. `scored` is "all", "scored" or "unscored".
+    filters: { q: "", type: [], region: [], rarity: [], status: [], source: [],
+               owned: "all", scored: "all" },
+    openFacet: null,                 // which facet's list is showing, across a redraw
     chooser: false,
     picked: new Set(),               // tasting_ids ticked for removal, in tastings mode
     lens: null,                      // {id, keys, custom} — set once config is loaded
@@ -24,6 +27,17 @@ const TableView = (() => {
     tastings: { key: "date", dir: "desc" },
   };
   const FACETS = ["source", "type", "region", "rarity", "status"];
+
+  /** A collection row is scored when it has counted sittings; a review row when it has a total
+      (a draft has none yet). */
+  const isScored = (r) => r.n > 0 || (r.total !== undefined && r.total !== null);
+
+  // A facet's list closes when the click is anywhere else. One listener, for all of them.
+  document.addEventListener("click", (e) => {
+    if (!T.openFacet || e.target.closest(".t-facet")) return;
+    T.openFacet = null;
+    for (const box of document.querySelectorAll(".t-facet[open]")) box.open = false;
+  });
 
   const cols = () => T.data[T.mode]?.columns || [];
   const rows = () => T.data[T.mode]?.rows || [];
@@ -64,11 +78,17 @@ const TableView = (() => {
   function filtered() {
     const f = T.filters;
     const terms = f.q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    // Only the facets this list offers. A review has no status or rarity of its own, so those
+    // two have no control on "Every review" — and a status ticked on the collection used to go
+    // on filtering there unseen, emptying the list with nothing on screen to say why.
+    const facets = FACETS.filter((k) => rows().some((r) => r[k]));
     return rows().filter((r) => {
       if (f.owned === "owned" && r.owned !== true) return false;
       if (f.owned === "encounter" && r.owned !== false) return false;
-      if (f.scored && !(r.n > 0 || r.total !== undefined)) return false;
-      for (const k of FACETS) if (f[k] && r[k] !== f[k]) return false;
+      if (f.scored === "scored" && !isScored(r)) return false;
+      if (f.scored === "unscored" && isScored(r)) return false;
+      // Any of the values ticked in a facet will do; every facet with a tick must hold.
+      for (const k of facets) if (f[k].length && !f[k].includes(r[k])) return false;
       if (terms.length) {
         // The brackets matter: `a + b.toLowerCase()` lowercases only b, so the code, the name,
         // the type and the region all kept their capitals while the search terms did not, and
@@ -234,22 +254,48 @@ const TableView = (() => {
       el("button", { type: "button", class: `chip${T.mode === mode ? " active" : ""}`,
                      onclick: () => setMode(mode) }, label);
 
-    const facetSelect = (key) => {
+    /* One facet: a button that opens a list of ticks. It was a drop-down that took one value,
+       so "bourbon or rye" could not be asked. The button says what is ticked — the values while
+       there are one or two, a count after that — so the filter in force is readable without
+       opening anything. The table is redrawn on every tick; the list stays open across the
+       redraw (T.openFacet) and keeps its place if it had been scrolled. */
+    const facetMenu = (key) => {
       const values = [...new Set(rows().map((r) => r[key]).filter(Boolean))].sort();
       if (!values.length) return null;
-      const sel = el("select", { class: "t-select", "aria-label": key,
-        onchange: (e) => { f[key] = e.target.value; render(); } },
-        el("option", { value: "" }, key[0].toUpperCase() + key.slice(1)),
-        ...values.map((v) => el("option", { value: v, selected: f[key] === v }, v)));
-      sel.value = f[key];
-      return sel;
+      const picked = f[key];
+      const name = key[0].toUpperCase() + key.slice(1);
+      const menu = el("div", { class: "t-facet-menu" },
+        ...values.map((v) => el("label", { class: "t-choice" },
+          el("input", { type: "checkbox", checked: picked.includes(v),
+            onchange: (e) => {
+              f[key] = e.target.checked ? [...f[key], v] : f[key].filter((x) => x !== v);
+              const at = menu.scrollTop;
+              render();
+              const again = document.querySelector(".t-facet[open] .t-facet-menu");
+              if (again) again.scrollTop = at;
+            } }), v)),
+        picked.length
+          ? el("button", { type: "button", class: "ghost", onclick: () => { f[key] = []; render(); } }, "Clear")
+          : null);
+      const box = el("details", { class: `t-facet${picked.length ? " on" : ""}`,
+                                  open: T.openFacet === key ? "" : null },
+        el("summary", { "aria-label": `Filter by ${key}` },
+          !picked.length ? name
+            : picked.length <= 2 ? `${name}: ${picked.join(", ")}` : `${name} · ${picked.length}`),
+        menu);
+      box.addEventListener("toggle", () => {
+        if (!box.open) { if (T.openFacet === key) T.openFacet = null; return; }
+        T.openFacet = key;
+        for (const other of document.querySelectorAll(".t-facet[open]")) if (other !== box) other.open = false;
+      });
+      return box;
     };
 
     const controls = el("div", { class: "t-controls" },
       el("input", { class: "t-search", type: "text", placeholder: "Filter…", value: f.q,
                     id: "t-filter", "aria-label": "Filter rows",
                     oninput: (e) => { f.q = e.target.value; render(); } }),
-      ...FACETS.map(facetSelect).filter(Boolean),
+      ...FACETS.map(facetMenu).filter(Boolean),
       T.mode === "collection"
         ? el("select", { class: "t-select", "aria-label": "Ownership",
             onchange: (e) => { f.owned = e.target.value; render(); } },
@@ -257,15 +303,18 @@ const TableView = (() => {
             el("option", { value: "owned" }, "Owned only"),
             el("option", { value: "encounter" }, "Tasted only"))
         : null,
-      el("label", { class: "blindtoggle" },
-        el("input", { type: "checkbox", checked: f.scored,
-                      onchange: (e) => { f.scored = e.target.checked; render(); } }), "Scored only"),
+      el("select", { class: "t-select", "aria-label": "Scored",
+          onchange: (e) => { f.scored = e.target.value; render(); } },
+          el("option", { value: "all" }, "Scored + not scored"),
+          el("option", { value: "scored" }, "Scored only"),
+          el("option", { value: "unscored" }, "Not scored")),
       el("button", { type: "button", class: "ghost",
                      onclick: () => { T.chooser = !T.chooser; render(); } }, "Columns"),
       el("button", { type: "button", class: "ghost", onclick: () => exportCSV(list) }, "CSV"));
 
     const sel = controls.querySelector('select[aria-label="Ownership"]');
     if (sel) sel.value = f.owned;
+    controls.querySelector('select[aria-label="Scored"]').value = f.scored;
 
     const bar = el("div", { class: "t-toolbar" },
       el("div", { class: "t-modes" }, modeBtn("collection", "Collection"),
@@ -495,8 +544,9 @@ const TableView = (() => {
   function focusTastings(code) {
     T.mode = "tastings";
     T.picked = new Set();
-    T.filters = { ...T.filters, q: code, owned: "all", scored: false,
-                  type: "", region: "", rarity: "", status: "", source: "" };
+    T.filters = { ...T.filters, q: code, owned: "all", scored: "all",
+                  type: [], region: [], rarity: [], status: [], source: [] };
+    T.openFacet = null;
   }
 
   return { open, invalidate, focusTastings };

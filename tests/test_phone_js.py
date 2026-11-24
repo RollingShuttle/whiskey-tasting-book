@@ -864,5 +864,81 @@ class TestSignInIsTheApps(unittest.TestCase):
         self.assertEqual(self.asked(), ["auth.status", "auth.signOut"])
 
 
+@unittest.skipIf(MiniRacer is None, "pip install mini-racer to run the phone scripts for real")
+class TestCollectionFilters(unittest.TestCase):
+    """Store.passes for real: any of the choices in a filter, all of the filters. This is the
+    rule behind "bourbon or rye, opened, not scored yet"."""
+
+    SHELF = [
+        {"code": "B-1", "type": "Bourbon", "status": "Opened", "region": "America", "rarity": "Common", "_sheet": "Bottle"},
+        {"code": "B-2", "type": "Bourbon", "status": "Unopened", "region": "America", "rarity": "Rare", "_sheet": "Bottle"},
+        {"code": "B-3", "type": "Rye", "status": "Opened", "region": "America", "rarity": "Common", "_sheet": "Bottle"},
+        {"code": "B-4", "type": "rye ", "status": " opened", "region": "Canada", "_sheet": "Bottle"},
+        {"code": "M-5", "type": "Single Malt", "status": "Opened", "region": "Scotland", "_sheet": "Miniature"},
+        {"code": "B-6", "type": "Bourbon", "status": "Finished", "region": "America", "_sheet": "Bottle"},
+        {"code": "B-7", "type": "Rye", "status": "Removed", "region": "America", "_sheet": "Bottle"},
+        {"code": "S-8", "type": "Bourbon", "status": None, "region": "America", "_sheet": "Sample"},
+        {"code": "E-9", "type": "Single Malt", "status": None, "region": "Scotland", "_sheet": "Encounter"},
+    ]
+    SCORED = {"B-1", "M-5", "B-6", "E-9"}          # B-7 is gone and was never scored
+    GONE = {"B-6", "B-7"}
+
+    def setUp(self):
+        self.ctx = engine()
+        self.ctx.eval("var __shelf = " + json.dumps(self.SHELF) + ";"
+                      "var __scored = " + json.dumps(sorted(self.SCORED)) + ";"
+                      "var __gone = " + json.dumps(sorted(self.GONE)) + ";"
+                      "function __codes(patch) {"
+                      "  var f = Object.assign(Store.noFilters(), patch);"
+                      "  return JSON.stringify(__shelf.filter(function (s) {"
+                      "    var gone = __gone.indexOf(s.code) !== -1, scored = __scored.indexOf(s.code) !== -1;"
+                      "    return Store.passes(s, f, { gone: gone, sittings: gone && scored, scored: scored });"
+                      "  }).map(function (s) { return s.code; })); }")
+
+    def codes(self, **patch):
+        return json.loads(self.ctx.eval("__codes(" + json.dumps(patch) + ")"))
+
+    def test_with_nothing_asked_everything_still_held_is_shown(self):
+        """Bottles, the mini, the sample with no status, the bar pour — and neither gone bottle."""
+        self.assertEqual(self.codes(), ["B-1", "B-2", "B-3", "B-4", "M-5", "S-8", "E-9"])
+
+    def test_bourbon_or_rye_that_is_opened_and_not_scored(self):
+        """The question that could not be asked. Spelling and stray spaces do not matter."""
+        self.assertEqual(self.codes(type=["Bourbon", "Rye"], status=["Opened"], scored="no"), ["B-3", "B-4"])
+        self.assertEqual(self.codes(type=["Bourbon", "Rye"], status=["Opened"], scored="yes"), ["B-1"])
+
+    def test_choices_in_one_filter_are_any_of(self):
+        self.assertEqual(self.codes(type=["Bourbon", "Rye"]), ["B-1", "B-2", "B-3", "B-4", "S-8"])
+        self.assertEqual(self.codes(status=["Opened", "Unopened"]), ["B-1", "B-2", "B-3", "B-4", "M-5"])
+
+    def test_filters_together_are_all_of(self):
+        self.assertEqual(self.codes(type=["Bourbon"], status=["Unopened"], rarity=["Rare"]), ["B-2"])
+        self.assertEqual(self.codes(type=["Bourbon"], region=["Scotland"]), [])
+        self.assertEqual(self.codes(kind=["Miniature", "Sample"]), ["M-5", "S-8"])
+
+    def test_a_finished_bottle_is_shown_only_when_asked_for_and_only_if_it_was_scored(self):
+        self.assertEqual(self.codes(status=["Finished"]), ["B-6"], "B-7 was never scored: nothing to show")
+        self.assertEqual(self.codes(status=["Finished", "Unopened"]), ["B-2", "B-6"])
+        self.assertEqual(self.codes(status=["Finished"], type=["Rye"]), [])
+
+    def test_a_bar_pour_has_no_status_so_asking_for_one_leaves_it_out(self):
+        self.assertIn("E-9", self.codes(kind=["Encounter"]))
+        self.assertEqual(self.codes(kind=["Encounter"], status=["Opened"]), [])
+        self.assertEqual(self.codes(scored="yes"), ["B-1", "M-5", "E-9"])
+
+    def test_the_choices_offered_are_what_the_phone_holds(self):
+        self.ctx.eval("Store.setSnapshot({types: ['Bourbon', 'Rye', 'Wheated', 'Single Malt'], spirits: __shelf.filter(function (s) { return s._sheet !== 'Encounter'; })});")
+        got = json.loads(self.ctx.eval("JSON.stringify(Store.filterChoices(__shelf))"))
+        self.assertEqual(got["type"], ["Bourbon", "Rye", "Single Malt"], "the workbook's order; Wheated is on nobody's shelf")
+        self.assertEqual(got["region"], ["America", "Canada", "Scotland"])
+        self.assertEqual(got["rarity"], ["Common", "Rare"], "by scarcity, not the alphabet")
+        self.assertEqual(got["kind"], ["Bottle", "Miniature", "Sample", "Encounter"])
+
+    def test_filters_are_counted_one_per_choice(self):
+        self.assertEqual(self.ctx.eval("Store.countFilters(Store.noFilters())"), 0)
+        self.assertEqual(self.ctx.eval(
+            "Store.countFilters(Object.assign(Store.noFilters(), {type: ['Bourbon', 'Rye'], status: ['Opened'], scored: 'no'}))"), 4)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

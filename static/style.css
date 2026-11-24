@@ -378,6 +378,30 @@ body.view-analysis #main { max-width: 1960px; }
   color: var(--text); font-size: 13px; padding: 7px 9px; font-family: inherit;
 }
 
+/* A facet: a button that opens a list of ticks under it. */
+.t-facet { position: relative; }
+.t-facet > summary {
+  list-style: none; cursor: pointer; user-select: none; white-space: nowrap;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px;
+  color: var(--text); font-size: 13px; padding: 7px 26px 7px 10px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+                    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 13px) 55%, calc(100% - 8px) 55%;
+  background-size: 5px 5px; background-repeat: no-repeat;
+}
+.t-facet > summary::-webkit-details-marker { display: none; }
+.t-facet.on > summary { border-color: var(--brass); color: var(--brass-bright); }
+.t-facet[open] > summary { outline: 2px solid var(--brass-bright); border-color: transparent; }
+.t-facet-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 6;
+  min-width: 190px; max-height: 320px; overflow: auto;
+  display: flex; flex-direction: column; gap: 7px; padding: 10px 12px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+}
+.t-facet-menu .t-choice { color: var(--text); white-space: nowrap; cursor: pointer; }
+.t-facet-menu .ghost { align-self: flex-start; margin-top: 2px; }
+
 .t-chooser {
   flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px 18px;
   margin-top: 12px; padding: 12px 14px;

@@ -149,6 +149,23 @@ body.keyboard .tabs { display: none; }
   border-radius: 999px; font-size: 0.82rem;
 }
 .chip.active { background: var(--brass); border-color: var(--brass); color: var(--bg); font-weight: 600; }
+/* A filter in force, in the row above the list: outlined, with the × that takes it off. */
+.chip.on { border-color: var(--brass); color: var(--brass-bright); }
+.chip .x { margin-left: 7px; opacity: 0.75; }
+
+/* The panel of every filter's choices, opened from the first chip in that row. */
+.fpanel {
+  margin: 0 0 12px; padding: 12px 14px 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+}
+.fgroup + .fgroup { margin-top: 12px; }
+.flabel {
+  color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+.fopts { display: flex; flex-wrap: wrap; gap: 6px; }
+.fopts .chip { min-height: 38px; }
+.fnote { color: var(--muted); font-size: 0.72rem; margin-top: 12px; }
 
 .rows { list-style: none; margin: 0; padding: 0; }
 .row {

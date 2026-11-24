@@ -53,7 +53,8 @@ const app = {
   calibration: [],        // one mean per month, published by the PC (it holds the whole journal)
   stack: [],              // pushed screens, for the back chevron
   tab: "collection",
-  filter: "all",
+  filters: Store.noFilters(),   // what the collection is narrowed by; see Store.passes
+  filterOpen: false,      // the panel of choices under the search box
   query: "",
   view: "list",           // the collection as a list or as a table; remembered in meta
   listSort: "",           // the list's order: "" is the shelf's, as the collection arrives
@@ -218,47 +219,139 @@ function renderCollection() {
     oninput: (e) => { app.query = e.target.value; paintRows(); },
   });
 
-  const chips = el("div", { class: "chips" },
-    // Ordered by how often they are the question. Only the first four or so fit before the row
-    // scrolls, and "what have I not scored yet" is how a pour gets chosen — it used to have no
-    // chip at all, while Scored sat off the edge of the screen.
-    ...[["all", "All"], ["instock", "In stock"], ["unscored", "Not scored"], ["scored", "Scored"],
-        ["Bottle", "Bottles"], ["Miniature", "Minis"], ["Sample", "Samples"], ["Encounter", "Bar"],
-        ["gone", "Finished"]].map(([id, label]) =>
-      el("button", { type: "button", class: `chip${app.filter === id ? " active" : ""}`,
-        onclick: () => { app.filter = id; renderCollection(); } }, label)));
-
   // The bar and the body are filled by paintRows, which is also what a keystroke, a sort and a
   // finished sync call: the search box and the chips above them are left alone, so typing keeps
   // its place.
   fill(host,
     spirits.length ? null : emptyCollectionNote(),
-    search, chips,
+    search,
+    el("div", { class: "chips", id: "fchips" }),
+    el("div", { class: "fpanel", id: "fpanel", hidden: "" }),
     el("div", { class: "viewbar", id: "viewbar" }),
     el("div", { id: "cview" }));
+  paintFilters();
   paintRows();
+}
+
+/* ---------------------------------------------------------------- the collection's filters
+   The filters combine. There used to be one row of chips and one of them lit at a time, so
+   "bourbon or rye, opened, not scored yet" — the question a pour is chosen by — could not be
+   asked at all. Now each filter is a group of choices: any of the choices in a group will do,
+   and every group that has one must hold (Store.passes is the rule).
+
+   The row shows what is in force, each as a chip that takes itself off; the panel under it,
+   opened from the first chip, holds every choice. With nothing in force the row offers the
+   three that are asked most, so those are still one tap. */
+const KIND_LABELS = { Bottle: "Bottles", Miniature: "Minis", Sample: "Samples", Encounter: "Bar pours" };
+
+/** The groups, built from what the phone holds: a type nobody has is not a choice. */
+function filterGroups() {
+  const c = Store.filterChoices(knownSpirits());
+  return [
+    { key: "scored", label: "Scored", one: true, options: [["yes", "Scored"], ["no", "Not scored"]] },
+    { key: "status", label: "Status",
+      options: [["Opened", "Opened"], ["Unopened", "Unopened"], ["Finished", "Finished"]] },
+    { key: "type", label: "Type", options: c.type.map((t) => [t, t]) },
+    { key: "kind", label: "Kind", options: c.kind.map((k) => [k, KIND_LABELS[k]]) },
+    { key: "region", label: "Region", options: c.region.map((r) => [r, r]) },
+    { key: "rarity", label: "Rarity", options: c.rarity.map((r) => [r, r]) },
+  ].filter((g) => g.options.length);
+}
+
+/** What is in force, read from the filters themselves rather than from the groups — so a choice
+    that a sync has since taken off the list can still be seen and taken off. */
+function activeFilters() {
+  const f = app.filters, out = [];
+  if (f.scored) out.push({ key: "scored", value: f.scored, label: f.scored === "yes" ? "Scored" : "Not scored" });
+  for (const key of ["status", "type", "kind", "region", "rarity"]) {
+    for (const value of f[key]) out.push({ key, value, label: key === "kind" ? KIND_LABELS[value] || value : value });
+  }
+  return out;
+}
+
+function toggleFilter(key, value) {
+  const f = app.filters;
+  if (key === "scored") f.scored = f.scored === value ? "" : value;
+  else f[key] = f[key].includes(value) ? f[key].filter((v) => v !== value) : [...f[key], value];
+  paintFilters();
+  paintRows();
+}
+
+/** The three asked most, each as the filters it stands for. "In stock" is the kinds that are
+    owned: a bar pour was never on the shelf, and a finished bottle is already left out. */
+function filterShortcuts() {
+  const owned = Store.filterChoices(knownSpirits()).kind.filter((k) => k !== "Encounter");
+  return [
+    ...(owned.length ? [["In stock", { kind: owned }]] : []),
+    ["Not scored", { scored: "no" }],
+    ["Scored", { scored: "yes" }],
+  ];
+}
+
+/** Draw the row and the panel. The rows below are paintRows's; the search box above is nobody's
+    to redraw. */
+function paintFilters() {
+  const row = document.getElementById("fchips");
+  const panel = document.getElementById("fpanel");
+  if (!row || !panel) return;
+  const active = activeFilters();
+  const set = (patch) => { app.filters = { ...Store.noFilters(), ...patch }; paintFilters(); paintRows(); };
+
+  fill(row,
+    el("button", {
+      type: "button", class: `chip${app.filterOpen ? " active" : active.length ? " on" : ""}`,
+      "aria-expanded": String(app.filterOpen),
+      onclick: () => { app.filterOpen = !app.filterOpen; paintFilters(); },
+    }, active.length ? `Filters · ${active.length}` : "Filters", app.filterOpen ? " ▴" : " ▾"),
+    active.length
+      ? [...active.map((a) => el("button", {
+          type: "button", class: "chip on", "aria-label": `Remove the filter ${a.label}`,
+          onclick: () => toggleFilter(a.key, a.value),
+        }, a.label, el("span", { class: "x", "aria-hidden": "true" }, "×"))),
+         el("button", { type: "button", class: "chip", onclick: () => set({}) }, "Clear")]
+      : filterShortcuts().map(([label, patch]) =>
+          el("button", { type: "button", class: "chip", onclick: () => set(patch) }, label)));
+
+  panel.hidden = !app.filterOpen;
+  if (!app.filterOpen) { panel.replaceChildren(); return; }
+  const isOn = (g, value) => (g.one ? app.filters[g.key] === value : app.filters[g.key].includes(value));
+  fill(panel,
+    ...filterGroups().map((g) => el("div", { class: "fgroup" },
+      el("div", { class: "flabel" }, g.label),
+      el("div", { class: "fopts" }, ...g.options.map(([value, label]) => el("button", {
+        type: "button", class: `chip${isOn(g, value) ? " active" : ""}`,
+        "aria-pressed": String(isOn(g, value)), onclick: () => toggleFilter(g.key, value),
+      }, label))))),
+    el("div", { class: "fnote" },
+      "Within a group, any of your choices will do. Across groups, all of them must hold."),
+    el("div", { class: "actions" },
+      // The list is under the panel and mostly off the screen while it is open, so the button
+      // that closes it says how many it will show.
+      el("button", { class: "btn", type: "button",
+                     onclick: () => { app.filterOpen = false; paintFilters(); } },
+        `Show ${shownSpirits().length}`),
+      active.length
+        ? el("button", { class: "btn ghost", type: "button", onclick: () => set({}) }, "Clear all")
+        : null));
 }
 
 /** The collection the screen is showing: what the chips and the search box leave. One answer
     for both views, so the list and the table can never disagree about what was asked for.
 
     A Finished or Removed bottle is not offered: nothing can be poured from it, so nothing can be
-    scored. The ones scored while they lasted keep a place under their own chip, because the
+    scored. The ones scored while they lasted are listed when Finished is asked for, because the
     sittings outlive the bottle; the ones never scored have nothing to show and are not listed.
     (Every score ever given, finished bottles included, is the Compare tab's table.) */
 function shownSpirits() {
   const terms = app.query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  let spirits = knownSpirits();
-  if (app.filter === "gone") {
-    spirits = spirits.filter((s) => goneSpirit(s) && sittingsFor(s.code).length);
-  } else {
-    spirits = spirits.filter((s) => !goneSpirit(s));
-    if (app.filter === "scored") spirits = spirits.filter((s) => careerFor(s.code));
-    // Something you hold and have not scored. A bar pour is not held, so it is never "to do".
-    else if (app.filter === "unscored") spirits = spirits.filter((s) => s.owned !== false && !careerFor(s.code));
-    else if (app.filter === "instock") spirits = spirits.filter((s) => s.owned !== false);
-    else if (app.filter !== "all") spirits = spirits.filter((s) => s._sheet === app.filter);
-  }
+  let spirits = knownSpirits().filter((s) => {
+    const gone = goneSpirit(s);
+    return Store.passes(s, app.filters, {
+      gone,
+      sittings: gone ? sittingsFor(s.code).length > 0 : false,     // only asked of a gone bottle
+      scored: !!careerFor(s.code),
+    });
+  });
   if (terms.length) {
     spirits = spirits.filter((s) => {
       // The parentheses matter: `a + b.toLowerCase()` lowercases only b, so every name and
@@ -318,6 +411,16 @@ function paintViewBar(table) {
           app.listSort, (key) => { app.listSort = key; paintRows(); }, "Sort the list by"));
 }
 
+/** Why the list is empty, where one filter alone explains it; otherwise that nothing matches. */
+function emptyBecause(searching) {
+  const f = app.filters;
+  if (!searching && Store.countFilters(f) === 1) {
+    if (f.status[0] === "Finished") return "No finished bottle was scored while it lasted.";
+    if (f.scored === "no") return "Everything you have has been scored.";
+  }
+  return Store.countFilters(f) ? "Nothing matches these filters." : "Nothing matches.";
+}
+
 /** Fill the bar and the body for the view in use. The name is from when there was only a list. */
 function paintRows() {
   const body = document.getElementById("cview");
@@ -332,9 +435,7 @@ function paintRows() {
   fill(body, list);
   if (!spirits.length) {
     list.append(el("li", { class: "empty" },
-      app.filter === "gone" && !terms.length ? "No finished bottle was scored while it lasted."
-        : app.filter === "unscored" && !terms.length ? "Everything you have has been scored."
-        : "Nothing matches."));
+      emptyBecause(terms.length > 0)));
     return;
   }
   for (const s of spirits) {
@@ -1301,7 +1402,12 @@ function onSync(s) {
   switch (currentScreen()) {
     // Rows only, so the search box keeps its text — unless the screen was the "no collection
     // yet" notice, which has no rows to repaint.
-    case "collection": if (fresh) screens.collection.querySelector(".notice") ? renderCollection() : paintRows(); break;
+    // A sync can change which types and regions there are to choose from, so the filters too.
+    case "collection":
+      if (!fresh) break;
+      if (screens.collection.querySelector(".notice")) renderCollection();
+      else { paintFilters(); paintRows(); }
+      break;
     // Redrawn for an upload too: a sitting that has just gone up stops saying "waiting".
     case "detail": if (app.detailCode) openDetail(app.detailCode, { push: false }); break;
     case "compare": if (fresh) CompareView.render(screens.compare); break;

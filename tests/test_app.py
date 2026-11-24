@@ -1555,7 +1555,7 @@ class TestFilteringByKindOfSpirit(AppCase):
 
     def test_the_filters_are_offered_on_the_review_list_as_well(self):
         src = self.source_js()
-        self.assertIn("...FACETS.map(facetSelect).filter(Boolean),", src)
+        self.assertIn("...FACETS.map(facetMenu).filter(Boolean),", src)
         self.assertNotIn('T.mode === "collection" ? FACETS.map', src)
 
 
@@ -2022,6 +2022,71 @@ class TestTheDemoApp(unittest.TestCase):
         self.assertIn("Encounter", {r["source"] for r in scored}, "a bar pour, scored")
         self.assertTrue(any(r["owned"] is False and r["source"] == "Bottle" for r in scored),
                         "a finished bottle that was scored while it lasted")
+
+
+class TestTheTablesFiltersTakeSeveralValues(unittest.TestCase):
+    """Each filter was a drop-down that took one value, so "bourbon or rye" could not be asked,
+    and "scored only" had no opposite. A filter is a list of ticks now."""
+
+    def source(self):
+        src = (ROOT / "static" / "table.js").read_text(encoding="utf-8")
+        src = re.sub(r"/\*.*?\*/", " ", src, flags=re.DOTALL)
+        return re.sub(r"^\s*//.*$", " ", src, flags=re.MULTILINE)
+
+    def test_a_facet_holds_a_list(self):
+        src = self.source()
+        self.assertIn('filters: { q: "", type: [], region: [], rarity: [], status: [], source: [],', src)
+        self.assertIn("for (const k of facets) if (f[k].length && !f[k].includes(r[k])) return false;", src)
+
+    def test_a_tick_adds_a_value_and_another_takes_it_off(self):
+        src = self.source()
+        menu = src[src.index("const facetMenu = (key) =>"):src.index("const controls = ")]
+        self.assertIn('type: "checkbox", checked: picked.includes(v)', menu)
+        self.assertIn("f[key] = e.target.checked ? [...f[key], v] : f[key].filter((x) => x !== v);", menu)
+        self.assertIn('onclick: () => { f[key] = []; render(); } }, "Clear")', menu)
+
+    def test_the_list_stays_open_while_it_is_being_ticked(self):
+        """The table is redrawn on every tick, toolbar and all. A list that shut each time would
+        make two choices four clicks."""
+        src = self.source()
+        menu = src[src.index("const facetMenu = (key) =>"):src.index("const controls = ")]
+        self.assertIn('open: T.openFacet === key ? "" : null', menu)
+        self.assertIn("again.scrollTop = at;", menu, "and it keeps its place if it had been scrolled")
+        self.assertIn('if (!T.openFacet || e.target.closest(".t-facet")) return;', src,
+                      "a click anywhere else is what closes it")
+
+    def test_the_button_says_what_is_ticked(self):
+        src = self.source()
+        menu = src[src.index("const facetMenu = (key) =>"):src.index("const controls = ")]
+        self.assertIn('picked.length <= 2 ? `${name}: ${picked.join(", ")}` : `${name} · ${picked.length}`', menu)
+
+    def test_not_scored_can_be_asked_for(self):
+        src = self.source()
+        self.assertIn('el("option", { value: "unscored" }, "Not scored")', src)
+        self.assertIn('if (f.scored === "unscored" && isScored(r)) return false;', src)
+        self.assertIn("const isScored = (r) => r.n > 0 || (r.total !== undefined && r.total !== null);", src,
+                      "a draft review has no total yet, and is not scored")
+
+    def test_a_filter_with_no_control_on_this_list_is_not_applied_to_it(self):
+        """A review has no status or rarity. Ticking Opened on the collection used to empty
+        "Every review" with nothing on screen to say why."""
+        src = self.source()
+        block = src[src.index("function filtered("):src.index("function sorted(")]
+        self.assertIn("const facets = FACETS.filter((k) => rows().some((r) => r[k]));", block)
+
+    def test_opening_one_spirits_sittings_clears_every_tick(self):
+        src = self.source()
+        focus = src[src.index("function focusTastings("):]
+        self.assertIn("type: [], region: [], rarity: [], status: [], source: []", focus)
+        self.assertIn('scored: "all"', focus)
+
+    def test_the_list_of_ticks_floats_over_the_table(self):
+        css = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
+        rule = css[css.index(".t-facet-menu {"):]
+        rule = rule[:rule.index("}")]
+        self.assertIn("position: absolute", rule)
+        self.assertIn("max-height: 320px", rule)
+        self.assertIn("overflow: auto", rule)
 
 
 if __name__ == "__main__":
