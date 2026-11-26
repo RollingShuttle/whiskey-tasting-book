@@ -2226,7 +2226,10 @@ class TestTheDesktopMovesAndGathers(unittest.TestCase):
         phone = (ROOT / "docs" / "store.js").read_text(encoding="utf-8")
         for src in (self.app, phone):
             self.assertIn('const GROUPED_SHEETS = ["Bottle", "Miniature", "Sample"];', src)
-            self.assertIn("[s.special_note || s.notes,", src)
+        self.assertIn("[s.special_note || s.notes,", self.app)
+        self.assertIn('const specialNote = (s) => String((s && (s.special_note || s.notes)) ?? "").trim();',
+                      phone)
+        self.assertIn("const parts = [specialNote(s),", phone)
         self.assertIn("return name ? `${s._sheet}|${foldedName(s.distillery)}|${name}` : null;", self.app)
         self.assertIn("return name ? `${s._sheet}|${folded(s.distillery)}|${name}` : null;", phone)
 
@@ -2286,6 +2289,37 @@ class TestNoSettingDoesNothing(unittest.TestCase):
         self.assertIn("const halfUp1 = (v) => Math.round(Math.round(v * 1000) / 100) / 10;", app_js)
         self.assertIn("return halfUp1(sum);", app_js)
         self.assertNotIn("Math.round(sum * 10) / 10", app_js)
+
+class TestTheReviewsSayWhoseTheyAre(unittest.TestCase):
+    """Opening a spirit from the table, the scores or the picker listed its reviews and nothing
+    about the spirit — not even the workbook's note that tells one bottle of a name from the next."""
+
+    def setUp(self):
+        self.table = (ROOT / "static" / "table.js").read_text(encoding="utf-8")
+        self.css = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
+        fn = self.table[self.table.index("function spiritCard(list)"):]
+        self.card = fn[:fn.index("\n  function ")]
+
+    def test_the_card_stands_above_the_table(self):
+        self.assertIn("[toolbar(list), spiritCard(list), tableEl(list), footer(list)].filter(Boolean)",
+                      self.table)
+
+    def test_it_shows_the_special_note_and_the_comment(self):
+        self.assertIn('note("Special note", sp.special_note || sp.notes)', self.card)
+        self.assertIn('note("Comment", sp.comment)', self.card)
+
+    def test_it_is_shown_only_for_one_spirits_reviews(self):
+        self.assertIn('if (T.mode !== "tastings") return null;', self.card)
+        self.assertIn("if (!sp || !list.every((r) => r.code === code)) return null;", self.card)
+
+    def test_the_score_sheets_fields_keep_their_widths(self):
+        """Built as `field-${key}`, so a search for the class name finds no use of it — which is
+        how these three rules came to be deleted as unused, and the fields to lose their size."""
+        app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("class: `field field-${extra.cls || key}`", app_js)
+        for rule in (".field-date input { width: 150px; }", ".field-venue input { width: 220px; }",
+                     ".field-price input, .field-size input { width: 96px; }"):
+            self.assertIn(rule, self.css)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

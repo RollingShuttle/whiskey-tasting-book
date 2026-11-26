@@ -190,8 +190,38 @@ const TableView = (() => {
     const host = document.getElementById("table-view");
     const was = focusedWithin(host);
     const list = visibleRows();          // once: it filters and sorts every row in the collection
-    host.replaceChildren(toolbar(list), tableEl(list), footer(list));
+    host.replaceChildren(...[toolbar(list), spiritCard(list), tableEl(list), footer(list)].filter(Boolean));
     restoreFocus(was);
+  }
+
+  /** Who the reviews belong to, when they are one spirit's: opened from a row of the collection,
+      of the scores, or of the picker. The reviews said what it scored and nothing about what it
+      was — and the workbook's own note (a store pick, a batch, who it came from) is what tells
+      one bottle of a name from the next. Shown only while every row on screen is that spirit's,
+      so a search that merely starts with a code does not put one bottle's card over another's. */
+  function spiritCard(list) {
+    if (T.mode !== "tastings") return null;
+    const code = (T.filters.q || "").trim();
+    const sp = code && (state.spirits.find((s) => s.code === code)
+      || (state.encounters || []).find((s) => s.code === code));
+    if (!sp || !list.every((r) => r.code === code)) return null;
+    const facts = [sp.code, sp.type, sp.region, sp.age ? `${sp.age} yr` : sp.age_label,
+                   sp.proof ? `${sp.proof} proof` : null,
+                   sp.release_year ? `released ${Math.round(sp.release_year)}` : null,
+                   sp._sheet === "Encounter" ? ["Bar pour", sp.venue].filter(Boolean).join(" · ") : sp.status]
+      .filter(Boolean);
+    const note = (label, text) => {
+      const body = String(text ?? "").trim();
+      return body ? el("div", { class: "sheet-book" },
+        el("span", { class: "sheet-book-label" }, label),
+        el("div", { class: "sheet-book-text" }, body)) : null;
+    };
+    return el("div", { class: "t-spirit", style: `border-left-color:${accentFor(sp.type)}` },
+      el("div", { class: "sheet-name" }, sp.name || sp.display_name,
+        sp.distillery ? el("span", { class: "sheet-dist" }, sp.distillery) : null),
+      el("div", { class: "sheet-meta" }, facts.join(" · ")),
+      note("Special note", sp.special_note || sp.notes),
+      note("Comment", sp.comment));
   }
 
   function focusedWithin(host) {

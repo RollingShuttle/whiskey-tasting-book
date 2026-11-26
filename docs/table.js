@@ -37,8 +37,15 @@ const TableView = (() => {
   /** Every fact the desktop can sort a bottle on, in the order it offers them. `show` is what
       appears in the cell; `of` is the number or string the sort actually runs on. */
   const FIELDS = [
+    // The name is drawn with its distillery under it: "8 Year" and "10 Year" are a dozen
+    // bottles each without one. Equal names fall in distillery order for the same reason.
     { key: "name", label: "Name", core: true,
-      of: (r) => r.name.toLowerCase(), show: (r) => r.name },
+      of: (r) => `${r.name} ${r.distillery}`.toLowerCase(), show: (r) => r.name },
+    // Not a column of its own — the distillery is already in the name's cell — but an order
+    // worth having: every bottle of one house together. `within` says whose cell shows it.
+    { key: "distillery", label: "Distillery", within: "name",
+      of: (r) => (r.distillery ? `${r.distillery} ${r.name}`.toLowerCase() : null),
+      show: (r) => r.distillery },
     { key: "code", label: "Code", core: true,
       of: (r) => r.code, show: (r) => r.code },
     { key: "type", label: "Type", core: true,
@@ -80,6 +87,7 @@ const TableView = (() => {
         code: s.code,
         spirit: s,
         name: s.name || s.display_name || s.code,
+        distillery: String(s.distillery || "").trim(),
         proof: num(s.proof),
         age: num(s.age),
         concRatio: num(s.conc_ratio),
@@ -116,7 +124,7 @@ const TableView = (() => {
   function columns() {
     const core = FIELDS.filter((f) => f.core);
     const chosen = field(sort);
-    return core.includes(chosen) ? core : core.concat([chosen]);
+    return chosen.within || core.includes(chosen) ? core : core.concat([chosen]);
   }
 
   /** A field picked a second time turns round; a new one starts the way it is usually asked —
@@ -147,11 +155,18 @@ const TableView = (() => {
     const list = rows(spirits).sort(compare);
     const cols = columns();
 
+    // An order kept inside another column's cell (the distillery, in the name's) lights that
+    // column's header and is named there, so what the rows are in order of is always on screen.
+    const chosen = field(sort);
     const head = el("tr", {},
-      ...cols.map((f) => el("th", {
-        class: (f.num ? "t-num" : "") + (sort === f.key ? " sorted" : ""),
-        onclick: () => pick(f.key),
-      }, f.label, sort === f.key ? el("span", { class: "t-caret" }, desc ? " ▾" : " ▴") : null)));
+      ...cols.map((f) => {
+        const mine = sort === f.key || chosen.within === f.key;
+        return el("th", {
+          class: (f.num ? "t-num" : "") + (mine ? " sorted" : ""),
+          onclick: () => pick(mine ? sort : f.key),
+        }, mine ? chosen.label : f.label,
+           mine ? el("span", { class: "t-caret" }, desc ? " ▾" : " ▴") : null);
+      }));
 
     const body = el("tbody", {});
     if (!list.length) {
@@ -161,10 +176,12 @@ const TableView = (() => {
     for (const r of list) {
       const tr = el("tr", { class: r.owned ? "" : "gone", onclick: () => openDetail(r.code) });
       for (const f of cols) {
-        tr.append(el("td", {
-          class: (f.num ? "t-num" : "") + (f.key === "code" ? " t-code" : "")
-                 + (f.key === "name" ? " t-name" : ""),
-        }, String(f.show(r))));
+        tr.append(f.key === "name"
+          ? el("td", { class: "t-name" },
+              el("div", { class: "t-title" }, r.name),
+              r.distillery ? el("div", { class: "t-sub" }, r.distillery) : null)
+          : el("td", { class: (f.num ? "t-num" : "") + (f.key === "code" ? " t-code" : "") },
+              String(f.show(r))));
       }
       body.append(tr);
     }

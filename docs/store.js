@@ -623,11 +623,14 @@ const Store = (() => {
     }
     return out;
   }
-  /** What tells one bottle of a name from the next: its special note, its year, its status.
-      (The Bottle and Miniature sheets call the note "Notes"; the Sample sheet, "Special note".) */
+  /** The workbook's own note about a bottle — a store pick, a batch, who it came from. The
+      Bottle and Miniature sheets call the column "Notes"; the Sample sheet, "Special note". */
+  const specialNote = (s) => String((s && (s.special_note || s.notes)) ?? "").trim();
+
+  /** What tells one bottle of a name from the next: its special note, its year, its status. */
   function memberLabel(s) {
     const year = Number(s.release_year);
-    const parts = [s.special_note || s.notes,
+    const parts = [specialNote(s),
                    Number.isFinite(year) && year > 0 ? String(Math.round(year)) : null,
                    s.status];
     return parts.map((v) => String(v ?? "").trim()).filter(Boolean).join(" · ") || s.code;
@@ -733,7 +736,7 @@ const Store = (() => {
     exportAll, importAll,
     queue, enqueue, drop, noteFailure, queueCount,
     cards, cardsFor, addCard, markSent, reviseCard, moveCard, deleteCard, buried,
-    groupKey, groupSpirits, memberLabel, publishedCareer,
+    groupKey, groupSpirits, memberLabel, specialNote, publishedCareer,
     meta, setMeta, restoreFromNative, lastWriteError: () => lastWriteError,
     submitScorecard, submitPending, submitEncounter,
     encounters, addEncounter, asSpirit,

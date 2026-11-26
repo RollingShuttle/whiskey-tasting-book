@@ -1143,6 +1143,14 @@ class TestTheSameBottleIsOneRow(unittest.TestCase):
         self.assertIn(["B-11"], got, "two rows without a name share nothing")
         self.assertEqual(sum(len(g) for g in got), len(self.SHELF), "nothing is lost or doubled")
 
+    def test_the_special_note_is_whichever_column_the_sheet_keeps_it_in(self):
+        note = lambda i: self.ctx.eval("Store.specialNote(__shelf[%d])" % i)     # noqa: E731
+        self.assertEqual(note(0), "Store pick", "Bottle and Miniature: Notes")
+        self.assertEqual(note(3), "Batch 17", "Sample: Special note")
+        self.assertEqual(note(1), "")
+        self.assertEqual(self.ctx.eval("Store.specialNote({notes: '  spaced  '})"), "spaced")
+        self.assertEqual(self.ctx.eval("Store.specialNote(null)"), "")
+
     def test_each_one_is_shown_by_its_note_year_and_status(self):
         label = lambda i: self.ctx.eval("Store.memberLabel(__shelf[%d])" % i)   # noqa: E731
         self.assertEqual(label(0), "Store pick · 2019 · Opened", "the Bottle sheet calls it Notes")

@@ -140,7 +140,11 @@ have ever scored, one row per review, sortable and filterable like the rest of t
   The tick box in the header selects everything *currently shown*, so filter first and it takes
   only those. You are asked once, and told which reviews are about to go.
 
-**On the phone:** open the bottle from Collection or Table. Its sittings are listed at the bottom
+Open a spirit's reviews from the Table, the Compare table or the Score list and a card above
+them says whose they are — distillery, name, the facts, and the workbook's **special note**.
+
+**On the phone:** open the bottle from Collection or Table. Its page shows the special note the
+workbook holds for it. Its sittings are listed at the bottom
 of that page — tap one to see the whole card: what each category was given, the note written
 against it, and the overall note. **Edit**, **Delete** and **Move to another bottle** are at the
 foot of that screen. Move is for a pour scored against the wrong bottle: choose the right one and

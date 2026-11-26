@@ -1271,7 +1271,7 @@ class TestOneCollectionTwoViews(unittest.TestCase):
             self.assertNotIn(old, self.table)
             self.assertNotIn(old, self.css)
     def test_a_header_tap_still_sorts_and_turns_the_sort_round(self):
-        self.assertIn("onclick: () => pick(f.key)", self.table)
+        self.assertIn("onclick: () => pick(mine ? sort : f.key)", self.table)
         pick = self.table[self.table.index("function pick("):self.table.index("function controls(")]
         self.assertIn("if (sort === key) desc = !desc;", pick)
         self.assertIn("paintRows();", pick, "the bar above the table names the sort, so it repaints too")
@@ -1590,6 +1590,39 @@ class TestThePhoneRoundsAsThePcDoes(unittest.TestCase):
         for name in ("app.js", "store.js"):
             self.assertNotRegex(code(name), r"Math\.round\([^;\n]*\* 10\) / 10",
                                 "%s: use Store.meanHalfUp or halfUp1" % name)
+
+class TestABottleIsNamedInFull(unittest.TestCase):
+    """The table's Name column read "8 Year", "8 Year", "8 Year": a name means nothing without
+    its distillery. And a bottle's own page did not show the workbook's note about it."""
+
+    def setUp(self):
+        self.table = code("table.js")
+        self.app = code("app.js")
+        self.css = text("style.css")
+
+    def test_the_tables_name_cell_carries_the_distillery(self):
+        self.assertIn('el("div", { class: "t-title" }, r.name)', self.table)
+        self.assertIn('r.distillery ? el("div", { class: "t-sub" }, r.distillery) : null', self.table)
+        self.assertIn('distillery: String(s.distillery || "").trim(),', self.table)
+        self.assertIn(".ptable .t-sub {", self.css)
+
+    def test_equal_names_fall_in_distillery_order(self):
+        self.assertIn("of: (r) => `${r.name} ${r.distillery}`.toLowerCase()", self.table)
+
+    def test_distillery_is_an_order_but_not_a_second_column(self):
+        self.assertIn('{ key: "distillery", label: "Distillery", within: "name",', self.table)
+        self.assertIn("return chosen.within || core.includes(chosen) ? core : core.concat([chosen]);",
+                      self.table)
+        self.assertIn("const mine = sort === f.key || chosen.within === f.key;", self.table,
+                      "the name's header says Distillery while the rows are in that order")
+
+    def test_the_bottles_page_shows_the_special_note(self):
+        block = self.app[self.app.index("function openDetail("):]
+        detail = block[:block.index("\nfunction ")]
+        self.assertIn('["Special note", Store.specialNote(s)]', detail)
+        self.assertIn('["Comment", String(s.comment ?? "").trim()]', detail)
+        self.assertIn(".filter(([, text]) => text)", detail, "no empty box for a bottle with no note")
+        self.assertIn(".spirit-note {", self.css)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

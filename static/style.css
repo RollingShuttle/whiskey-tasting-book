@@ -211,6 +211,10 @@ body.view-analysis #main { max-width: 1960px; }
   color: var(--text); font-size: 16px; padding: 8px 10px; min-width: 0;
 }
 .field input:focus { outline: 2px solid var(--brass-bright); border-color: transparent; }
+/* The class is built in renderSheet as `field-${key}`, so the names below appear nowhere else. */
+.field-date input { width: 150px; }
+.field-venue input { width: 220px; }
+.field-price input, .field-size input { width: 96px; }
 
 /* ---------------------------------------------------------------- category rows */
 .cats { margin-top: 14px; }
@@ -677,6 +681,12 @@ input:disabled, textarea:disabled { color: var(--text); opacity: .8; cursor: def
 .autosaved { color: var(--muted); font-size: 12px; margin-right: 10px; }
 .ghost.danger { color: #C97A6A; border-color: color-mix(in srgb, #C97A6A 45%, transparent); }
 .ghost.danger:hover { background: color-mix(in srgb, #C97A6A 14%, transparent); }
+
+/* Whose reviews these are, above the table, when they are all one spirit's. */
+.t-spirit {
+  margin: 12px 0 6px; padding: 12px 14px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--muted);
+}
 
 /* Row actions in the tastings table — the only list of individual cards there is. */
 .t-actions { white-space: nowrap; text-align: right; }

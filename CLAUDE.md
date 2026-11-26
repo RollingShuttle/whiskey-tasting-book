@@ -72,7 +72,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 765 tests, all passing
+python -m unittest discover -s tests    # 774 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -337,6 +337,23 @@ browser sign-in; the client ID lives in `docs/config.js`) and its `aggregate` bl
 rounding that nothing honoured) are gone, and `tests/test_app.py` fails if a section or a setting
 appears in the template that no module names. A machine's own `config.yaml` may still carry
 them; they are ignored.
+
+**A bottle is named in full, and its page shows the workbook's note** (26 Nov 2026). The phone
+table's Name cell carries the distillery under the name (`.t-title` / `.t-sub` in
+`docs/table.js`) — "8 Year" and "10 Year" are a dozen bottles each without one. **Distillery**
+is an order in the sort picker but not a second column: its field says `within: "name"`, and the
+name's header reads "Distillery" while the rows are in that order. The bottle's page on the phone
+(`openDetail`) shows **Special note** — `Store.specialNote(s)`, the Sample sheet's
+`special_note` or the Bottle and Miniature sheets' `notes` — and the Sample sheet's **Comment**.
+On the desktop the Score sheet already showed these ("From the collection"); the reviews of one
+spirit now open under a card saying whose they are (`spiritCard` in `static/table.js`), shown
+only while every row on screen is that spirit's.
+
+**A class name built in code is invisible to a search for it.** `static/style.css`'s
+`.field-date` / `-venue` / `-price` / `-size` are applied as `` `field-${key}` `` in
+`renderSheet`; they were deleted as unused in the clean-up and the Score sheet's fields lost
+their widths until a test put them back. `view-${name}` on `<body>` is the other one. Check for
+a template string before removing a rule that "nothing mentions".
 
 `tools/demo_app.py` runs the desktop app on invented data in a temporary folder (a collection, a
 journal, a bar pour, a finished bottle; a master path that does not exist), served from `static/`

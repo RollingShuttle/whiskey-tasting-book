@@ -566,6 +566,12 @@ function openDetail(code, { push = true } = {}) {
       el("div", { class: "spirit-meta" }, [s.distillery, meta].filter(Boolean).join(" · ")),
       el("div", { class: "spirit-meta" },
         s._encounter ? ["Bar pour", s.venue].filter(Boolean).join(" · ") : s.code),
+      // What the workbook says about this bottle in particular — the thing that tells it from
+      // the one beside it on the shelf. (The Sample sheet keeps a comment as well.)
+      ...[["Special note", Store.specialNote(s)], ["Comment", String(s.comment ?? "").trim()]]
+        .filter(([, text]) => text)
+        .map(([label, text]) => el("div", { class: "spirit-note" },
+          el("span", { class: "note-label" }, label), text)),
       career
         ? el("div", { style: "margin-top:12px;display:flex;align-items:center;gap:10px" },
             el("span", { class: "total-num" }, career.score.toFixed(1)),
