@@ -37,6 +37,9 @@ const TableView = (() => {
   /** Every fact the desktop can sort a bottle on, in the order it offers them. `show` is what
       appears in the cell; `of` is the number or string the sort actually runs on. */
   const FIELDS = [
+    // In the order the columns stand: the code first, as on the shelf label, then what it is.
+    { key: "code", label: "Code", core: true,
+      of: (r) => r.code, show: (r) => r.code },
     // The name is drawn with its distillery under it: "8 Year" and "10 Year" are a dozen
     // bottles each without one. Equal names fall in distillery order for the same reason.
     { key: "name", label: "Name", core: true,
@@ -46,14 +49,12 @@ const TableView = (() => {
     { key: "distillery", label: "Distillery", within: "name",
       of: (r) => (r.distillery ? `${r.distillery} ${r.name}`.toLowerCase() : null),
       show: (r) => r.distillery },
-    { key: "code", label: "Code", core: true,
-      of: (r) => r.code, show: (r) => r.code },
+    { key: "year", label: "Year", core: true, num: true,
+      of: (r) => r.year, show: (r) => (r.year === null ? "—" : r.year) },
     { key: "type", label: "Type", core: true,
       of: (r) => (r.spirit.type || "").toLowerCase(), show: (r) => r.spirit.type || "—" },
     { key: "proof", label: "Proof", core: true, num: true,
       of: (r) => r.proof, show: (r) => (r.proof === null ? "—" : r.proof) },
-    { key: "year", label: "Year", core: true, num: true,
-      of: (r) => r.year, show: (r) => (r.year === null ? "—" : r.year) },
     { key: "n", label: "n", core: true, num: true,
       of: (r) => r.n || null, show: (r) => r.n || "" },
 

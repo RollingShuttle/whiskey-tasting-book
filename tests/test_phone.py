@@ -1606,6 +1606,12 @@ class TestABottleIsNamedInFull(unittest.TestCase):
         self.assertIn('distillery: String(s.distillery || "").trim(),', self.table)
         self.assertIn(".ptable .t-sub {", self.css)
 
+    def test_the_columns_stand_code_name_year_type_proof_n(self):
+        """The order the owner reads a bottle in: its code, what it is, the year, then the rest."""
+        core = re.findall(r'\{ key: "(\w+)", label: "[^"]+", core: true', self.table)
+        self.assertEqual(core, ["code", "name", "year", "type", "proof", "n"])
+        self.assertIn('let sort = "name";', self.table, "it still opens in name order")
+
     def test_equal_names_fall_in_distillery_order(self):
         self.assertIn("of: (r) => `${r.name} ${r.distillery}`.toLowerCase()", self.table)
 

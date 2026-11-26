@@ -72,7 +72,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 774 tests, all passing
+python -m unittest discover -s tests    # 775 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -340,7 +340,8 @@ them; they are ignored.
 
 **A bottle is named in full, and its page shows the workbook's note** (26 Nov 2026). The phone
 table's Name cell carries the distillery under the name (`.t-title` / `.t-sub` in
-`docs/table.js`) — "8 Year" and "10 Year" are a dozen bottles each without one. **Distillery**
+`docs/table.js`) — "8 Year" and "10 Year" are a dozen bottles each without one. The columns
+stand **code, name, year, type, proof, n** (the owner's order; it is the order of `FIELDS`). **Distillery**
 is an order in the sort picker but not a second column: its field says `within: "name"`, and the
 name's header reads "Distillery" while the rows are in that order. The bottle's page on the phone
 (`openDetail`) shows **Special note** — `Store.specialNote(s)`, the Sample sheet's
