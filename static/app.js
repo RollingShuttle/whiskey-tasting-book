@@ -71,10 +71,12 @@ function groupSameBottles(list) {
   }
   return out;
 }
-/** What tells one bottle of a name from the next: its special note, its year, its status. */
+/** What tells one bottle of a name from the next: its type, its special note, its year, its
+    status. The type leads — one name can be a bourbon and a rye, and nothing else on the row
+    says which. */
 function bottleLabel(s) {
   const year = Number(s.release_year);
-  const parts = [s.special_note || s.notes,
+  const parts = [s.type, s.special_note || s.notes,
                  Number.isFinite(year) && year > 0 ? String(Math.round(year)) : null,
                  s.status];
   return parts.map((v) => String(v ?? "").trim()).filter(Boolean).join(" · ") || s.code;

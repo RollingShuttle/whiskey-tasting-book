@@ -2226,10 +2226,10 @@ class TestTheDesktopMovesAndGathers(unittest.TestCase):
         phone = (ROOT / "docs" / "store.js").read_text(encoding="utf-8")
         for src in (self.app, phone):
             self.assertIn('const GROUPED_SHEETS = ["Bottle", "Miniature", "Sample"];', src)
-        self.assertIn("[s.special_note || s.notes,", self.app)
+        self.assertIn("const parts = [s.type, s.special_note || s.notes,", self.app)
         self.assertIn('const specialNote = (s) => String((s && (s.special_note || s.notes)) ?? "").trim();',
                       phone)
-        self.assertIn("const parts = [specialNote(s),", phone)
+        self.assertIn("const parts = [s.type, specialNote(s),", phone)
         self.assertIn("return name ? `${s._sheet}|${foldedName(s.distillery)}|${name}` : null;", self.app)
         self.assertIn("return name ? `${s._sheet}|${folded(s.distillery)}|${name}` : null;", phone)
 

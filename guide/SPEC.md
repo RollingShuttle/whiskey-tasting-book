@@ -730,7 +730,7 @@ reads as a website someone bookmarked, and it breaks in specific ways in the bar
   The desktop has the same thing as **Move** beside Edit and Delete under Every review.
 - **A name held more than once is one row** (26 Nov 2026). Same distillery and same name, within
   one sheet — bottles with bottles, samples with samples. The row carries a count and opens out
-  into its bottles, each shown by its special note, year and status, and tapping one opens it.
+  into its bottles, each shown by its type, special note, year and status, and tapping one opens it.
   The Collection's list does this on the phone and the Score picker on the desktop; the tables
   stay one row per bottle.
 - **A bottle is named in full** (26 Nov 2026). The collection table's Name cell carries the

@@ -1158,6 +1158,16 @@ class TestTheSameBottleIsOneRow(unittest.TestCase):
         self.assertEqual(label(3), "Batch 17 · 2022 · Finished", "the Sample sheet, Special note")
         self.assertEqual(label(4), "S-5", "with nothing to tell it by, its code")
 
+    def test_the_type_leads_because_one_name_can_be_a_bourbon_and_a_rye(self):
+        """Two samples of one name, same year, same status: "2025 · Opened" twice told nothing."""
+        label = lambda s: self.ctx.eval("Store.memberLabel(" + json.dumps(s) + ")")   # noqa: E731
+        pair = [{"code": "S-90", "_sheet": "Sample", "distillery": "Old Forester", "name": "President's Choice",
+                 "type": t, "release_year": 2025, "status": "Opened"} for t in ("Bourbon", "Rye")]
+        self.assertEqual([label(s) for s in pair], ["Bourbon · 2025 · Opened", "Rye · 2025 · Opened"])
+        self.assertEqual(label(dict(pair[1], special_note="Store pick")), "Rye · Store pick · 2025 · Opened")
+        self.assertEqual(self.ctx.eval("Store.groupSpirits(" + json.dumps(pair) + ").length"), 1,
+                         "they are still one row: the same name from the same house")
+
 @unittest.skipIf(MiniRacer is None, "pip install mini-racer to run the phone scripts for real")
 class TestBookOrder(unittest.TestCase):
     """Store.bookOrder: the workbook's own sort — Distillery, Type, Name, Release Year, Size, each

@@ -72,7 +72,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 787 tests, all passing
+python -m unittest discover -s tests    # 788 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -273,7 +273,8 @@ put together, and a bar pour is never grouped. The rule is `Store.groupKey` / `g
 `memberLabel` in `docs/store.js` (run in V8) and `sameBottleKey` / `groupSameBottles` /
 `bottleLabel` in `static/app.js`; a test holds the two to each other. The phone's Collection
 **List** and the desktop's **Score picker** show such a name as one row with a count that opens
-out into its bottles, each named by special note · year · status (the Bottle and Miniature sheets
+out into its bottles, each named by type · special note · year · status — the type leads because
+one name can be a bourbon and a rye, and a group does not split on it (the Bottle and Miniature sheets
 call the note `notes`, the Sample sheet `special_note`). The master row shows one score, or the
 span from lowest to highest — never a mean, since three years' releases are three whiskies. The
 tables on both sides stay one row per bottle.
