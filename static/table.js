@@ -405,6 +405,94 @@ const TableView = (() => {
     }
   }
 
+  /** Put a sitting under another bottle: it was scored against the wrong one. The server writes
+      the next revision of the same card naming the other spirit, so nothing is retyped and the
+      journal keeps where it was. Everything that can hold a sitting is offered — finished
+      bottles and bar pours too, since this corrects the record rather than pouring anything —
+      with the other bottles of the same name first, because that is the usual mistake. */
+  function moveSitting(row) {
+    const from = state.spirits.find((s) => s.code === row.code)
+      || (state.encounters || []).find((s) => s.code === row.code);
+    const sameAs = from ? sameBottleKey(from) : null;
+    const all = state.spirits.concat(state.encounters || []).filter((s) => s.code !== row.code);
+    const results = el("ul", { class: "picker-results", role: "listbox" });
+    const dlg = el("dialog", { class: "move-dialog", "aria-label": "Move this sitting" });
+    let query = "";
+
+    const send = async (to, undoing = false) => {
+      try {
+        const r = await postJSON(`/api/tasting/${encodeURIComponent(row.tasting_id)}/move`,
+                                 { spirit_id: to });
+        invalidate(); CompareView.invalidate(); AnalysisView.invalidate();
+        await load(true);
+        await loadHealth();
+        loadSpirits();                             // the picker counts sittings per spirit
+        render();
+        showStatus("ok", undoing
+          ? `Put the sitting of ${row.date} back under ${r.moved_to}.`
+          : el("span", {}, `Moved the sitting of ${row.date} from ${r.moved_from} to ${r.moved_to}. `,
+              el("button", { class: "link", type: "button",
+                             onclick: () => send(r.moved_from, true) }, "Undo")));
+      } catch (e) {
+        showStatus("err", `Could not move it: ${e.body?.error || e.message}`);
+      }
+    };
+
+    const option = (s) => {
+      const bar = s._sheet === "Encounter";
+      return el("li", { role: "option", class: goneSpirit(s) ? "gone" : "",
+                        style: `border-left-color:${accentFor(s.type)}`,
+                        onclick: () => {
+                          if (!window.confirm(`Move the sitting of ${row.display_name} on ${row.date} `
+                              + `to ${s.display_name || s.name} (${s.code})?\n\n`
+                              + "The scores and notes go across as they are. The journal keeps the "
+                              + "earlier record, and it can be moved back.")) return;
+                          dlg.close();
+                          send(s.code);
+                        } },
+        el("span", { class: "pr-name" }, s.name || s.display_name),
+        bar ? el("span", { class: "pr-tag" }, "Bar pour") : null,
+        el("span", { class: "pr-dist" }, s.distillery || ""),
+        el("span", { class: "pr-meta" }, bar ? (s.venue || "") : bottleLabel(s)),
+        el("span", { class: "pr-code" }, s.code));
+    };
+    const paint = () => {
+      const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const shown = all.filter((s) => {
+        const hay = (`${s.code} ${s.display_name || ""} ${s.distillery || ""} ${s.type || ""} `
+          + `${s.special_note || s.notes || ""} ${s.status || ""}`).toLowerCase();
+        return terms.every((t) => hay.includes(t));
+      });
+      const near = sameAs === null ? [] : shown.filter((s) => sameBottleKey(s) === sameAs);
+      const rest = shown.filter((s) => !near.includes(s));
+      results.replaceChildren(
+        ...(near.length ? [el("li", { class: "pr-head" }, "Same name"), ...near.map(option)] : []),
+        ...(near.length && rest.length ? [el("li", { class: "pr-head" }, "Everything else")] : []),
+        ...rest.map(option),
+        ...(shown.length ? [] : [el("li", { class: "pr-empty" }, "No match.")]));
+    };
+
+    dlg.append(
+      el("div", { class: "move-head" },
+        el("div", {},
+          el("div", { class: "muted" }, "Move the sitting of"),
+          el("div", { class: "move-what" }, row.display_name),
+          el("div", { class: "muted" },
+            [row.date, row.total === null || row.total === undefined ? null : `${row.total} points`,
+             row.code].filter(Boolean).join(" · "))),
+        el("button", { class: "ghost", type: "button", onclick: () => dlg.close() }, "Cancel")),
+      el("input", { type: "search", class: "move-search", placeholder: "Search for the right bottle",
+                    "aria-label": "Search for the right bottle", autocomplete: "off",
+                    oninput: (e) => { query = e.target.value; paint(); } }),
+      results);
+    dlg.addEventListener("close", () => dlg.remove());
+    // A click on the dimmed page around the box closes it, as a click on Cancel does.
+    dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
+    document.body.append(dlg);
+    paint();
+    dlg.showModal();
+  }
+
   async function removeSitting(row) {
     const what = `${row.display_name} on ${row.date}`;
     if (!window.confirm(`Delete the sitting of ${what}?\n\n`
@@ -477,6 +565,9 @@ const TableView = (() => {
         tr.prepend(el("td", { class: "t-actions" },
           el("button", { class: "linkish", type: "button",
                          onclick: (e) => { e.stopPropagation(); editSitting(r); } }, "Edit"),
+          el("button", { class: "linkish", type: "button",
+                         title: "Scored against the wrong bottle? Put it under the right one.",
+                         onclick: (e) => { e.stopPropagation(); moveSitting(r); } }, "Move"),
           el("button", { class: "linkish danger", type: "button",
                          onclick: (e) => { e.stopPropagation(); removeSitting(r); } }, "Delete")));
         tr.prepend(el("td", { class: "t-tick" },

@@ -2089,5 +2089,146 @@ class TestTheTablesFiltersTakeSeveralValues(unittest.TestCase):
         self.assertIn("overflow: auto", rule)
 
 
+class TestMovingAReview(AppCase):
+    """POST /api/tasting/<id>/move: a review scored against the wrong bottle goes to the right
+    one, as the next revision of the same card. The desktop offers it beside Edit and Delete."""
+
+    def card(self, **over):
+        r = self._post({"spirit_id": "B-18", "scores": dict(EXAMPLE_CARD), **over})
+        self.assertIn(r.status_code, (200, 201), r.get_json())
+        return r.get_json()["tasting"]
+
+    def journal(self):
+        return store_mod.Journal(self.tmp / "journal", rubric_mod.load_rubric()).ensure()
+
+    def move(self, tasting_id, to, client=None):
+        return (client or self.c).post("/api/tasting/%s/move" % tasting_id, json={"spirit_id": to})
+
+    def rows(self, client=None):
+        got = (client or self.c).get("/api/table/collection").get_json()["rows"]
+        return {r["code"]: r for r in got}
+
+    def test_the_review_and_its_score_go_to_the_other_bottle(self):
+        made = self.card()
+        r = self.move(made["tasting_id"], "S-1")
+        self.assertEqual(r.status_code, 200, r.get_json())
+        body = r.get_json()
+        self.assertEqual((body["moved_from"], body["moved_to"]), ("B-18", "S-1"))
+        self.assertEqual(body["tasting"]["revision"], made["revision"] + 1)
+        rows = self.rows()
+        self.assertFalse(rows["B-18"]["n"], "the bottle it left must stop counting it")
+        self.assertEqual((rows["S-1"]["n"], rows["S-1"]["career_score"]), (1, made["total"]))
+        reviews = self.c.get("/api/table/tastings").get_json()["rows"]
+        self.assertEqual([(t["tasting_id"], t["code"]) for t in reviews], [(made["tasting_id"], "S-1")])
+
+    def test_nothing_on_the_card_is_retyped(self):
+        made = self.card(venue="The back bar", notes={"nose": "toffee", "overall": "again, please"})
+        self.move(made["tasting_id"], "S-1")
+        live = self.journal().tastings()[0]
+        for key in ("scores", "notes", "venue", "date", "total", "medal"):
+            self.assertEqual(live[key], made[key], key)
+        self.assertEqual(live["moved_from"], "B-18", "the journal must say where it was")
+        files = sorted(p.name for p in (self.tmp / "journal" / "tastings").glob("*.json"))
+        self.assertEqual(len(files), 2, "a move is a new revision beside the old: %s" % files)
+
+    def test_what_cannot_be_moved_is_refused_with_the_reason(self):
+        made = self.card()
+        self.assertEqual(self.move(made["tasting_id"], "B-18").status_code, 400, "already there")
+        self.assertEqual(self.move(made["tasting_id"], "B-999").status_code, 404, "no such bottle")
+        self.assertEqual(self.move(made["tasting_id"], "").status_code, 400, "nowhere to go")
+        self.assertEqual(self.move("T-never-was", "S-1").status_code, 404)
+        self.c.delete("/api/tasting/%s" % made["tasting_id"])
+        self.assertEqual(self.move(made["tasting_id"], "S-1").status_code, 404, "deleted")
+        self.assertEqual(self.journal().tastings(), [])
+
+    def test_a_finished_bottle_can_receive_one(self):
+        """It takes no new pours, but this is not a pour: it is where the card always belonged."""
+        made = self.card()
+        spirits = [dict(sp, status="Finished", owned=False) if sp["code"] == "S-1" else sp
+                   for sp in FIXTURE_SNAPSHOT["spirits"]]
+        self.snap.write_text(json.dumps(dict(FIXTURE_SNAPSHOT, spirits=spirits)), encoding="utf-8")
+        client = app_mod.create_app(
+            "config.yaml", app_folder=str(self.tmp / "journal"), snapshot_path=str(self.snap),
+            master="Z:/nonexistent/x.xlsx", rollup=str(self.tmp / "r.xlsx"),
+            backups=str(self.tmp / "b")).test_client()
+        self.assertEqual(client.post("/api/tasting", json={"spirit_id": "S-1",
+                         "scores": dict(EXAMPLE_CARD)}).status_code, 409, "the rule this is not")
+        self.assertEqual(self.move(made["tasting_id"], "S-1", client).status_code, 200)
+
+    def test_a_bar_pour_is_named_by_its_code_and_stored_by_its_uid(self):
+        """The table shows X- codes; cards name a pour by its uid. The server does the turning."""
+        j = self.journal()
+        enc = j.write_encounter(name="Something From The Back Bar", entered_from="phone")
+        j.write_tasting(spirit_id=enc["encounter_uid"], scores=dict(EXAMPLE_CARD), entered_from="phone")
+        made = self.card()
+        pour = self.c.get("/api/spirits").get_json()["encounters"][0]["code"]
+        self.assertTrue(pour.startswith("X-"), pour)
+
+        r = self.move(made["tasting_id"], pour)
+        self.assertEqual(r.status_code, 200, r.get_json())
+        self.assertEqual(r.get_json()["moved_to"], pour)
+        self.assertEqual({t["spirit_id"] for t in self.journal().tastings()}, {enc["encounter_uid"]})
+        back = self.move(made["tasting_id"], "B-18")              # and out again, by the same door
+        self.assertEqual((back.status_code, back.get_json()["moved_from"]), (200, pour))
+
+    def test_the_phone_is_given_what_a_correction_must_not_lose(self):
+        """The phone writes a whole card when it revises or moves one, from the published copy.
+        A copy without the flight and the pour price cost a moved sitting both."""
+        import collection as collection_mod
+        self.card(pour_price=18.0, pour_size_oz=1.5, tags=["neat"])
+        stub = types.SimpleNamespace(errors=[], rows={"Bottle": FIXTURE_SNAPSHOT["spirits"]},
+                                     snapshot=lambda: FIXTURE_SNAPSHOT)
+        with mock.patch.object(collection_mod, "load", return_value=stub):
+            self.assertEqual(self.c.post("/api/refresh").status_code, 200)
+        published = json.loads((self.tmp / "journal" / "snapshot" / "careers.json")
+                               .read_text(encoding="utf-8"))["sittings"]["B-18"][0]
+        for key in app_mod.PUBLISHED_CARD_EXTRAS:
+            self.assertIn(key, published)
+        self.assertEqual((published["pour_price"], published["pour_size_oz"], published["tags"],
+                          published["status"]), (18.0, 1.5, ["neat"], "submitted"))
+
+
+class TestTheDesktopMovesAndGathers(unittest.TestCase):
+    """The wiring on the desktop page: Move beside Edit and Delete, and the Score picker showing
+    one row for a name held more than once."""
+
+    def setUp(self):
+        self.table = (ROOT / "static" / "table.js").read_text(encoding="utf-8")
+        self.app = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+
+    def test_every_review_row_offers_move(self):
+        actions = self.table[self.table.index('tr.prepend(el("td", { class: "t-actions" }'):]
+        actions = actions[:actions.index('tr.prepend(el("td", { class: "t-tick" }')]
+        self.assertLess(actions.index("editSitting(r)"), actions.index("moveSitting(r)"))
+        self.assertLess(actions.index("moveSitting(r)"), actions.index("removeSitting(r)"))
+
+    def test_a_move_goes_to_the_server_and_everything_derived_is_read_again(self):
+        fn = self.table[self.table.index("function moveSitting(row)"):]
+        fn = fn[:fn.index("async function removeSitting(row)")]
+        self.assertIn("postJSON(`/api/tasting/${encodeURIComponent(row.tasting_id)}/move`", fn)
+        for call in ("invalidate();", "CompareView.invalidate();", "AnalysisView.invalidate();",
+                     "await load(true);", "loadSpirits();"):
+            self.assertIn(call, fn)
+        self.assertIn("window.confirm(", fn, "a row in a long list is easy to mis-click")
+        self.assertIn("send(r.moved_from, true)", fn, "and a mistake has to be undoable")
+        self.assertIn("sameBottleKey(s) === sameAs", fn, "the other bottles of the name come first")
+
+    def test_the_picker_gathers_same_named_bottles(self):
+        fn = self.app[self.app.index("function renderResults()"):]
+        fn = fn[:fn.index("\nfunction ")]
+        self.assertIn("for (const g of groupSameBottles(list))", fn)
+        self.assertIn("if (g.members.length === 1) { ul.append(row(g.members[0])); continue; }", fn)
+        self.assertIn("bottleLabel(s)", fn, "a member is named by its special note, year and status")
+
+    def test_the_two_front_ends_agree_on_what_the_same_bottle_is(self):
+        """Same distillery, same name, same sheet — a bottle and a sample are never put together.
+        The phone's copy of the rule is run for real in test_phone_js.py."""
+        phone = (ROOT / "docs" / "store.js").read_text(encoding="utf-8")
+        for src in (self.app, phone):
+            self.assertIn('const GROUPED_SHEETS = ["Bottle", "Miniature", "Sample"];', src)
+            self.assertIn("[s.special_note || s.notes,", src)
+        self.assertIn("return name ? `${s._sheet}|${foldedName(s.distillery)}|${name}` : null;", self.app)
+        self.assertIn("return name ? `${s._sheet}|${folded(s.distillery)}|${name}` : null;", phone)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

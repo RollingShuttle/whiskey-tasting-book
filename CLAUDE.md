@@ -72,7 +72,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 708 tests, all passing
+python -m unittest discover -s tests    # 746 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -249,6 +249,34 @@ it has a sitting; a bar pour has no status, so asking for one leaves it out. On 
 taking itself off, and its first chip opens a panel of every group; with nothing in force the row
 offers three shortcuts (In stock, Not scored, Scored). `paintRows` does not repaint the filters,
 so typing leaves them alone; a finished sync repaints both.
+
+**A review can be moved to another bottle** (26 Nov 2026) — the card was scored against the
+wrong one, typically the unopened bottle of a pair. A move is revision n+1 of the same card
+naming the other spirit and carrying `moved_from`; nothing else on it changes and nothing is
+edited in place, so every reader that takes the highest revision follows. On the PC it is
+`store.move_tasting` behind `POST /api/tasting/<id>/move {spirit_id}`, offered as **Move** beside
+Edit and Delete in "Every review" (`moveSitting` in `static/table.js`, a `<dialog>` with Undo in
+the status line). A finished bottle may receive one — it is a correction, not a pour — and a bar
+pour is named by its `X-` code and stored by its uid. On the phone it is `Store.moveCard` behind
+**Move to another bottle** on the sitting screen (`openMove`, the `screen-move` section). The old
+bottle lets go at once: `sittingsFor` hides any published sitting the phone holds under another
+spirit, and **`Store.publishedCareer(code, rubric)` works the PC's figure out again from the
+published sittings that remain** — leaving out what was moved away or deleted here — so nothing
+waits for the PC's next Refresh. (That replaced the "still counted above" note a deletion used to
+show.) A moved card counts for its new bottle until the PC lists it there, whatever the clock
+says. `careers.json` sittings now also carry `PUBLISHED_CARD_EXTRAS` (flight, pour price, tags…),
+because the phone writes a whole card when it revises or moves one it did not score.
+
+**The same bottle held more than once is one row** (26 Nov 2026): same distillery and same name,
+compared without capitals or stray spaces, **per sheet** — a bottle and a sample of it are never
+put together, and a bar pour is never grouped. The rule is `Store.groupKey` / `groupSpirits` /
+`memberLabel` in `docs/store.js` (run in V8) and `sameBottleKey` / `groupSameBottles` /
+`bottleLabel` in `static/app.js`; a test holds the two to each other. The phone's Collection
+**List** and the desktop's **Score picker** show such a name as one row with a count that opens
+out into its bottles, each named by special note · year · status (the Bottle and Miniature sheets
+call the note `notes`, the Sample sheet `special_note`). The master row shows one score, or the
+span from lowest to highest — never a mean, since three years' releases are three whiskies. The
+tables on both sides stay one row per bottle.
 
 **The desktop table's filters take several values** (24 Nov 2026): each facet in
 `static/table.js` (`T.filters.type` and the rest) is a list, drawn as a button that opens ticks

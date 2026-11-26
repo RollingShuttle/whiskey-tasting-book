@@ -58,6 +58,7 @@ const app = {
   query: "",
   view: "list",           // the collection as a list or as a table; remembered in meta
   listSort: "",           // the list's order: "" is the shelf's, as the collection arrives
+  openGroups: new Set(),  // the same-named bottles whose row is opened out (Store.groupKey)
   draft: null,
   editCode: null,         // the phone-added bottle the Add form is editing, if any
   detailCode: null,       // the spirit the detail screen shows, so a sync can redraw it in place
@@ -68,6 +69,7 @@ const screens = {
   collection: document.getElementById("screen-collection"),
   detail: document.getElementById("screen-detail"),
   sitting: document.getElementById("screen-sitting"),
+  move: document.getElementById("screen-move"),
   score: document.getElementById("screen-score"),
   add: document.getElementById("screen-add"),
   compare: document.getElementById("screen-compare"),
@@ -128,15 +130,26 @@ const goneSpirit = (s) => s.owned === false && !!s.status;
    without knowing when the PC last did its sums the same sitting was added on top of itself — the
    score stayed right, being an average of a number with itself, but n climbed. careers.json now
    says when it was generated, so only cards written after that are still the phone's to add. */
-const countedLocally = (code) => Store.cardsFor(code).filter((c) => {
-  if (!c.include_in_average) return false;
-  if (!app.careersAt) return true;                    // nothing reconciled yet; all of them count
-  return String(c.created_at || "") > app.careersAt;
-});
+const countedLocally = (code) => {
+  const listed = (Store.careers().sittings || {})[code];
+  const published = new Set((listed || []).map((t) => t.tasting_id));
+  return Store.cardsFor(code).filter((c) => {
+    if (!c.include_in_average) return false;
+    if (!app.careersAt) return true;                  // nothing reconciled yet; all of them count
+    // A card moved here from another bottle is this bottle's to add until the PC lists it here,
+    // whenever it was written: the clock cannot say whether the PC had read the move yet.
+    if (c.moved_from && listed) return !published.has(c.tasting_id);
+    return String(c.created_at || "") > app.careersAt;
+  });
+};
+
+/** The PC's figure for a spirit, without the sittings deleted here or moved to another bottle —
+    so the bottle a card has just left stops showing its score there and then. */
+const publishedFor = (code) => Store.publishedCareer(code, app.rubric);
 
 function careerFor(code) {
   const local = countedLocally(code).filter((c) => c.total !== null);
-  const fromPc = app.careers[code];
+  const fromPc = publishedFor(code);
   if (!local.length) return fromPc || null;
   const totals = local.map((c) => c.total);
   const pcN = fromPc?.n || 0;
@@ -150,7 +163,7 @@ function careerFor(code) {
 /** Per-category means, folded the same way and for the same reason. The lens and the comparison
     both need the parts rather than the total. */
 function categoryMeansFor(code) {
-  const pc = app.careers[code] || {};
+  const pc = publishedFor(code) || {};
   const published = pc.categories && Object.keys(pc.categories).length ? pc.categories : null;
   const pcN = published ? (pc.n || 0) : 0;
   const mine = countedLocally(code).filter((c) => c.scores);
@@ -438,24 +451,69 @@ function paintRows() {
       emptyBecause(terms.length > 0)));
     return;
   }
-  for (const s of spirits) {
-    const meta = [s.type, s.age ? `${s.age} yr` : s.age_label,
-                  s.proof ? `${s.proof} pf` : null,
-                  s.release_year ? String(Math.round(s.release_year)) : null]
-      .filter(Boolean).join(" · ");
-    const gone = goneSpirit(s);
-    list.append(el("li", {
-      class: `row${s.owned === false ? " gone" : ""}`,
-      style: `border-left-color:${accentFor(s.type)}`,
-      onclick: () => openDetail(s.code),
-    },
-      el("div", { class: "row-main" },
-        el("div", { class: "row-name" },
-          s.name || s.display_name || s.code,
-          gone ? el("span", { class: "tag" }, s.status) : null),
-        el("div", { class: "row-sub" }, [s.distillery, meta].filter(Boolean).join(" · "))),
-      scoreCell(careerFor(s.code))));
+  // The same whiskey held more than once is one row that opens out into its bottles — same
+  // distillery and name, and never a bottle with a sample (Store.groupKey). The row stands where
+  // the first of them stood, so every order above still reads true.
+  for (const g of Store.groupSpirits(spirits)) {
+    if (g.members.length === 1) { list.append(spiritRow(g.members[0])); continue; }
+    const open = app.openGroups.has(g.key);
+    list.append(groupRow(g, open));
+    if (open) for (const s of g.members) list.append(spiritRow(s, true));
   }
+}
+
+/** One spirit in the list. As a member of an opened group it is told apart by its special note,
+    year and status — the name is on the row above it, and is the one thing they all share. */
+function spiritRow(s, member = false) {
+  const gone = goneSpirit(s);
+  const facts = [s.age ? `${s.age} yr` : s.age_label, s.proof ? `${s.proof} pf` : null];
+  const meta = [s.type, ...facts, s.release_year ? String(Math.round(s.release_year)) : null]
+    .filter(Boolean).join(" · ");
+  return el("li", {
+    class: `row${member ? " member" : ""}${s.owned === false ? " gone" : ""}`,
+    style: `border-left-color:${accentFor(s.type)}`,
+    onclick: () => openDetail(s.code),
+  },
+    el("div", { class: "row-main" },
+      el("div", { class: "row-name" },
+        member ? Store.memberLabel(s) : (s.name || s.display_name || s.code),
+        gone && !member ? el("span", { class: "tag" }, s.status) : null),
+      el("div", { class: "row-sub" }, member
+        ? [s.code, ...facts].filter(Boolean).join(" · ")
+        : [s.distillery, meta].filter(Boolean).join(" · "))),
+    scoreCell(careerFor(s.code)));
+}
+
+const GROUP_NOUN = { Bottle: "bottles", Miniature: "miniatures", Sample: "samples" };
+
+/** The row for a name held more than once: how many there are, and what they scored between
+    them — one figure if only one has been scored, the span from lowest to highest otherwise.
+    Not a mean: three years' releases under one name are three whiskies, not one. */
+function groupRow(g, open) {
+  const first = g.members[0];
+  const sameType = g.members.every((m) => (m.type || "") === (first.type || ""));
+  const scored = g.members.map((m) => careerFor(m.code)).filter(Boolean);
+  const low = Math.min(...scored.map((c) => c.score));
+  const high = Math.max(...scored.map((c) => c.score));
+  return el("li", {
+    class: `row group${open ? " open" : ""}`,
+    style: `border-left-color:${accentFor(first.type)}`,
+    role: "button", "aria-expanded": String(open),
+    onclick: () => {
+      if (open) app.openGroups.delete(g.key); else app.openGroups.add(g.key);
+      paintRows();
+    },
+  },
+    el("div", { class: "row-main" },
+      el("div", { class: "row-name" }, first.name,
+        el("span", { class: "tag" }, `${g.members.length} ${GROUP_NOUN[first._sheet] || "bottles"}`)),
+      el("div", { class: "row-sub" },
+        [first.distillery, sameType ? first.type : null].filter(Boolean).join(" · "))),
+    scored.length > 1 && low !== high
+      ? el("div", { class: "row-score" }, el("b", {}, `${low.toFixed(1)}–${high.toFixed(1)}`),
+          el("div", { class: "muted" }, `${scored.length} scored`))
+      : scoreCell(scored[0] || null),
+    el("span", { class: "chev" }, "›"));
 }
 
 // ---------------------------------------------------------------- detail
@@ -465,7 +523,9 @@ function paintRows() {
     two whenever the phone has scored since the PC last did its sums. */
 function sittingsFor(code) {
   const mine = Store.cardsFor(code);
-  const seen = new Set(mine.map((c) => c.tasting_id));
+  // Every card this phone holds, not only this spirit's: a sitting moved to another bottle is
+  // held here under the new one while the PC's list still has it under the old.
+  const seen = new Set(Store.cards().map((c) => c.tasting_id));
   const gone = new Set(Store.buried());
   const published = ((Store.careers().sittings || {})[code] || [])
     .filter((t) => !gone.has(t.tasting_id));
@@ -473,18 +533,11 @@ function sittingsFor(code) {
     .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
 }
 
-/** How many of this spirit's sittings have been deleted here but not yet reconciled away. */
 /** True when the figures on this phone were published by an app older than the one that wrote
     this page. Two computers share the folder, so the one that refreshed last wins — and an old
     one wins by removing things the phone is looking for. */
 const NEEDS_PUBLISHED_VERSION = 2;
 const staleSource = () => (Store.careers().version || 0) < NEEDS_PUBLISHED_VERSION;
-
-function buriedHere(code) {
-  const gone = new Set(Store.buried());
-  if (!gone.size) return 0;
-  return ((Store.careers().sittings || {})[code] || []).filter((t) => gone.has(t.tasting_id)).length;
-}
 
 /** `push` is false when arriving from a screen that is being left behind — a submitted card, or
     a sitting that has just been deleted. Pushing there puts a screen on the back stack that the
@@ -512,14 +565,7 @@ function openDetail(code, { push = true } = {}) {
             el("span", { class: "total-of" }, `/ 100 · n=${career.n}`),
             career.medal ? el("span", { class: "medal",
               style: `--m:${MEDAL_COLORS[career.medal] || "#9A9086"}` }, career.medal) : null)
-        : el("div", { class: "muted", style: "margin-top:10px" }, "Not scored yet."),
-      // The score above is the PC's, and it still counts anything deleted here until the PC has
-      // read the tombstone. Saying so beats looking like the deletion did not take.
-      buriedHere(code)
-        ? el("div", { class: "muted", style: "margin-top:8px" },
-            `${buriedHere(code)} deleted sitting${buriedHere(code) === 1 ? "" : "s"} still counted `
-            + "above — the score updates once the PC has read it.")
-        : null),
+        : el("div", { class: "muted", style: "margin-top:10px" }, "Not scored yet.")),
 
     // An empty bottle takes no new scores; what it has is listed below, and can still be corrected.
     goneSpirit(s)
@@ -628,9 +674,87 @@ function openSitting(card, spirit) {
       el("button", { class: "btn wide", type: "button",
                      onclick: () => editSitting(card) }, "Edit this sitting"),
       el("button", { class: "btn wide danger", type: "button",
-                     onclick: () => removeSitting(card, spirit) }, "Delete")));
+                     onclick: () => removeSitting(card, spirit) }, "Delete")),
+    // Scored against the wrong bottle: the card is right, the name on it is not.
+    el("button", { class: "btn wide ghost", type: "button", style: "margin-top:10px",
+                   onclick: () => openMove(card, spirit) }, "Move to another bottle"));
 
   show("sitting", card.date || "Sitting", { push: true });
+}
+
+/** Choose the bottle a sitting should have been scored against. Everything that can hold a
+    sitting is offered — finished bottles and bar pours too, since this corrects the record rather
+    than pouring anything — with the other bottles of the same name first, because that is the
+    usual mistake: the right whiskey, the wrong one of three. */
+function openMove(card, spirit) {
+  const name = (s) => s.name || s.display_name || s.code;
+  const sameAs = Store.groupKey(spirit);
+  const all = knownSpirits().filter((s) => s.code !== card.spirit_id);
+  const list = el("ul", { class: "rows" });
+
+  const choose = (s) => {
+    if (!window.confirm(`Move this sitting to ${name(s)} (${s._encounter ? "bar pour" : s.code})?\n\n`
+        + `${card.date || "Undated"} · ${card.total ?? "—"} points, now under `
+        + `${spirit._encounter ? name(spirit) : spirit.code}. `
+        + "The scores and notes go across as they are, and the journal keeps the earlier record.")) return;
+    Store.moveCard(card, s.code);
+    updateBadge();
+    flush();
+    // The screens behind this one are about the bottle it has just left. Drop them and land on
+    // the one it went to, so the chevron does not lead back to a sitting that is not there.
+    while (app.stack.length && ["sitting", "detail"].includes(app.stack[app.stack.length - 1].name)) {
+      app.stack.pop();
+    }
+    openDetail(s.code, { push: false });
+  };
+
+  const row = (s) => el("li", {
+    class: `row${s.owned === false ? " gone" : ""}`,
+    style: `border-left-color:${accentFor(s.type)}`,
+    onclick: () => choose(s),
+  },
+    el("div", { class: "row-main" },
+      el("div", { class: "row-name" }, name(s)),
+      el("div", { class: "row-sub" }, s._encounter
+        ? ["Bar pour", s.distillery, s.venue].filter(Boolean).join(" · ")
+        : [s.distillery, Store.memberLabel(s)].filter(Boolean).join(" · "))),
+    el("div", { class: "row-score" }, el("span", { class: "muted" }, s._encounter ? "" : s.code)));
+
+  let query = "";
+  const paint = () => {
+    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const shown = all.filter((s) => {
+      if (!terms.length) return true;
+      const hay = (`${s.code} ${s.display_name || ""} ${s.distillery || ""} ${s.name || ""} `
+        + `${s.type || ""} ${s.special_note || s.notes || ""} ${s.status || ""}`).toLowerCase();
+      return terms.every((t) => hay.includes(t));
+    });
+    const near = sameAs === null ? [] : shown.filter((s) => Store.groupKey(s) === sameAs);
+    const rest = shown.filter((s) => !near.includes(s));
+    fill(list,
+      near.length ? el("li", { class: "rows-head" }, "Same name") : null,
+      ...near.map(row),
+      near.length && rest.length ? el("li", { class: "rows-head" }, "Everything else") : null,
+      ...rest.map(row),
+      shown.length ? null : el("li", { class: "empty" }, "Nothing matches."));
+  };
+
+  fill(screens.move,
+    el("div", { class: "card", style: `border-left:3px solid ${accentFor(spirit.type)}` },
+      el("div", { class: "muted" }, "Moving the sitting of"),
+      el("div", { class: "spirit-name" }, name(spirit)),
+      el("div", { class: "spirit-meta" },
+        [card.date, card.total === null || card.total === undefined ? null : `${card.total} points`,
+         spirit._encounter ? "Bar pour" : spirit.code].filter(Boolean).join(" · ")),
+      el("div", { class: "muted", style: "margin-top:8px" },
+        "Choose the bottle it should have been scored against.")),
+    el("input", { class: "search", type: "text", enterkeyhint: "search",
+                  placeholder: "Search for the right bottle", "aria-label": "Search for the right bottle",
+                  autocapitalize: "none", autocorrect: "off", spellcheck: "false",
+                  oninput: (e) => { query = e.target.value; paint(); } }),
+    list);
+  paint();
+  show("move", "Move sitting", { push: true });
 }
 
 /** Reopen a sitting to correct it. Submitting writes revision n+1 of the same card, never a

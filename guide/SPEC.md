@@ -722,6 +722,17 @@ reads as a website someone bookmarked, and it breaks in specific ways in the bar
   Finished is chosen, and only if it was scored while it lasted. Both views, list and table, are
   narrowed alike. The desktop's table does the same with its drop-downs, each of which now takes
   several ticks, and can ask for what is not scored.
+- **A sitting can be moved to another bottle** (26 Nov 2026), for a card scored against the
+  wrong one. The sitting's screen has **Move to another bottle**; the list it opens offers every
+  bottle and bar pour, the others of the same name first. The move is the next revision of the
+  same card, so the journal keeps where it was, and the bottle it left stops showing the score at
+  once — the phone leaves the sitting out of the PC's figure rather than waiting for a Refresh.
+  The desktop has the same thing as **Move** beside Edit and Delete under Every review.
+- **A name held more than once is one row** (26 Nov 2026). Same distillery and same name, within
+  one sheet — bottles with bottles, samples with samples. The row carries a count and opens out
+  into its bottles, each shown by its special note, year and status, and tapping one opens it.
+  The Collection's list does this on the phone and the Score picker on the desktop; the tables
+  stay one row per bottle.
 - **Compare opens on a table of every score.** One row per scored spirit — finished bottles and
   bar pours included, since this is the record of what was given — and across it the total, the
   medal, the flavor total (the whole card less the categories the rubric marks `flavour: false`),

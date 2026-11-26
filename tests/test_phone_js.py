@@ -940,5 +940,198 @@ class TestCollectionFilters(unittest.TestCase):
             "Store.countFilters(Object.assign(Store.noFilters(), {type: ['Bourbon', 'Rye'], status: ['Opened'], scored: 'no'}))"), 4)
 
 
+@unittest.skipIf(MiniRacer is None, "pip install mini-racer to run the phone scripts for real")
+class TestMovingACard(unittest.TestCase):
+    """Store.moveCard for real: the same card, one revision later, under the other bottle."""
+
+    def setUp(self):
+        self.ctx = engine()
+        self.ctx.eval("Store.setMode('onedrive'); Store.submitScorecard({spirit_id: 'B-1', scores: {}});")
+
+    def js(self, expr):
+        return json.loads(self.ctx.eval("JSON.stringify(" + expr + ")"))
+
+    def test_the_card_goes_to_the_other_bottle_as_the_next_revision(self):
+        before = self.js("Store.cards()[0]")
+        moved = self.js("Store.moveCard(Store.cards()[0], 'B-2')")
+        rec = moved["rec"]
+        self.assertEqual((rec["tasting_id"], rec["revision"], rec["spirit_id"], rec["moved_from"]),
+                         (before["tasting_id"], 2, "B-2", "B-1"))
+        self.assertEqual(moved["path"], "tastings/%s-r2.json" % before["tasting_id"])
+        self.assertEqual(self.js("Store.cardsFor('B-1')"), [], "it must leave the bottle it was on")
+        self.assertEqual(len(self.js("Store.cardsFor('B-2')")), 1)
+        self.assertEqual(len(self.js("Store.cards()")), 1, "one sitting, not a copy beside it")
+
+    def test_the_move_is_queued_as_a_file_of_its_own(self):
+        self.ctx.eval("Store.moveCard(Store.cards()[0], 'B-2')")
+        queue = self.js("Store.queue()")
+        self.assertEqual([q["path"][-8:] for q in queue], ["-r1.json", "-r2.json"],
+                         "revision 1 is never rewritten; the move is the next file")
+        body = queue[-1]["body"]
+        self.assertEqual(body["spirit_id"], "B-2")
+        for private in ("_path", "_sent", "_local"):
+            self.assertNotIn(private, body, "the phone's own bookkeeping is not part of a card")
+
+    def test_moving_to_the_same_bottle_does_nothing(self):
+        self.assertIsNone(self.js("Store.moveCard(Store.cards()[0], 'B-1')"))
+        self.assertIsNone(self.js("Store.moveCard(Store.cards()[0], '')"))
+        self.assertEqual(len(self.js("Store.queue()")), 1)
+        self.assertEqual(self.js("Store.cards()[0].revision"), 1)
+
+    def test_a_sitting_the_pc_published_can_be_moved_without_losing_its_fields(self):
+        """Not a card this phone holds: it comes from careers.json, flight and price included."""
+        moved = self.js("Store.moveCard({tasting_id: 'T-desk', revision: 3, spirit_id: 'B-7',"
+                        " scores: {nose: 7}, total: 81, medal: 'Gold', date: '2026-10-01',"
+                        " session_id: 'F-1', flight_pos: 2, pour_price: 18, include_in_average: true},"
+                        " 'B-8')")["rec"]
+        self.assertEqual((moved["revision"], moved["spirit_id"], moved["moved_from"]), (4, "B-8", "B-7"))
+        self.assertEqual((moved["session_id"], moved["flight_pos"], moved["pour_price"], moved["total"],
+                          moved["scores"]), ("F-1", 2, 18, 81, {"nose": 7}))
+        self.assertEqual([c["tasting_id"] for c in self.js("Store.cardsFor('B-8')")], ["T-desk"],
+                         "held here now, so it shows under the new bottle before the PC has read it")
+
+    def test_a_phone_only_book_moves_it_and_uploads_nothing(self):
+        ctx = engine()
+        ctx.eval("Store.setMode('local'); Store.submitScorecard({spirit_id: 'L-1', scores: {}});"
+                 "Store.moveCard(Store.cards()[0], 'L-2');")
+        card = json.loads(ctx.eval("JSON.stringify(Store.cards()[0])"))
+        self.assertEqual((card["spirit_id"], card["revision"], card["_local"]), ("L-2", 2, True))
+        self.assertEqual(ctx.eval("Store.queue().length"), 0)
+
+
+@unittest.skipIf(MiniRacer is None, "pip install mini-racer to run the phone scripts for real")
+class TestTheOldBottleLetsGoAtOnce(unittest.TestCase):
+    """Store.publishedCareer: the PC's figure for a bottle, without what this phone has since
+    moved off it or deleted. The owner scored the unopened bottle of a pair by mistake; after the
+    move the score belongs to the opened one and the unopened one shows nothing."""
+
+    RUBRIC = {"categories": [{"key": "nose", "max": 10}, {"key": "palate", "max": 10}],
+              "bands": [{"name": "Diamond", "min": 90}, {"name": "Gold", "min": 80},
+                        {"name": "Silver", "min": 70}, {"name": "None", "min": 0}]}
+
+    def sitting(self, tid, total, nose, palate, **more):
+        return dict({"tasting_id": tid, "revision": 1, "spirit_id": "B-1", "total": total,
+                     "scores": {"nose": nose, "palate": palate}, "include_in_average": True,
+                     "date": "2026-11-01"}, **more)
+
+    def setUp(self):
+        self.ctx = engine()
+        self.listed = [self.sitting("T-a", 92, 9, 10), self.sitting("T-b", 81, 8, 7),
+                       self.sitting("T-c", 70, 6, 6),
+                       self.sitting("T-d", 40, 2, 2, include_in_average=False)]
+        published = {"version": 2, "generated_at": "2026-11-20T00:00:00Z",
+                     "careers": {"B-1": {"score": 81.0, "medal": "Gold", "n": 3, "best": 92, "worst": 70,
+                                         "categories": {"nose": 7.67, "palate": 7.67}}},
+                     "sittings": {"B-1": self.listed}, "calibration": []}
+        self.ctx.eval("var __rub = " + json.dumps(self.RUBRIC) + ";"
+                      "Store.setMode('onedrive'); Store.setCareers(" + json.dumps(published) + ");")
+
+    def career(self, code="B-1"):
+        return json.loads(self.ctx.eval("JSON.stringify(Store.publishedCareer('%s', __rub))" % code))
+
+    def test_with_nothing_moved_it_is_the_pcs_own_figure(self):
+        self.assertEqual(self.career()["score"], 81.0)
+        self.assertEqual(self.career()["categories"], {"nose": 7.67, "palate": 7.67})
+        self.assertIsNone(self.career("B-404"))
+
+    def test_a_moved_sitting_leaves_the_score_the_count_and_the_parts(self):
+        self.ctx.eval("Store.moveCard(" + json.dumps(self.listed[0]) + ", 'B-2')")
+        got = self.career()
+        self.assertEqual((got["score"], got["n"], got["best"], got["worst"], got["medal"]),
+                         (75.5, 2, 81, 70, "Silver"), "the mean of the two that remain: 81 and 70")
+        self.assertEqual(got["categories"], {"nose": 7.0, "palate": 6.5})
+
+    def test_the_only_sitting_moved_leaves_the_bottle_unscored(self):
+        """An unopened bottle graded by mistake: one sitting, and after the move, none."""
+        for s in self.listed[:3]:
+            self.ctx.eval("Store.moveCard(" + json.dumps(s) + ", 'B-2')")
+        self.assertIsNone(self.career(), "the uncounted sitting that remains is not a score")
+        self.assertEqual(self.ctx.eval("Store.cardsFor('B-2').length"), 3)
+
+    def test_a_deleted_sitting_leaves_the_same_way(self):
+        self.ctx.eval("Store.deleteCard(" + json.dumps(self.listed[2]) + ")")
+        got = self.career()
+        self.assertEqual((got["score"], got["n"], got["medal"]), (86.5, 2, "Gold"))
+
+    def test_the_medal_is_from_the_mean_rounded_half_up(self):
+        """92 and 87 are 89.5: Diamond at 90 by half-up, as rubric.half_up has it on the PC."""
+        self.ctx.eval("Store.setCareers({version: 2, careers: {'B-1': {score: 83, n: 3, medal: 'Gold'}},"
+                      " sittings: {'B-1': " + json.dumps([self.sitting("T-a", 92, 9, 9),
+                                                           self.sitting("T-b", 87, 8, 8),
+                                                           self.sitting("T-c", 70, 6, 6)]) + "}});"
+                      "Store.moveCard(" + json.dumps(self.sitting("T-c", 70, 6, 6)) + ", 'B-2');")
+        got = self.career()
+        self.assertEqual((got["score"], got["medal"]), (89.5, "Diamond"))
+
+    def test_a_card_moved_back_is_the_pcs_to_count_again(self):
+        self.ctx.eval("Store.moveCard(" + json.dumps(self.listed[0]) + ", 'B-2');"
+                      "Store.moveCard(Store.cardsFor('B-2')[0], 'B-1');")
+        self.assertEqual(self.career()["score"], 81.0)
+        self.assertEqual(self.ctx.eval("Store.cardsFor('B-1')[0].revision"), 3)
+
+
+@unittest.skipIf(MiniRacer is None, "pip install mini-racer to run the phone scripts for real")
+class TestTheSameBottleIsOneRow(unittest.TestCase):
+    """Same distillery and same name is the same bottle for showing — per sheet, so a bottle and
+    a sample of it stay apart — and each one is told from the next by note, year and status."""
+
+    SHELF = [
+        {"code": "B-1", "_sheet": "Bottle", "distillery": "Buffalo Trace", "name": "George T. Stagg",
+         "release_year": 2019.0, "status": "Opened", "notes": "Store pick"},
+        {"code": "B-2", "_sheet": "Bottle", "distillery": "Heaven Hill", "name": "Elijah Craig"},
+        {"code": "B-3", "_sheet": "Bottle", "distillery": "buffalo  trace ", "name": " george t. stagg",
+         "release_year": 2021, "status": "Unopened"},
+        {"code": "S-4", "_sheet": "Sample", "distillery": "Buffalo Trace", "name": "George T. Stagg",
+         "special_note": "Batch 17", "release_year": 2022, "status": "Finished"},
+        {"code": "S-5", "_sheet": "Sample", "distillery": "Buffalo Trace", "name": "George T. Stagg"},
+        {"code": "M-6", "_sheet": "Miniature", "distillery": "Buffalo Trace", "name": "George T. Stagg"},
+        {"code": "E-7", "_sheet": "Encounter", "distillery": "Buffalo Trace", "name": "George T. Stagg"},
+        {"code": "E-8", "_sheet": "Encounter", "distillery": "Buffalo Trace", "name": "George T. Stagg"},
+        {"code": "B-9", "_sheet": "Bottle", "distillery": "Other House", "name": "George T. Stagg"},
+        {"code": "B-10", "_sheet": "Bottle", "distillery": "Nameless", "name": ""},
+        {"code": "B-11", "_sheet": "Bottle", "distillery": "Nameless", "name": None},
+    ]
+
+    def setUp(self):
+        self.ctx = engine()
+        self.ctx.eval("var __shelf = " + json.dumps(self.SHELF) + ";")
+
+    def js(self, expr):
+        return json.loads(self.ctx.eval("JSON.stringify(" + expr + ")"))
+
+    def groups(self):
+        return self.js("Store.groupSpirits(__shelf).map(function (g) {"
+                       " return g.members.map(function (s) { return s.code; }); })")
+
+    def test_same_distillery_and_name_gather_where_the_first_stood(self):
+        self.assertEqual(self.groups()[0], ["B-1", "B-3"], "capitals and stray spaces are typing")
+        self.assertEqual(self.groups()[1], ["B-2"], "the order the list came in is kept")
+
+    def test_a_bottle_and_a_sample_are_never_put_together(self):
+        got = self.groups()
+        self.assertIn(["S-4", "S-5"], got)
+        self.assertIn(["M-6"], got, "nor a miniature with either")
+        self.assertNotIn("S-4", got[0])
+
+    def test_a_bar_pour_is_never_grouped(self):
+        got = self.groups()
+        self.assertIn(["E-7"], got)
+        self.assertIn(["E-8"], got)
+        self.assertIsNone(self.js("Store.groupKey(__shelf[6])"))
+
+    def test_another_distillery_or_no_name_is_not_the_same_bottle(self):
+        got = self.groups()
+        self.assertIn(["B-9"], got)
+        self.assertIn(["B-10"], got)
+        self.assertIn(["B-11"], got, "two rows without a name share nothing")
+        self.assertEqual(sum(len(g) for g in got), len(self.SHELF), "nothing is lost or doubled")
+
+    def test_each_one_is_shown_by_its_note_year_and_status(self):
+        label = lambda i: self.ctx.eval("Store.memberLabel(__shelf[%d])" % i)   # noqa: E731
+        self.assertEqual(label(0), "Store pick · 2019 · Opened", "the Bottle sheet calls it Notes")
+        self.assertEqual(label(2), "2021 · Unopened")
+        self.assertEqual(label(3), "Batch 17 · 2022 · Finished", "the Sample sheet, Special note")
+        self.assertEqual(label(4), "S-5", "with nothing to tell it by, its code")
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

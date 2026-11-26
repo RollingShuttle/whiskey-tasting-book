@@ -160,6 +160,35 @@ class Journal:
         _atomic_write_json(path, rec)
         return rec
 
+    def move_tasting(self, tasting_id, spirit_id):
+        """Put a sitting under another spirit, for a card that was scored against the wrong one.
+
+        It is the next revision of the same card, naming a different spirit and nothing else:
+        the scores, the notes, the date, the flight it sat in all come across as they were. The
+        revision before it still says where the card used to be, and `moved_from` says so on the
+        new one, so the journal shows the correction rather than hiding it. Readers take the
+        highest revision (tastings()), which is all it takes for every average to follow.
+        """
+        newest = max(((rev, path) for path, tid, rev in self._tasting_files() if tid == tasting_id),
+                     default=None)
+        if newest is None:
+            raise KeyError(f"no such tasting {tasting_id}")
+        rev, path = newest
+        prev = json.loads(path.read_text(encoding="utf-8"))
+        if prev.get("deleted"):
+            raise KeyError(f"tasting {tasting_id} has been deleted")
+        if prev.get("spirit_id") == spirit_id:
+            raise ValueError(f"that sitting is already under {spirit_id}")
+        rec = dict(prev, revision=rev + 1, spirit_id=spirit_id, moved_from=prev.get("spirit_id"),
+                   created_at=_now_iso())
+        target = self._dir("tastings") / f"{tasting_id}-r{rev + 1}.json"
+        if target.exists():
+            raise FileExistsError(
+                f"refusing to overwrite an existing revision: {target.name}. "
+                "Journal files are immutable; write a new revision instead.")
+        _atomic_write_json(target, rec)
+        return rec
+
     def delete_tasting(self, tasting_id, reason=None):
         """A tombstone is just another revision. Nothing is unlinked."""
         rev = self._highest_revision(tasting_id) + 1

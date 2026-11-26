@@ -287,5 +287,58 @@ class TestReReadingIsStable(JournalCase):
         self.assertEqual(reopened.stats()["tastings"], 4)
 
 
+class TestMovingASitting(JournalCase):
+    """A card scored against the wrong bottle is put under the right one. It is the next revision
+    of the same card and nothing is edited, so the mistake and its correction are both on file."""
+
+    def card(self, **over):
+        return self.j.write_tasting(spirit_id="B-19", scores=EXAMPLE_CARD, date="2026-09-08",
+                                    venue="Home", pour_price=14.0, tags=["neat"], **over)
+
+    def test_a_move_is_the_next_revision_naming_the_other_spirit(self):
+        first = self.card()
+        r1 = self.tmp / "tastings" / f"{first['tasting_id']}-r1.json"
+        original = r1.read_text()
+
+        moved = self.j.move_tasting(first["tasting_id"], "B-20")
+
+        self.assertEqual(r1.read_text(), original, "revision 1 must never be modified")
+        self.assertEqual((moved["revision"], moved["spirit_id"], moved["moved_from"]),
+                         (2, "B-20", "B-19"))
+        live = self.j.tastings()
+        self.assertEqual([t["spirit_id"] for t in live], ["B-20"], "one sitting, under the new bottle")
+        for key in ("scores", "total", "medal", "date", "venue", "pour_price", "tags",
+                    "include_in_average", "status"):
+            self.assertEqual(live[0][key], first[key], f"{key} must come across untouched")
+
+    def test_the_scores_follow_the_card(self):
+        first = self.card()
+        self.j.write_tasting(spirit_id="B-19", scores=EXAMPLE_CARD, date="2026-09-09")
+        self.j.move_tasting(first["tasting_id"], "B-20")
+        self.assertEqual(self.j.career("B-19")["n"], 1)
+        self.assertEqual(self.j.career("B-20")["n"], 1)
+
+    def test_it_can_be_moved_back(self):
+        first = self.card()
+        self.j.move_tasting(first["tasting_id"], "B-20")
+        back = self.j.move_tasting(first["tasting_id"], "B-19")
+        self.assertEqual((back["revision"], back["spirit_id"], back["moved_from"]), (3, "B-19", "B-20"))
+        self.assertEqual(len(list((self.tmp / "tastings").glob("*.json"))), 3)
+
+    def test_moving_to_where_it_already_is_writes_nothing(self):
+        first = self.card()
+        with self.assertRaises(ValueError):
+            self.j.move_tasting(first["tasting_id"], "B-19")
+        self.assertEqual(len(list((self.tmp / "tastings").glob("*.json"))), 1)
+
+    def test_a_deleted_or_unknown_sitting_cannot_be_moved(self):
+        first = self.card()
+        self.j.delete_tasting(first["tasting_id"])
+        with self.assertRaises(KeyError):
+            self.j.move_tasting(first["tasting_id"], "B-20")
+        with self.assertRaises(KeyError):
+            self.j.move_tasting("T-never-was", "B-20")
+        self.assertEqual(self.j.tastings(), [], "a tombstone must not be brought back by a move")
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

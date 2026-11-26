@@ -137,6 +137,11 @@ def _encounter_alias(journal):
     return {e["encounter_uid"]: e["code"] for e in journal.encounters() if e.get("code")}
 
 
+# Fields of a card that the phone never shows but must hand back when it writes a revision.
+PUBLISHED_CARD_EXTRAS = ("session_id", "flight_pos", "tags", "blind", "pour_price", "pour_size_oz",
+                         "barrel_id", "status", "rubric", "rubric_version")
+
+
 def _group_tastings(journal):
     """One pass over the journal, grouped by spirit.
 
@@ -464,6 +469,10 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
                 "notes": t.get("notes") or {},
                 "include_in_average": t.get("include_in_average", True),
                 "entered_from": t.get("entered_from"),
+                # What a correction made on the phone must not lose. The phone writes the next
+                # revision from this copy, and a revision is the whole card: without these, a
+                # sitting edited or moved there dropped out of its flight and lost its pour price.
+                **{k: t.get(k) for k in PUBLISHED_CARD_EXTRAS},
             } for t in sits]
             if bits["n"]:
                 careers[code] = {
@@ -581,6 +590,49 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
             if t["tasting_id"] == tasting_id:
                 return jsonify({"tasting": t})
         return jsonify({"error": f"no such tasting {tasting_id}"}), 404
+
+    @app.post("/api/tasting/<tasting_id>/move")
+    def api_move_tasting(tasting_id):
+        """Move a sitting to another spirit — the card was scored against the wrong bottle.
+
+        Nothing is edited: the journal gains the next revision of the same card, naming the
+        other spirit (store.move_tasting). The target may be anything that can hold a sitting —
+        a bottle, miniature or sample in the collection, one that has been finished or since
+        deleted from the workbook, or a bar pour. A finished bottle is allowed because this is a
+        correction to the record, not a new pour (the same reason a revision is).
+        """
+        body = request.get_json(silent=True) or {}
+        wanted = (body.get("spirit_id") or "").strip()
+        if not wanted:
+            return jsonify({"error": "spirit_id is required"}), 400
+
+        alias = _encounter_alias(journal)                  # uid -> X- code
+        by_code = {code: uid for uid, code in alias.items()}
+        if catalog.get(wanted) is not None or any(r.get("code") == wanted for r in journal.retired()):
+            target = wanted
+        elif wanted in by_code:                            # a bar pour, named by its X- code
+            target = by_code[wanted]                       # cards name a pour by its uid, always
+        elif wanted in alias:
+            target = wanted
+        else:
+            return jsonify({"error": f"no such spirit {wanted}"}), 404
+
+        current = next((t for t in journal.tastings() if t["tasting_id"] == tasting_id), None)
+        if current is None:
+            return jsonify({"error": f"no such tasting {tasting_id}"}), 404
+        shown = lambda sid: alias.get(sid, sid)            # noqa: E731 — the name a person reads
+        if shown(current["spirit_id"]) == shown(target):
+            return jsonify({"error": f"that sitting is already under {shown(target)}"}), 400
+        try:
+            rec = journal.move_tasting(tasting_id, target)
+        except KeyError as e:
+            return jsonify({"error": str(e.args[0]) if e.args else str(e)}), 404
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except FileExistsError as e:
+            return jsonify({"error": str(e)}), 409
+        return jsonify({"ok": True, "tasting": rec,
+                        "moved_from": shown(current["spirit_id"]), "moved_to": shown(target)})
 
     @app.delete("/api/tasting/<tasting_id>")
     def api_delete_tasting(tasting_id):

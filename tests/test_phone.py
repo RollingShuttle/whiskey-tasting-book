@@ -461,11 +461,17 @@ class TestRemovingASittingFromThePhone(unittest.TestCase):
         app_src = code("app.js")
         self.assertIn("Store.buried()", app_src)
 
-    def test_the_score_says_why_it_has_not_moved_yet(self):
-        """It is the PC's figure and still counts the deleted sitting until the PC reads the
-        tombstone. Silence there looks like the deletion did not work."""
-        self.assertIn("function buriedHere(", code("app.js"))
-        self.assertIn("still counted", code("app.js"))
+    def test_the_score_drops_a_deleted_sitting_at_once(self):
+        """The PC's figure still counts it until the PC reads the tombstone. The page used to say
+        so in a note; it now leaves the sitting out of the sum (Store.publishedCareer, which
+        test_phone_js.py runs), because a score that had not moved looked like a deletion that
+        had not worked."""
+        app_src = code("app.js")
+        self.assertIn("const publishedFor = (code) => Store.publishedCareer(code, app.rubric);", app_src)
+        self.assertIn("const fromPc = publishedFor(code);", app_src)
+        self.assertIn("const pc = publishedFor(code) || {};", app_src)
+        self.assertNotIn("still counted", app_src)
+        self.assertNotIn("app.careers[code]", app_src, "every reader goes through the adjusted figure")
 
 
 class TestAnOlderPcOverwritingTheData(unittest.TestCase):
@@ -1499,6 +1505,67 @@ class TestTheCollectionsFiltersCombine(unittest.TestCase):
         self.assertIn(".chip.on { border-color: var(--brass); color: var(--brass-bright); }", self.css)
         self.assertIn(".fopts { display: flex; flex-wrap: wrap;", self.css)
 
+
+class TestMovingASittingAndGatheringBottles(unittest.TestCase):
+    """The wiring for two things Store does (and test_phone_js.py runs): a sitting scored against
+    the wrong bottle is moved to the right one, and a name held more than once is one row."""
+
+    def setUp(self):
+        self.js = code("app.js")
+        self.html = text("index.html")
+        self.css = text("style.css")
+
+    def fn(self, start):
+        block = self.js[self.js.index(start):]
+        return block[:block.index("\nfunction ")]
+
+    def test_the_sitting_screen_offers_the_move(self):
+        sitting = self.fn("function openSitting(")
+        self.assertIn('onclick: () => openMove(card, spirit) }, "Move to another bottle")', sitting)
+        self.assertIn('id="screen-move"', self.html)
+        self.assertIn('move: document.getElementById("screen-move")', self.js)
+
+    def test_choosing_a_bottle_moves_the_card_and_lands_on_that_bottle(self):
+        move = self.fn("function openMove(")
+        self.assertIn("window.confirm(", move)
+        self.assertLess(move.index("Store.moveCard(card, s.code);"), move.index("flush();"))
+        self.assertIn("openDetail(s.code, { push: false });", move,
+                      "the chevron must not lead back to a sitting that is no longer there")
+        self.assertIn('["sitting", "detail"].includes(', move)
+
+    def test_every_bottle_is_a_possible_home_the_same_name_first(self):
+        move = self.fn("function openMove(")
+        self.assertIn("knownSpirits().filter((s) => s.code !== card.spirit_id)", move,
+                      "finished bottles and bar pours included: this corrects a record")
+        self.assertIn("Store.groupKey(s) === sameAs", move)
+        self.assertLess(move.index('"Same name"'), move.index('"Everything else"'))
+
+    def test_a_moved_sitting_is_listed_only_where_it_now_is(self):
+        """The PC's published list still has it under the old bottle until it has read the move."""
+        sittings = self.fn("function sittingsFor(")
+        self.assertIn("new Set(Store.cards().map((c) => c.tasting_id))", sittings)
+
+    def test_a_moved_card_counts_for_its_new_bottle_until_the_pc_lists_it_there(self):
+        """Not by the clock: the PC may have done its sums after the move but before it arrived."""
+        counted = self.js[self.js.index("const countedLocally = "):]
+        counted = counted[:counted.index("\nfunction ")]
+        self.assertIn("if (c.moved_from && listed) return !published.has(c.tasting_id);", counted)
+
+    def test_the_list_shows_one_row_for_a_name_held_more_than_once(self):
+        paint = self.fn("function paintRows()")
+        self.assertIn("for (const g of Store.groupSpirits(spirits))", paint)
+        self.assertIn("if (g.members.length === 1) { list.append(spiritRow(g.members[0])); continue; }", paint)
+        self.assertIn("if (open) for (const s of g.members) list.append(spiritRow(s, true));", paint)
+        self.assertNotIn("function groupKey", self.js, "the rule is Store's, so the tests can run it")
+
+    def test_an_opened_row_names_each_bottle_by_what_tells_it_apart(self):
+        row = self.fn("function spiritRow(")
+        self.assertIn("member ? Store.memberLabel(s) : (s.name || s.display_name || s.code)", row)
+        group = self.fn("function groupRow(")
+        self.assertIn('"aria-expanded": String(open)', group)
+        self.assertIn("paintRows();", group)
+        self.assertIn(".row.group.open .chev { transform: rotate(90deg); }", self.css)
+        self.assertIn(".row.member { margin-left: 18px;", self.css)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

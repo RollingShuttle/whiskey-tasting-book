@@ -42,6 +42,13 @@ def spirits(count=36):
             "size_ml": 750.0, "paid": float(35 + (i * 11) % 150), "rarity": "Common",
             "status": "Finished" if i == 5 else ("Opened" if i % 2 else "Unopened"),
         })
+    # One name held more than once — three bottles of it, and two samples. The Score picker shows
+    # each set as one row that opens out, and never puts the bottles and the samples together.
+    same = {"B-7": {"notes": "Store pick"}, "B-13": {}, "B-19": {"notes": "Gift"},
+            "S-31": {"special_note": "From a swap"}, "S-33": {"special_note": "Batch 4"}}
+    for sp in out:
+        if sp["code"] in same:
+            sp.update(distillery="Black Fen", name="Antique Reserve", **same[sp["code"]])
     return out
 
 

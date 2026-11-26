@@ -130,6 +130,32 @@ body.view-analysis #main { max-width: 1960px; }
 .pr-code { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .pr-empty { color: var(--muted); padding: 14px 4px; }
 
+/* One name held more than once: a row that opens out into its bottles. The members sit in from
+   the edge under it, and are named by what tells them apart rather than by the name they share. */
+.pr-chev { color: var(--muted); display: inline-block; width: 10px; transition: transform .12s ease; }
+.pr-group.open .pr-chev { transform: rotate(90deg); }
+.picker-results li.pr-member { margin-left: 26px; padding-top: 7px; padding-bottom: 7px; }
+.pr-label { font-size: 14px; }
+.pr-head {
+  cursor: default; color: var(--muted); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .06em; padding: 12px 12px 4px;
+}
+.picker-results li.pr-head:hover { background: none; }
+
+/* Choosing the bottle a sitting should have been scored against. */
+.move-dialog {
+  width: min(720px, 92vw); padding: 20px; border-radius: var(--radius);
+  background: var(--surface); color: var(--text); border: 1px solid var(--line);
+}
+.move-dialog::backdrop { background: rgba(0, 0, 0, .6); }
+.move-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.move-what { font-family: var(--serif); font-size: 20px; margin: 2px 0; }
+.move-search {
+  width: 100%; margin-top: 14px; padding: 10px 12px; border-radius: 8px; font: inherit;
+  background: var(--surface-2); color: var(--text); border: 1px solid var(--line);
+}
+.move-dialog .picker-results { max-height: 50vh; }
+
 /* A finished bottle in the list: legible, visibly not a live one, and tagged with the word the
    workbook used. Its row opens the record rather than a card. */
 .picker-results li.gone .pr-name, .picker-results li.gone .pr-dist { opacity: .62; }

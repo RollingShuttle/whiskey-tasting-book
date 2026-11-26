@@ -111,7 +111,7 @@ changed something in Excel, or when you want the phone to see new bottles.
 
 | Screen | What it is for |
 |---|---|
-| **Score** | The judging sheet. Pick a spirit, score the ten categories, submit. |
+| **Score** | The judging sheet. Pick a spirit, score the ten categories, submit. A name you hold more than once — two bottles of one whiskey, three years of one release — is a single row that says how many; click it and it opens out into each one, told apart by its special note, year and status. Bottles and samples of the same thing are kept as separate rows. |
 | **New flight** | Several pours in one sitting, with a switcher along the top. Blind mode hides each bottle until its card is submitted. |
 | **Table** | Every spirit or every tasting, sortable and filterable. This is the "easy sorting" the whole project was for. The filters each take several ticks — Type: Bourbon and Rye, Status: Opened — and combine; **Not scored** is in the scored drop-down. |
 | **Compare** | Opens on **All scores**: every spirit you have scored, one row each, with the total, the medal, the flavor total and every category across. Click a column to sort by it, again to turn it round; click a row for its sittings. **Side by side** is the other view: several things side by side — up to twelve, and a flight brings however many pours it had. Choosing a flight also lets you rename or delete it. |
@@ -130,18 +130,24 @@ time. A draft never counts towards a score, so an unfinished card cannot move an
 **On the PC:** open the **Table** and click **Every review**. That is the list of everything you
 have ever scored, one row per review, sortable and filterable like the rest of the table.
 
-- **One at a time:** each row ends with **Edit** and **Delete**. Edit loads that card back onto the
-  Score sheet.
+- **One at a time:** each row starts with **Edit**, **Move** and **Delete**. Edit loads that card
+  back onto the Score sheet.
+- **Scored against the wrong bottle:** click **Move** and pick the bottle it should have been —
+  the other bottles of the same name are listed first. The review, its scores and its notes go to
+  that bottle and the one it was on no longer shows it. **Undo** appears beside the confirmation
+  if you picked the wrong row.
 - **Several at once:** tick the boxes down the left, then **Delete them** in the bar that appears.
   The tick box in the header selects everything *currently shown*, so filter first and it takes
   only those. You are asked once, and told which reviews are about to go.
 
 **On the phone:** open the bottle from Collection or Table. Its sittings are listed at the bottom
 of that page — tap one to see the whole card: what each category was given, the note written
-against it, and the overall note. **Edit** and **Delete** are at the foot of that screen.
+against it, and the overall note. **Edit**, **Delete** and **Move to another bottle** are at the
+foot of that screen. Move is for a pour scored against the wrong bottle: choose the right one and
+the sitting goes there at once, leaving the first bottle as it was before.
 
-Either way, nothing is destroyed. A correction is saved as a *new revision* and the earlier one
-stays in the journal; a deletion writes a tombstone, so the card stops counting and stops being
+Either way, nothing is destroyed. A correction or a move is saved as a *new revision* and the
+earlier one stays in the journal; a deletion writes a tombstone, so the card stops counting and stops being
 listed but the record remains. The phone can do both with no signal — the change queues like any
 other upload.
 

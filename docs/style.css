@@ -179,6 +179,19 @@ body.keyboard .tabs { display: none; }
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-sub { color: var(--muted); font-size: 0.74rem; margin-top: 2px;
            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* One name held more than once: a row that opens out into its bottles. The chevron turns to say
+   which way it is; the members sit in from the edge under it, a size down, so the eye reads them
+   as belonging to the row above rather than as neighbours of it. */
+.row.group .chev { color: var(--muted); font-size: 1.1rem; flex-shrink: 0;
+                   transition: transform 0.15s ease; }
+.row.group.open .chev { transform: rotate(90deg); }
+.row.group.open { margin-bottom: 6px; }
+.row.member { margin-left: 18px; min-height: 48px; margin-bottom: 6px; background: var(--surface-2); }
+.row.member .row-name { font-family: var(--sans); font-size: 0.9rem; }
+.row.group .row-score .muted { font-size: 0.68rem; }
+.rows-head { list-style: none; margin: 14px 2px 6px; color: var(--muted); font-size: 0.7rem;
+             text-transform: uppercase; letter-spacing: 0.06em; }
+.rows-head:first-child { margin-top: 4px; }
 .row-score { text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .row-score b { font-family: var(--serif); font-size: 1.1rem; color: var(--brass-bright);
                font-weight: 500; }

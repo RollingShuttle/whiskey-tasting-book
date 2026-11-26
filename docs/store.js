@@ -560,6 +560,110 @@ const Store = (() => {
     return { rec, path };
   }
 
+  /** Put a sitting under another bottle: the card was scored against the wrong one.
+
+      The same card, one revision later, naming the other spirit and changing nothing else — the
+      scores, notes and date are the ones that were given. `moved_from` records where it was, so
+      the journal shows the correction. Nothing happens for a card already under that spirit. */
+  function moveCard(previous, spiritId) {
+    if (!spiritId || previous.spirit_id === spiritId) return null;
+    const revision = (previous.revision || 1) + 1;
+    const rec = {
+      ...previous,
+      revision,
+      deleted: false,
+      spirit_id: spiritId,
+      moved_from: previous.spirit_id,
+      created_at: nowIso(),
+    };
+    delete rec._path;
+    delete rec._sent;
+    delete rec._local;
+    const path = `tastings/${rec.tasting_id}-r${revision}.json`;
+    write(K.cards, [{ ...rec, _path: path, _sent: false, ...(isLocal() ? { _local: true } : {}) },
+                    ...cards().filter((c) => c.tasting_id !== rec.tasting_id)]);
+    enqueue({ path, kind: "tasting", body: rec, created_at: nowIso() });
+    return { rec, path };
+  }
+
+  // -- one name, several bottles ----------------------------------------------
+  // The shelf holds the same whiskey more than once: a second bottle bought, another year's
+  // release, three samples of one thing. Same distillery and same name is the same bottle for
+  // showing; the sheet is part of the key, so a bottle and a sample of it are never put together.
+  // A bar pour is never grouped — it is a pour, and has no sheet.
+  const GROUPED_SHEETS = ["Bottle", "Miniature", "Sample"];
+  const folded = (v) => String(v ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+  function groupKey(s) {
+    if (!s || !GROUPED_SHEETS.includes(s._sheet)) return null;
+    const name = folded(s.name);
+    return name ? `${s._sheet}|${folded(s.distillery)}|${name}` : null;
+  }
+  /** The list as it came, with same-named bottles gathered where the first of them stood.
+      Every entry is `{ key, members }`; one member means an ordinary row. */
+  function groupSpirits(list) {
+    const at = new Map();
+    const out = [];
+    for (const s of list) {
+      const key = groupKey(s);
+      let g = key === null ? null : at.get(key);
+      if (!g) {
+        g = { key, members: [] };
+        if (key !== null) at.set(key, g);
+        out.push(g);
+      }
+      g.members.push(s);
+    }
+    return out;
+  }
+  /** What tells one bottle of a name from the next: its special note, its year, its status.
+      (The Bottle and Miniature sheets call the note "Notes"; the Sample sheet, "Special note".) */
+  function memberLabel(s) {
+    const year = Number(s.release_year);
+    const parts = [s.special_note || s.notes,
+                   Number.isFinite(year) && year > 0 ? String(Math.round(year)) : null,
+                   s.status];
+    return parts.map((v) => String(v ?? "").trim()).filter(Boolean).join(" · ") || s.code;
+  }
+
+  /** The PC's figures for one spirit, less the sittings this phone has since taken off it: the
+      ones deleted here, and the ones moved to another bottle. The PC goes on counting those until
+      it has read the tombstone or the move, and a bottle that still showed the score of a card
+      just moved off it looked as if the move had not taken.
+
+      Worked out again from the published sittings that remain, not subtracted from the rounded
+      mean, so it is the figure the PC itself will arrive at. The published career comes back
+      untouched when nothing has left, and null when everything has. */
+  function publishedCareer(code, rub) {
+    const all = careers();
+    const pc = (all.careers || {})[code] || null;
+    const listed = (all.sittings || {})[code] || [];
+    if (!pc || !listed.length) return pc;
+    const dead = new Set(buried());
+    const held = new Map(cards().map((c) => [c.tasting_id, c.spirit_id]));
+    const left = (t) => dead.has(t.tasting_id)
+      || (held.has(t.tasting_id) && held.get(t.tasting_id) !== code);
+    if (!listed.some(left)) return pc;
+    const has = (v) => v !== null && v !== undefined;
+    const rest = listed.filter((t) => !left(t) && t.include_in_average !== false && has(t.total));
+    if (!rest.length) return null;
+    const mean = (vals) => vals.reduce((a, b) => a + b, 0) / vals.length;
+    const totals = rest.map((t) => t.total);
+    const categories = {};
+    for (const cat of ((rub && rub.categories) || [])) {
+      const vals = rest.map((t) => (t.scores || {})[cat.key]).filter(has);
+      if (vals.length) categories[cat.key] = mean(vals);
+    }
+    return {
+      score: Math.round(mean(totals) * 10) / 10,
+      // From the mean itself, rounded half-up — not from the one-decimal figure shown.
+      medal: rub ? medalFor(Math.round(mean(totals)), rub) : pc.medal,
+      n: rest.length,
+      best: Math.max(...totals),
+      worst: Math.min(...totals),
+      categories,
+    };
+  }
+
   /** A tombstone is just another revision. Nothing is unlinked, here or on the PC. */
   function deleteCard(previous, reason) {
     const revision = (previous.revision || 1) + 1;
@@ -612,7 +716,8 @@ const Store = (() => {
     noFilters, countFilters, passes, filterChoices,
     exportAll, importAll,
     queue, enqueue, drop, noteFailure, queueCount,
-    cards, cardsFor, addCard, markSent, reviseCard, deleteCard, buried,
+    cards, cardsFor, addCard, markSent, reviseCard, moveCard, deleteCard, buried,
+    groupKey, groupSpirits, memberLabel, publishedCareer,
     meta, setMeta, restoreFromNative, lastWriteError: () => lastWriteError,
     submitScorecard, submitPending, submitEncounter,
     encounters, addEncounter, asSpirit,

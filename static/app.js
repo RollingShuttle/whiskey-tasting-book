@@ -19,12 +19,51 @@ const accentFor = (t) => TYPE_ACCENT[t] || "var(--muted)";
     the time. The vocabulary lives in collection.py; this only reads the verdict it derived. */
 const goneSpirit = (s) => s.owned === false && !!s.status;
 
+/* One name, several bottles. The shelf holds the same whiskey more than once — a second bottle,
+   another year's release, three samples of one thing — and same distillery with the same name is
+   the same bottle for showing. The sheet is part of the key, so a bottle and a sample of it are
+   never put together, and a bar pour (which has no sheet) is never grouped at all. The phone has
+   the same rule in docs/store.js; a test holds the two to each other. */
+const GROUPED_SHEETS = ["Bottle", "Miniature", "Sample"];
+const GROUP_NOUN = { Bottle: "bottles", Miniature: "miniatures", Sample: "samples" };
+const foldedName = (v) => String(v ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+function sameBottleKey(s) {
+  if (!s || !GROUPED_SHEETS.includes(s._sheet)) return null;
+  const name = foldedName(s.name);
+  return name ? `${s._sheet}|${foldedName(s.distillery)}|${name}` : null;
+}
+/** The list as it came, same-named bottles gathered where the first of them stood. */
+function groupSameBottles(list) {
+  const at = new Map();
+  const out = [];
+  for (const s of list) {
+    const key = sameBottleKey(s);
+    let g = key === null ? null : at.get(key);
+    if (!g) {
+      g = { key, members: [] };
+      if (key !== null) at.set(key, g);
+      out.push(g);
+    }
+    g.members.push(s);
+  }
+  return out;
+}
+/** What tells one bottle of a name from the next: its special note, its year, its status. */
+function bottleLabel(s) {
+  const year = Number(s.release_year);
+  const parts = [s.special_note || s.notes,
+                 Number.isFinite(year) && year > 0 ? String(Math.round(year)) : null,
+                 s.status];
+  return parts.map((v) => String(v ?? "").trim()).filter(Boolean).join(" · ") || s.code;
+}
+
 const state = {
   config: null,
   medalColors: {},
   spirits: [],
   filter: "all",
   query: "",            // what is typed in the picker's search box — see showPicker
+  openGroups: new Set(), // same-named bottles whose row in the picker is opened out
   view: "score",        // "score" | "table" | "compare" | "analysis"
   quick: null,          // Quick Entry rows waiting on the workbook
   pending: null,        // new-bottle requests waiting for approval
@@ -605,25 +644,52 @@ function renderResults() {
       : "No match."));
     return;
   }
-  for (const s of list) {
-    const meta = [s.type, s.age ? `${s.age}y` : s.age_label,
-                  s.proof ? `${s.proof}pf` : null,
-                  s.release_year ? String(Math.round(s.release_year)) : null]
+  // As a member of an opened group a row is told apart by its special note, year and status:
+  // the name is on the row above it, and is the one thing they all share.
+  const row = (s, member = false) => {
+    const facts = [s.age ? `${s.age}y` : s.age_label, s.proof ? `${s.proof}pf` : null];
+    const meta = [member ? null : s.type, ...facts,
+                  !member && s.release_year ? String(Math.round(s.release_year)) : null]
       .filter(Boolean).join(" · ");
     const gone = goneSpirit(s);
     const bar = s._sheet === "Encounter";
     const record = gone || bar;                    // opens its sittings rather than a new card
-    ul.append(el("li", { role: "option", class: record ? "gone" : null,
-                         style: `border-left-color:${accentFor(s.type)}`,
-                         title: gone ? `${s.status} — opens its record`
-                              : bar ? "Bar pour — opens its sittings" : null,
-                         onclick: () => (record ? showSittingsFor(s.code) : addPour(s.code)) },
-      el("span", { class: "pr-name" }, s.name || s.display_name),
-      gone ? el("span", { class: "pr-tag" }, s.status) : null,
+    return el("li", { role: "option", class: `${record ? "gone" : ""}${member ? " pr-member" : ""}`,
+                      style: `border-left-color:${accentFor(s.type)}`,
+                      title: gone ? `${s.status} — opens its record`
+                           : bar ? "Bar pour — opens its sittings" : null,
+                      onclick: () => (record ? showSittingsFor(s.code) : addPour(s.code)) },
+      member ? el("span", { class: "pr-label" }, bottleLabel(s))
+             : el("span", { class: "pr-name" }, s.name || s.display_name),
+      gone && !member ? el("span", { class: "pr-tag" }, s.status) : null,
       bar ? el("span", { class: "pr-tag" }, "Bar pour") : null,
-      el("span", { class: "pr-dist" }, s.distillery || ""),
+      member ? null : el("span", { class: "pr-dist" }, s.distillery || ""),
       el("span", { class: "pr-meta" }, meta),
-      el("span", { class: "pr-code" }, s.code)));
+      el("span", { class: "pr-code" }, s.code));
+  };
+  // The same whiskey held more than once is one row that opens out into its bottles. It stands
+  // where the first of them stood, so the list keeps the order it had.
+  for (const g of groupSameBottles(list)) {
+    if (g.members.length === 1) { ul.append(row(g.members[0])); continue; }
+    const first = g.members[0];
+    const open = state.openGroups.has(g.key);
+    const sameType = g.members.every((m) => (m.type || "") === (first.type || ""));
+    ul.append(el("li", { role: "option", class: `pr-group${open ? " open" : ""}`,
+                         "aria-expanded": String(open),
+                         style: `border-left-color:${accentFor(first.type)}`,
+                         title: open ? "Close" : "Show each one",
+                         onclick: () => {
+                           if (open) state.openGroups.delete(g.key); else state.openGroups.add(g.key);
+                           const at = ul.scrollTop;          // the list is its own scroller
+                           renderResults();
+                           ul.scrollTop = at;
+                         } },
+      el("span", { class: "pr-chev", "aria-hidden": "true" }, "›"),
+      el("span", { class: "pr-name" }, first.name),
+      el("span", { class: "pr-tag" }, `${g.members.length} ${GROUP_NOUN[first._sheet]}`),
+      el("span", { class: "pr-dist" }, first.distillery || ""),
+      el("span", { class: "pr-meta" }, sameType ? first.type || "" : "")));
+    if (open) for (const s of g.members) ul.append(row(s, true));
   }
 }
 
