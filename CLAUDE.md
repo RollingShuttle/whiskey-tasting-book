@@ -72,7 +72,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 746 tests, all passing
+python -m unittest discover -s tests    # 753 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -307,6 +307,18 @@ and the table keeps the rows with a score. The Flavor total is summed from those
 rounded once. A row opens the spirit's sittings (`showSittingsFor`); a flight's *Compare pours*
 still opens Side by side. The desktop's own Table view is unchanged — it keeps its score columns,
 its ranking lens and its column chooser.
+
+**Rank by has two presets** (26 Nov 2026): **Everything** and **Flavor only** — the card less the
+categories the rubric marks `flavour: false` — with Custom for any other mix (`lensPresets` in
+`static/app.js`; there were six). The table opens on Everything, so its score and medal are the
+ones every other screen shows. Flavor only is offered only when it leaves something out. **A
+config that does not mark its categories still gets the right split:** `config.example.yaml`
+carried no `flavour` keys for a long time, `config.yaml` is written from it once per machine and
+never overwritten, and with nothing marked every category counted as flavour — "Flavour 100"
+beside "Everything 100", and no flavor total on the phone that PC published for. `rubric.py` now
+defaults `aesthetics` and `value` to not-flavour (`NOT_FLAVOUR_BY_DEFAULT`); a category that
+says is believed. The template is fixed too. After updating such a PC, press Refresh so the
+phone's `rubric.json` is published with the marks.
 
 `tools/demo_app.py` runs the desktop app on invented data in a temporary folder (a collection, a
 journal, a bar pour, a finished bottle; a master path that does not exist), served from `static/`

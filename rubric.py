@@ -47,13 +47,22 @@ def half_up(value, places=0):
     return int(d) if places == 0 else float(d)
 
 
+# What is not about the liquid when a config does not say. config.yaml is written once per
+# machine and never overwritten, and for a long time the template it is written from carried no
+# `flavour` marks at all — so on such a machine every category counted as flavour, "Flavour" was
+# the whole card, and the flavour score was offered nowhere. A category that says is believed;
+# one that does not is flavour unless it is one of these.
+NOT_FLAVOUR_BY_DEFAULT = ("aesthetics", "value")
+
+
 class Rubric:
     def __init__(self, spec: dict):
         self.name = spec.get("name", "rubric")
         self.version = int(spec.get("version", 1))
         self.decimals = int(spec.get("decimals", 1))
         self.categories = [Category(c["key"], c["label"], int(c["max"]),
-                                    c.get("question", ""), bool(c.get("flavour", True)))
+                                    c.get("question", ""),
+                                    bool(c.get("flavour", c["key"] not in NOT_FLAVOUR_BY_DEFAULT)))
                            for c in spec["categories"]]
         self.bands = sorted((Band(b["name"], int(b["min"])) for b in spec["medals"]),
                             key=lambda b: b.min, reverse=True)

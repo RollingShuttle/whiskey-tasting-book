@@ -51,7 +51,9 @@ const TableView = (() => {
       T.visible[T.mode] = new Set(d.columns.filter((c) => c.default).map((c) => c.key));
     }
     if (!T.sort[T.mode]) T.sort[T.mode] = { ...DEFAULT_SORT[T.mode] };
-    if (!T.lens) T.lens = { id: "flavour", keys: flavourKeys(), custom: false };
+    // Opens on the whole card: the score and medal shown are then the ones every other screen
+    // shows for the bottle. Flavor only is one click away.
+    if (!T.lens) T.lens = { ...lensPresets()[0], custom: false };
   }
 
   async function open() {

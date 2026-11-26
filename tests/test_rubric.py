@@ -196,5 +196,35 @@ class TestRubricIsConfigDriven(unittest.TestCase):
         self.assertEqual(r.medal(79), "None")
 
 
+class TestWhichCategoriesAreFlavour(unittest.TestCase):
+    """The flavour score is the card less aesthetics and value. A config that does not say which
+    is which must not make every category flavour — that turned "Flavour" into the whole card
+    and showed two rankings that were the same one."""
+
+    def spec(self, **marks):
+        cats = [{"key": k, "label": k.title(), "max": m, **({"flavour": marks[k]} if k in marks else {})}
+                for k, m in (("aroma", 10), ("flavor", 20), ("aesthetics", 5), ("value", 5))]
+        return {"categories": cats,
+                "medals": [{"name": "Gold", "min": 30}, {"name": "None", "min": 0}]}
+
+    def test_a_config_that_does_not_say_still_leaves_out_the_bottle_and_the_price(self):
+        r = Rubric(self.spec())
+        self.assertEqual(r.flavour_keys, ["aroma", "flavor"])
+        self.assertEqual(r.non_flavour_keys, ["aesthetics", "value"])
+        self.assertEqual([c["flavour"] for c in r.as_config()["categories"]], [True, True, False, False],
+                         "and that is what the page and the phone are told")
+
+    def test_a_config_that_says_is_believed(self):
+        r = Rubric(self.spec(value=True, aroma=False))
+        self.assertEqual(r.flavour_keys, ["flavor", "value"])
+
+    def test_the_template_new_machines_are_set_up_from_says_so_itself(self):
+        import yaml
+        example = yaml.safe_load((ROOT / "config.example.yaml").read_text(encoding="utf-8"))
+        cats = example["rubric"]["categories"]
+        self.assertTrue(all("flavour" in c for c in cats), "every category says which it is")
+        self.assertEqual([c["key"] for c in cats if not c["flavour"]], ["aesthetics", "value"])
+        self.assertEqual(sum(c["max"] for c in cats if c["flavour"]), 90)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

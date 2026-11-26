@@ -2230,5 +2230,34 @@ class TestTheDesktopMovesAndGathers(unittest.TestCase):
         self.assertIn("return name ? `${s._sheet}|${foldedName(s.distillery)}|${name}` : null;", self.app)
         self.assertIn("return name ? `${s._sheet}|${folded(s.distillery)}|${name}` : null;", phone)
 
+class TestRankByHasTwoPresets(unittest.TestCase):
+    """Rank by: Everything, and Flavor only. There were six presets built from every combination,
+    and on a machine whose config marked nothing "Flavour 100" and "Everything 100" were the same
+    ranking under two names."""
+
+    def setUp(self):
+        src = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        self.fn = src[src.index("function lensPresets()"):]
+        self.fn = self.fn[:self.fn.index("\n}\n")]
+        self.table = (ROOT / "static" / "table.js").read_text(encoding="utf-8")
+
+    def test_the_presets_are_everything_then_flavor_only(self):
+        self.assertEqual(re.findall(r'id: "?([^",]+)"?,', self.fn), ["all", "flavour"])
+        self.assertLess(self.fn.index("Everything ${total(cats)}"), self.fn.index("Flavor only ${total(flavour)}"))
+        self.assertNotIn("flavour+", self.fn, "the in-between mixes are what Custom is for")
+
+    def test_flavor_only_is_not_offered_when_it_would_be_everything(self):
+        self.assertIn("if (flavour.length && flavour.length < cats.length) {", self.fn)
+
+    def test_the_table_opens_on_the_whole_card(self):
+        self.assertIn("if (!T.lens) T.lens = { ...lensPresets()[0], custom: false };", self.table)
+
+    def test_the_page_is_told_which_categories_are_flavour(self):
+        import yaml
+        cfg = yaml.safe_load((ROOT / "config.example.yaml").read_text(encoding="utf-8"))
+        cats = rubric_mod.Rubric(cfg["rubric"]).as_config()["categories"]
+        self.assertEqual(sum(c["max"] for c in cats if c["flavour"]), 90)
+        self.assertEqual(sum(c["max"] for c in cats), 100)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

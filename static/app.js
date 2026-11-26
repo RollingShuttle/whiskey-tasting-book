@@ -246,22 +246,21 @@ function lensIsEverything(keys) {
   return lensMax(keys) === state.config.rubric.max_total;
 }
 
-/** The six lenses, built from config: flavour, flavour plus each non-flavour, everything, and
-    each non-flavour on its own. */
+/** The two ways to rank: on the whole card, or on the flavour categories alone — the card
+    less the ones the rubric marks `flavour: false` (the bottle and the price). There were six,
+    built from every combination; any other mix is what Custom is for. Flavor only is offered
+    only when it leaves something out: with a rubric that marks nothing, it would be Everything
+    under another name, two chips for one ranking. */
 function lensPresets() {
   const cats = state.config.rubric.categories;
   const flavour = cats.filter((c) => c.flavour);
-  const other = cats.filter((c) => !c.flavour);
   const keysOf = (list) => list.map((c) => c.key);
   const total = (list) => list.reduce((a, c) => a + c.max, 0);
 
-  const out = [{ id: "flavour", label: `Flavour ${total(flavour)}`, keys: keysOf(flavour) }];
-  for (const c of other) {
-    out.push({ id: `flavour+${c.key}`, label: `+ ${c.label.toLowerCase()} ${total(flavour) + c.max}`,
-               keys: [...keysOf(flavour), c.key] });
+  const out = [{ id: "all", label: `Everything ${total(cats)}`, keys: keysOf(cats) }];
+  if (flavour.length && flavour.length < cats.length) {
+    out.push({ id: "flavour", label: `Flavor only ${total(flavour)}`, keys: keysOf(flavour) });
   }
-  out.push({ id: "all", label: `Everything ${total(cats)}`, keys: keysOf(cats) });
-  for (const c of other) out.push({ id: c.key, label: `${c.label} ${c.max}`, keys: [c.key] });
   return out;
 }
 

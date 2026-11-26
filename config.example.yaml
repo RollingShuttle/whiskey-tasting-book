@@ -42,48 +42,60 @@ rubric:
   version: 1
   total: sum
   decimals: 1
+  # `flavour: false` marks a category that is not about the liquid — aesthetics is the
+  # bottle, value is the price. Rankings can be taken over the flavour categories alone.
   # `question` is the text behind the ? on each row — the tooltip that keeps scoring consistent
   # across months. Transcribed verbatim from the physical card (SPEC.md §3).
   categories:
     - key: aroma
       label: Aroma
       max: 10
+      flavour: true
       question: "The experience starts with your nose. What scents do you recognize? Fruits? Spices? Sugars? 5 points is one, maybe two weak flavors; 10 is a rich mélange."
     - key: flavor
       label: Flavor
       max: 20
+      flavour: true
       question: "Taste the spirit. What type of flavors do you experience? How deep are the flavors you notice? 10 points means a couple of light notes, 20 is a rich cornucopia."
     - key: body
       label: Body
       max: 10
+      flavour: true
       question: "Mouthfeel. How does it coat your tongue and mouth? Is it oily? Thick or thin? 5 points means it is on the thin side, 10 is a nice perfectly even coating."
     - key: complexity
       label: Complexity
       max: 10
+      flavour: true
       question: "How many different flavor notes do you experience? Do they blend well or stay separated? A 5 means simple and easy; 10 is a beautiful mind-dram."
     - key: balance
       label: Balance
       max: 10
+      flavour: true
       question: "Are the flavors in equilibrium? Is one too loud or too weak? 5 points means something is out of whack; 10 is perfect in every way."
     - key: finish
       label: Finish
       max: 10
+      flavour: true
       question: "What's the ending like? How long does it linger in your mouth and throat? Short, medium, long? 5 is short and poor; 10 is lovely, no burns, and great taste."
     - key: uniqueness
       label: Uniqueness
       max: 10
+      flavour: true
       question: "How special or unusual was the drinking experience? Can include a point or two for presentation. 10 is a unicorn, so don't waste it."
     - key: drinkability
       label: Drinkability
       max: 10
+      flavour: true
       question: "How much does it make you want to drink more? 5 means you are not excited for your next sip; 10 is a dram you want to jump back into."
     - key: aesthetics
       label: Aesthetics
       max: 5
+      flavour: false
       question: "Don't forget the vessel that contained the spirit. Iconic shape? Unique labeling? Packaging? What's in the boat?"
     - key: value
       label: Value
       max: 5
+      flavour: false
       question: "Price and availability. How much did this cost? Is it worth it? How hard is it to find? 5 means the price and availability are right."
   medals:
     - {name: Diamond,  min: 90}
