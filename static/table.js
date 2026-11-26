@@ -106,6 +106,8 @@ const TableView = (() => {
   function sorted(list) {
     const { key, dir } = T.sort[T.mode];
     const mult = dir === "asc" ? 1 : -1;
+    // Not a column: the workbook's own sort across every sheet (bookOrder, in app.js).
+    if (key === "book") return [...list].sort((a, b) => bookOrder(a, b) * mult);
     const cmp = (a, b) => {
       const scoreCol = key === lensKey();
       const av = scoreCol ? a.lens_score : a[key];
@@ -340,6 +342,23 @@ const TableView = (() => {
           el("option", { value: "all" }, "Scored + not scored"),
           el("option", { value: "scored" }, "Scored only"),
           el("option", { value: "unscored" }, "Not scored")),
+      // The one order that is not a column's. A second press puts back what was there; any
+      // header pressed after it takes over, as it does from any other order.
+      T.mode === "collection"
+        ? el("button", {
+            type: "button", class: `chip${T.sort.collection.key === "book" ? " active" : ""}`,
+            title: `Book order: ${BOOK_ORDER} — the way the workbook is sorted`,
+            onclick: () => {
+              if (T.sort.collection.key === "book") {
+                T.sort.collection = T.sortBeforeBook || { ...DEFAULT_SORT.collection };
+              } else {
+                T.sortBeforeBook = T.sort.collection;
+                T.sort.collection = { key: "book", dir: "asc" };
+              }
+              render();
+            },
+          }, "Book order")
+        : null,
       el("button", { type: "button", class: "ghost",
                      onclick: () => { T.chooser = !T.chooser; render(); } }, "Columns"),
       el("button", { type: "button", class: "ghost", onclick: () => exportCSV(list) }, "CSV"));

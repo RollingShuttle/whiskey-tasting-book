@@ -2321,5 +2321,58 @@ class TestTheReviewsSayWhoseTheyAre(unittest.TestCase):
                      ".field-price input, .field-size input { width: 96px; }"):
             self.assertIn(rule, self.css)
 
+class TestBookOrderOnTheDesktop(unittest.TestCase):
+    """The workbook's own sort — distillery, type, name, year, size — offered beside the orders
+    that were there: in the Score list, and over the collection in the Table."""
+
+    def setUp(self):
+        self.app = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        self.table = (ROOT / "static" / "table.js").read_text(encoding="utf-8")
+        self.html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+
+    @staticmethod
+    def rule(src):
+        """The rule's text with its indentation taken off, so the two copies can be compared."""
+        block = src[src.index("function bookOrder(a, b) {"):]
+        block = block[:block.index("\n}") if block.index("\n}") < block.index("\n  }") else block.index("\n  }")]
+        return [line.strip() for line in block.splitlines()]
+
+    def test_the_phone_and_the_desktop_sort_by_the_same_rule(self):
+        phone = (ROOT / "docs" / "store.js").read_text(encoding="utf-8")
+        self.assertEqual(self.rule(self.app), self.rule(phone))
+        for src in (self.app, phone):
+            self.assertIn('const BOOK_ORDER = "distillery, type, name, year, size";', src)
+
+    def test_the_rule_is_distillery_type_name_year_size(self):
+        rule = " ".join(self.rule(self.app))
+        keys = ["a.distillery, b.distillery", "a.type, b.type", "a.name, b.name",
+                "a.release_year", "size(a), size(b)", "a.code"]
+        at = [rule.index(k) for k in keys]
+        self.assertEqual(at, sorted(at), "the levels are in the workbook's order")
+
+    def test_the_score_list_can_be_put_in_book_order_and_remembers_it(self):
+        self.assertIn('<option value="shelf">Shelf order</option>', self.html)
+        self.assertIn('<option value="book">Book order</option>', self.html)
+        self.assertIn('if (state.order === "book") list = [...list].sort(bookOrder);', self.app)
+        self.assertIn("localStorage.setItem(ORDER_KEY, state.order)", self.app)
+
+    def test_the_table_sorts_the_collection_in_book_order(self):
+        self.assertIn('if (key === "book") return [...list].sort((a, b) => bookOrder(a, b) * mult);',
+                      self.table)
+        self.assertIn('T.sort.collection = { key: "book", dir: "asc" };', self.table)
+        self.assertIn("T.sort.collection = T.sortBeforeBook || { ...DEFAULT_SORT.collection };", self.table,
+                      "a second press puts back the order that was there")
+
+    def test_the_rows_carry_what_the_rule_reads(self):
+        """A level the row does not carry is a blank on every row, and silently sorts nothing."""
+        client = AppCase()
+        client.setUp()
+        try:
+            row = client.c.get("/api/table/collection").get_json()["rows"][0]
+        finally:
+            client.tearDown()
+        for key in ("distillery", "type", "name", "release_year", "size_oz", "code"):
+            self.assertIn(key, row)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

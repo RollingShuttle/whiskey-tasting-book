@@ -1273,7 +1273,7 @@ class TestOneCollectionTwoViews(unittest.TestCase):
     def test_a_header_tap_still_sorts_and_turns_the_sort_round(self):
         self.assertIn("onclick: () => pick(mine ? sort : f.key)", self.table)
         pick = self.table[self.table.index("function pick("):self.table.index("function controls(")]
-        self.assertIn("if (sort === key) desc = !desc;", pick)
+        self.assertIn("if (sort === key) { if (!field(key).cmp) desc = !desc; }", pick)
         self.assertIn("paintRows();", pick, "the bar above the table names the sort, so it repaints too")
 
     def test_the_picker_is_a_real_select_the_finger_can_reach(self):
@@ -1287,7 +1287,7 @@ class TestOneCollectionTwoViews(unittest.TestCase):
         self.assertIn("font-size: 16px", rule, "smaller, and Safari zooms the page when it opens")
 
     def test_the_list_can_be_put_in_order_too(self):
-        self.assertIn('["", "Shelf order"], ["score", "Score"], ["name", "Name"]', self.js)
+        self.assertIn('["", "Shelf order"], ["book", "Book order"], ["score", "Score"], ["name", "Name"]', self.js)
         ordered = self.fn("function listSorted(")
         self.assertIn("if (!of) return spirits;", ordered, "the shelf's order is the order it arrives in")
         self.assertIn("(a === null) - (b === null)", ordered, "no value is not a low value: it goes last")
@@ -1615,12 +1615,25 @@ class TestABottleIsNamedInFull(unittest.TestCase):
     def test_equal_names_fall_in_distillery_order(self):
         self.assertIn("of: (r) => `${r.name} ${r.distillery}`.toLowerCase()", self.table)
 
-    def test_distillery_is_an_order_but_not_a_second_column(self):
-        self.assertIn('{ key: "distillery", label: "Distillery", within: "name",', self.table)
+    def test_book_order_is_an_order_but_not_a_column(self):
+        self.assertIn('{ key: "book", label: "Book order", within: "name",', self.table)
+        self.assertIn("cmp: (a, b) => Store.bookOrder(a.spirit, b.spirit)", self.table)
+        self.assertIn("if (f.cmp) return f.cmp(a, b);", self.table)
+        self.assertIn("if (sort === key) { if (!field(key).cmp) desc = !desc; }", self.table,
+                      "the book's order runs one way: turned round, its blanks would come first")
+        self.assertNotIn('key: "distillery"', self.table,
+                         "book order starts with the distillery; two such orders would be one")
         self.assertIn("return chosen.within || core.includes(chosen) ? core : core.concat([chosen]);",
                       self.table)
         self.assertIn("const mine = sort === f.key || chosen.within === f.key;", self.table,
-                      "the name's header says Distillery while the rows are in that order")
+                      "the name's header says Book order while the rows are in it")
+
+    def test_the_list_offers_book_order_beside_the_orders_it_had(self):
+        app_src = code("app.js")
+        sorts = re.findall(r'\["(\w*)", "([^"]+)"\]', app_src[app_src.index("const LIST_SORTS"):][:300])
+        self.assertEqual([label for _, label in sorts],
+                         ["Shelf order", "Book order", "Score", "Name", "Type", "Age", "Proof", "Year"])
+        self.assertIn('if (app.listSort === "book") return [...spirits].sort(Store.bookOrder);', app_src)
 
     def test_the_bottles_page_shows_the_special_note(self):
         block = self.app[self.app.index("function openDetail("):]

@@ -734,9 +734,14 @@ reads as a website someone bookmarked, and it breaks in specific ways in the bar
   The Collection's list does this on the phone and the Score picker on the desktop; the tables
   stay one row per bottle.
 - **A bottle is named in full** (26 Nov 2026). The collection table's Name cell carries the
-  distillery under the name, and the table can be ordered by distillery. A bottle's page shows
+  distillery under the name, and the table can be put in book order. A bottle's page shows
   the workbook's special note (and a sample's comment) under its facts; the desktop shows the
   same above a spirit's reviews, and on the Score sheet as before.
+- **Book order** (26 Nov 2026) is the workbook's own sort — distillery, type, name, release
+  year, size, each ascending — across bottles, miniatures and samples together. It is offered
+  beside the other orders (shelf order and the rest are unchanged) in the phone's list and table
+  and in the desktop's Score list and collection table. It sorts as Excel does: capitals ignored,
+  "10 Year" before "8 Year", blanks last.
 - **Compare opens on a table of every score.** One row per scored spirit — finished bottles and
   bar pours included, since this is the record of what was given — and across it the total, the
   medal, the flavor total (the whole card less the categories the rubric marks `flavour: false`),

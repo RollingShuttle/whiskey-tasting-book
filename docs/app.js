@@ -388,9 +388,12 @@ function shownSpirits() {
    workbook has it — and the others are the things a row shows. One direction each, the one the
    question is asked in: the best score, the oldest, the strongest, the newest. The table, which
    shows every field, sorts on every field and both ways. */
-const LIST_SORTS = [["", "Shelf order"], ["score", "Score"], ["name", "Name"], ["type", "Type"],
-                    ["age", "Age"], ["proof", "Proof"], ["year", "Year"]];
+const LIST_SORTS = [["", "Shelf order"], ["book", "Book order"], ["score", "Score"], ["name", "Name"],
+                    ["type", "Type"], ["age", "Age"], ["proof", "Proof"], ["year", "Year"]];
 function listSorted(spirits) {
+  // The workbook's own sort, run across every sheet at once (Store.bookOrder). Shelf order is
+  // each sheet as it stands, one after another; this is all of them in one sequence.
+  if (app.listSort === "book") return [...spirits].sort(Store.bookOrder);
   const numeric = (v) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v))
     ? null : Number(v));
   const of = {

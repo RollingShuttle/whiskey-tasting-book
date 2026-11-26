@@ -1158,5 +1158,67 @@ class TestTheSameBottleIsOneRow(unittest.TestCase):
         self.assertEqual(label(3), "Batch 17 · 2022 · Finished", "the Sample sheet, Special note")
         self.assertEqual(label(4), "S-5", "with nothing to tell it by, its code")
 
+@unittest.skipIf(MiniRacer is None, "pip install mini-racer to run the phone scripts for real")
+class TestBookOrder(unittest.TestCase):
+    """Store.bookOrder: the workbook's own sort — Distillery, Type, Name, Release Year, Size, each
+    ascending — run over bottles, miniatures and samples together."""
+
+    def order(self, shelf):
+        ctx = engine()
+        return json.loads(ctx.eval("JSON.stringify(" + json.dumps(shelf)
+                                   + ".sort(Store.bookOrder).map(function (s) { return s.code; }))"))
+
+    def sp(self, code, distillery="Wild Turkey", type_="Bourbon", name="8 Year", **more):
+        return dict({"code": code, "distillery": distillery, "type": type_, "name": name}, **more)
+
+    def test_distillery_first_then_type_then_name(self):
+        got = self.order([
+            self.sp("B-1", "Wild Turkey", "Rye", "Rare Breed"),
+            self.sp("B-2", "Wild Turkey", "Bourbon", "Rare Breed"),
+            self.sp("B-3", "Buffalo Trace", "Bourbon", "Weller"),
+            self.sp("B-4", "Wild Turkey", "Bourbon", "101"),
+            self.sp("B-5", "buffalo trace", "Bourbon", "Eagle Rare"),
+        ])
+        self.assertEqual(got, ["B-5", "B-3", "B-4", "B-2", "B-1"],
+                         "capitals do not matter; bourbon before rye within one house")
+
+    def test_then_the_year_then_the_size_smallest_first(self):
+        got = self.order([
+            self.sp("B-1", release_year=2021, size_ml=750),
+            self.sp("B-2", release_year=1998, size_ml=750),
+            self.sp("M-3", release_year=2021, size_ml=50),
+            self.sp("B-4", release_year=2021.0, size_ml=375),
+        ])
+        self.assertEqual(got, ["B-2", "M-3", "B-4", "B-1"])
+
+    def test_a_samples_ounces_are_measured_against_a_bottles_millilitres(self):
+        """The three sheets in one list is the point: 1 oz is 30 ml, between a mini and a half."""
+        got = self.order([
+            self.sp("B-1", size_ml=750), self.sp("S-2", sizeoz=1.0), self.sp("M-3", size_ml=20),
+            self.sp("T-4", size_oz=12.68),                     # a table row carries its own ounces
+        ])
+        self.assertEqual(got, ["M-3", "S-2", "T-4", "B-1"])
+
+    def test_a_blank_goes_last_whatever_it_is(self):
+        """As Excel has it: an empty cell is not the smallest value, it is no value."""
+        got = self.order([
+            self.sp("B-1", distillery=None), self.sp("B-2", distillery="  "),
+            self.sp("B-3", release_year=None), self.sp("B-4", release_year=2020),
+            self.sp("B-5", release_year=2020, size_ml=None), self.sp("B-6", release_year=2020, size_ml=700),
+            self.sp("B-7", name=""),
+        ])
+        self.assertEqual(got, ["B-6", "B-4", "B-5", "B-3", "B-7", "B-1", "B-2"])
+
+    def test_words_are_compared_as_excel_compares_them(self):
+        """Character by character — "10 Year" before "8 Year" — which is the book's order, and not
+        the order the Name column sorts in."""
+        got = self.order([self.sp("B-1", name="8 Year"), self.sp("B-2", name="10 Year"),
+                          self.sp("B-3", name="12 Year")])
+        self.assertEqual(got, ["B-2", "B-3", "B-1"])
+
+    def test_what_is_still_level_falls_back_to_the_code(self):
+        got = self.order([self.sp("S-10"), self.sp("S-9"), self.sp("B-2")])
+        self.assertEqual(got, ["B-2", "S-9", "S-10"])
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

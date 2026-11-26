@@ -44,11 +44,11 @@ const TableView = (() => {
     // bottles each without one. Equal names fall in distillery order for the same reason.
     { key: "name", label: "Name", core: true,
       of: (r) => `${r.name} ${r.distillery}`.toLowerCase(), show: (r) => r.name },
-    // Not a column of its own — the distillery is already in the name's cell — but an order
-    // worth having: every bottle of one house together. `within` says whose cell shows it.
-    { key: "distillery", label: "Distillery", within: "name",
-      of: (r) => (r.distillery ? `${r.distillery} ${r.name}`.toLowerCase() : null),
-      show: (r) => r.distillery },
+    // Not a column of its own but an order: the workbook's sort — distillery, type, name, year,
+    // size — so every bottle of one house stands together as it does in the book. `within` says
+    // whose header names it, and `cmp` that it is a whole comparison rather than one value.
+    { key: "book", label: "Book order", within: "name",
+      cmp: (a, b) => Store.bookOrder(a.spirit, b.spirit), show: (r) => r.name },
     { key: "year", label: "Year", core: true, num: true,
       of: (r) => r.year, show: (r) => (r.year === null ? "—" : r.year) },
     { key: "type", label: "Type", core: true,
@@ -106,6 +106,7 @@ const TableView = (() => {
       floating the blanks to the top of an ascending sort would bury everything that has a value. */
   function compare(a, b) {
     const f = field(sort);
+    if (f.cmp) return f.cmp(a, b);        // the book's order runs one way; its blanks go last
     const x = f.of(a), y = f.of(b);
     if ((x === null || x === undefined || x === "") && (y === null || y === undefined || y === "")) return tieBreak(a, b);
     if (x === null || x === undefined || x === "") return 1;
@@ -132,7 +133,7 @@ const TableView = (() => {
       numbers from the top, words from A. The collection repaints (app.js, `paintRows`): the bar
       above the table names the sort too. */
   function pick(key) {
-    if (sort === key) desc = !desc;
+    if (sort === key) { if (!field(key).cmp) desc = !desc; }
     else { sort = key; desc = !!field(key).num; }
     paintRows();
   }
@@ -190,8 +191,11 @@ const TableView = (() => {
     fill(host,
       el("div", { class: "ptable-wrap" }, el("table", { class: "ptable" }, el("thead", {}, head), body)),
       el("div", { class: "chart-basis" },
-        `${list.length} shown, sorted by ${field(sort).label.toLowerCase()}`
-        + (field(sort).num ? (desc ? ", highest first" : ", lowest first") : (desc ? ", Z to A" : ", A to Z"))
+        `${list.length} shown, `
+        + (field(sort).cmp
+          ? `in book order (${Store.BOOK_ORDER})`
+          : `sorted by ${field(sort).label.toLowerCase()}`
+            + (field(sort).num ? (desc ? ", highest first" : ", lowest first") : (desc ? ", Z to A" : ", A to Z")))
         + " · scores are under Compare"));
   }
 

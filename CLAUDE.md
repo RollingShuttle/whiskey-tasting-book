@@ -72,7 +72,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 775 tests, all passing
+python -m unittest discover -s tests    # 787 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -341,14 +341,28 @@ them; they are ignored.
 **A bottle is named in full, and its page shows the workbook's note** (26 Nov 2026). The phone
 table's Name cell carries the distillery under the name (`.t-title` / `.t-sub` in
 `docs/table.js`) — "8 Year" and "10 Year" are a dozen bottles each without one. The columns
-stand **code, name, year, type, proof, n** (the owner's order; it is the order of `FIELDS`). **Distillery**
-is an order in the sort picker but not a second column: its field says `within: "name"`, and the
-name's header reads "Distillery" while the rows are in that order. The bottle's page on the phone
+stand **code, name, year, type, proof, n** (the owner's order; it is the order of `FIELDS`). **Book order**
+is an order in the sort picker but not a column: its field says `within: "name"`, and the name's
+header reads "Book order" while the rows are in it. The bottle's page on the phone
 (`openDetail`) shows **Special note** — `Store.specialNote(s)`, the Sample sheet's
 `special_note` or the Bottle and Miniature sheets' `notes` — and the Sample sheet's **Comment**.
 On the desktop the Score sheet already showed these ("From the collection"); the reviews of one
 spirit now open under a card saying whose they are (`spiritCard` in `static/table.js`), shown
 only while every row on screen is that spirit's.
+
+**Book order is the workbook's own sort** (26 Nov 2026): Distillery, then Type, then Name, then
+Release Year, then Size, each ascending — the Sort dialog the owner keeps every sheet in — run
+across bottles, miniatures and samples at once. It is one more order beside the ones that were
+there, never a replacement: **Shelf order** is each sheet as it stands, one after another. The
+rule is `bookOrder(a, b)`, kept **word for word** in `docs/store.js` (`Store.bookOrder`, run in
+V8) and `static/app.js`; a test compares the two texts. It sorts as Excel does — words without
+regard to capitals and character by character ("10 Year" before "8 Year", unlike the Name
+column), a blank last whatever it is, a sample's ounces measured against a bottle's millilitres
+— and it runs one way only, because turned round its blanks would come first. It is offered in
+the phone's List (`LIST_SORTS`) and Table (a `FIELDS` entry with `cmp`), the desktop's Score
+list (`#picker-order`, remembered in `localStorage`) and the desktop Table's Collection (a chip
+that sets `T.sort.collection.key = "book"`; a second press restores the order before it). If
+the workbook's sort changes, change the function in both files and `BOOK_ORDER` beside it.
 
 **A class name built in code is invisible to a search for it.** `static/style.css`'s
 `.field-date` / `-venue` / `-price` / `-size` are applied as `` `field-${key}` `` in

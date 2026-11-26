@@ -594,6 +594,26 @@ const Store = (() => {
     return { rec, path };
   }
 
+  /* Book order: the way the workbook's own sheets are sorted — Distillery, then Type, then Name,
+     then Release Year, then Size, each ascending — so bottles, miniatures and samples can be read
+     in one list in the order the book keeps each of them. As Excel sorts: words without regard to
+     capitals and character by character ("10 Year" before "8 Year"), numbers smallest first, and
+     a blank last whatever it is. What is still level falls back to the code. The size is in ml;
+     a sample's is kept in ounces, and a table row carries its own ounces. */
+  const BOOK_ORDER = "distillery, type, name, year, size";
+  function bookOrder(a, b) {
+    const blank = (v) => v === null || v === undefined || String(v).trim() === "";
+    const words = (x, y) => (blank(x) || blank(y) ? blank(x) - blank(y)
+      : String(x).trim().localeCompare(String(y).trim(), "en", { sensitivity: "base" }));
+    const number = (v) => (blank(v) || !Number.isFinite(Number(v)) ? null : Number(v));
+    const numbers = (x, y) => (x === null || y === null ? (x === null) - (y === null) : x - y);
+    const ounces = (s) => number(s.sizeoz ?? s.size_oz);
+    const size = (s) => number(s.size_ml) ?? (ounces(s) === null ? null : ounces(s) * 29.5735);
+    return words(a.distillery, b.distillery) || words(a.type, b.type) || words(a.name, b.name)
+      || numbers(number(a.release_year), number(b.release_year)) || numbers(size(a), size(b))
+      || String(a.code || "").localeCompare(String(b.code || ""), "en", { numeric: true });
+  }
+
   // -- one name, several bottles ----------------------------------------------
   // The shelf holds the same whiskey more than once: a second bottle bought, another year's
   // release, three samples of one thing. Same distillery and same name is the same bottle for
@@ -737,6 +757,7 @@ const Store = (() => {
     queue, enqueue, drop, noteFailure, queueCount,
     cards, cardsFor, addCard, markSent, reviseCard, moveCard, deleteCard, buried,
     groupKey, groupSpirits, memberLabel, specialNote, publishedCareer,
+    bookOrder, BOOK_ORDER,
     meta, setMeta, restoreFromNative, lastWriteError: () => lastWriteError,
     submitScorecard, submitPending, submitEncounter,
     encounters, addEncounter, asSpirit,

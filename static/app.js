@@ -22,6 +22,26 @@ const accentFor = (t) => TYPE_ACCENT[t] || "var(--muted)";
     the time. The vocabulary lives in collection.py; this only reads the verdict it derived. */
 const goneSpirit = (s) => s.owned === false && !!s.status;
 
+/* Book order: the way the workbook's own sheets are sorted — Distillery, then Type, then Name,
+   then Release Year, then Size, each ascending — so bottles, miniatures and samples can be read
+   in one list in the order the book keeps each of them. As Excel sorts: words without regard to
+   capitals and character by character ("10 Year" before "8 Year"), numbers smallest first, and
+   a blank last whatever it is. What is still level falls back to the code. The size is in ml;
+   a sample's is kept in ounces, and a table row carries its own ounces. */
+const BOOK_ORDER = "distillery, type, name, year, size";
+function bookOrder(a, b) {
+  const blank = (v) => v === null || v === undefined || String(v).trim() === "";
+  const words = (x, y) => (blank(x) || blank(y) ? blank(x) - blank(y)
+    : String(x).trim().localeCompare(String(y).trim(), "en", { sensitivity: "base" }));
+  const number = (v) => (blank(v) || !Number.isFinite(Number(v)) ? null : Number(v));
+  const numbers = (x, y) => (x === null || y === null ? (x === null) - (y === null) : x - y);
+  const ounces = (s) => number(s.sizeoz ?? s.size_oz);
+  const size = (s) => number(s.size_ml) ?? (ounces(s) === null ? null : ounces(s) * 29.5735);
+  return words(a.distillery, b.distillery) || words(a.type, b.type) || words(a.name, b.name)
+    || numbers(number(a.release_year), number(b.release_year)) || numbers(size(a), size(b))
+    || String(a.code || "").localeCompare(String(b.code || ""), "en", { numeric: true });
+}
+
 /* One name, several bottles. The shelf holds the same whiskey more than once — a second bottle,
    another year's release, three samples of one thing — and same distillery with the same name is
    the same bottle for showing. The sheet is part of the key, so a bottle and a sample of it are
@@ -67,6 +87,7 @@ const state = {
   filter: "all",
   query: "",            // what is typed in the picker's search box — see showPicker
   openGroups: new Set(), // same-named bottles whose row in the picker is opened out
+  order: "shelf",        // the picker's order: "shelf" (each sheet as it stands) | "book"
   view: "score",        // "score" | "table" | "compare" | "analysis"
   quick: null,          // Quick Entry rows waiting on the workbook
   pending: null,        // new-bottle requests waiting for approval
@@ -564,9 +585,19 @@ function showView(v) {
 }
 
 // ---------------------------------------------------------------- picker
+const ORDER_KEY = "wtb.pickerOrder";
 function buildPicker() {
   document.getElementById("picker-input").addEventListener("input", (e) => {
     state.query = e.target.value;
+    renderResults();
+  });
+  // Which order the list is in is a preference, so it is kept between visits.
+  const order = document.getElementById("picker-order");
+  try { state.order = localStorage.getItem(ORDER_KEY) === "book" ? "book" : "shelf"; } catch { /* private mode */ }
+  order.value = state.order;
+  order.addEventListener("change", () => {
+    state.order = order.value;
+    try { localStorage.setItem(ORDER_KEY, state.order); } catch { /* it still applies until closed */ }
     renderResults();
   });
   document.querySelectorAll(".picker-filters .chip").forEach((c) =>
@@ -625,6 +656,9 @@ function renderResults() {
       return terms.every((t) => hay.includes(t));
     });
   }
+  // Shelf order is the list as the workbook has it, one sheet after another. Book order is the
+  // workbook's own sort run across all of them at once.
+  if (state.order === "book") list = [...list].sort(bookOrder);
   // Every match is rendered. This used to stop at 60, which silently hid two thirds of a
   // 375-bottle collection: the list simply ended at B-60 with nothing to say it had. The count
   // below is the guard against that returning unnoticed.

@@ -61,6 +61,13 @@
           <button class="chip chip-gone" data-source="gone" type="button"
                   title="Finished or Removed bottles that have sittings">Finished</button>
         </div>
+        <!-- Shelf order is each sheet as it stands, one after another. Book order is the
+             workbook's own sort (distillery, type, name, year, size) across all of them. -->
+        <select id="picker-order" class="t-select" aria-label="Order of the list"
+                title="Book order: distillery, type, name, year, size — the way the workbook is sorted">
+          <option value="shelf">Shelf order</option>
+          <option value="book">Book order</option>
+        </select>
       </div>
       <ul id="picker-results" class="picker-results" role="listbox" aria-label="Spirits"></ul>
     </section>
