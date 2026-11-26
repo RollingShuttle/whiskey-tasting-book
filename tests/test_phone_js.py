@@ -1063,6 +1063,23 @@ class TestTheOldBottleLetsGoAtOnce(unittest.TestCase):
         got = self.career()
         self.assertEqual((got["score"], got["medal"]), (89.5, "Diamond"))
 
+    def test_the_pcs_figure_carries_its_exact_sum_for_cards_added_on_top(self):
+        """81.0 is a rounded mean; 243 is what three sittings actually came to."""
+        self.assertEqual(self.career()["sum"], 243)
+        self.ctx.eval("Store.moveCard(" + json.dumps(self.listed[0]) + ", 'B-2')")
+        self.assertEqual(self.career()["sum"], 151)
+
+    def test_a_mean_is_rounded_half_up_on_whole_numbers(self):
+        """The same answers as rubric.half_up, including the ones a float gets wrong."""
+        mean = lambda total, n, places=1: self.ctx.eval("Store.meanHalfUp(%d, %d, %d)" % (total, n, places))  # noqa: E731
+        self.assertEqual(mean(341, 4), 85.3, "85.25")
+        self.assertEqual(mean(343, 4), 85.8, "85.75")
+        self.assertEqual(mean(1681, 20), 84.1, "84.05, which times ten is 840.4999… as a float")
+        self.assertEqual(mean(805, 9), 89.4, "89.44…")
+        self.assertEqual(mean(179, 2), 89.5)
+        self.assertEqual(mean(179, 2, 0), 90, "and to a whole number, for a band")
+        self.assertEqual(mean(66, 1), 66)
+
     def test_a_card_moved_back_is_the_pcs_to_count_again(self):
         self.ctx.eval("Store.moveCard(" + json.dumps(self.listed[0]) + ", 'B-2');"
                       "Store.moveCard(Store.cardsFor('B-2')[0], 'B-1');")

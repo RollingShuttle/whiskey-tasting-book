@@ -198,7 +198,7 @@ class Rubric:
             result["categories"][c.key] = {
                 "label": c.label,
                 "max": c.max,
-                "mean": round(exact, self.decimals),   # for display
+                "mean": half_up(exact, self.decimals),   # for display
                 "mean_exact": exact,                   # for arithmetic
                 "min": min(vals),
                 "max_seen": max(vals),
@@ -208,7 +208,10 @@ class Rubric:
 
         totals = [self.total(s["scores"]) for s in counted]
         mean_total_exact = sum(totals) / len(totals)
-        mean_total = round(mean_total_exact, self.decimals)
+        # Half-up here too, not round(): a mean of 85.25 is shown as 85.3. round() gave 85.2
+        # (banker's rounding, the thing half_up exists to avoid), while the page's own sum of the
+        # category means and the phone both said 85.3 — one bottle, two scores.
+        mean_total = half_up(mean_total_exact, self.decimals)
         result["mean_total"] = mean_total
         result["mean_total_exact"] = mean_total_exact
         result["medal"] = self.medal(mean_total)
@@ -224,7 +227,7 @@ class Rubric:
 
         # Displayed values can drift by up to 0.05 per category. Surface it rather than hide it,
         # so the UI knows not to render an addable column total.
-        display_sum = round(sum(v["mean"] for v in result["categories"].values()), self.decimals)
+        display_sum = half_up(sum(v["mean"] for v in result["categories"].values()), self.decimals)
         result["display_sum"] = display_sum
         result["display_sum_matches"] = abs(display_sum - mean_total) < 10 ** -self.decimals
         return result

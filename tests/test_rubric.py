@@ -156,10 +156,10 @@ class TestTheRealCards(unittest.TestCase):
 
     def test_displayed_category_means_may_not_add_up_and_we_know_it(self):
         """Ten independent roundings drift. With all four sittings the displayed columns
-        sum to 86.0 while the true mean of totals is 85.8. The UI must not print a column total."""
+        sum to 86.1 while the true mean of totals is 85.8. The UI must not print a column total."""
         c = self.r.career([dict(s, include_in_average=True) for s in EXAMPLE_SITTINGS])
         self.assertEqual(c["mean_total"], 85.8)
-        self.assertEqual(c["display_sum"], 86.0)
+        self.assertEqual(c["display_sum"], 86.1)
         self.assertFalse(c["display_sum_matches"])
 
         counted = self.r.career(EXAMPLE_SITTINGS)                    # the 3-sitting case happens to agree
@@ -225,6 +225,37 @@ class TestWhichCategoriesAreFlavour(unittest.TestCase):
         self.assertTrue(all("flavour" in c for c in cats), "every category says which it is")
         self.assertEqual([c["key"] for c in cats if not c["flavour"]], ["aesthetics", "value"])
         self.assertEqual(sum(c["max"] for c in cats if c["flavour"]), 90)
+
+class TestWhatIsShownIsRoundedHalfUpToo(unittest.TestCase):
+    """The medal was always half-up; the score beside it was round(), which is banker's rounding.
+    Four sittings averaging 66.25 read 66.2 on the bottle while the table's own sum of its
+    category means, and the phone, read 66.3."""
+
+    def setUp(self):
+        self.r = load_rubric()
+
+    def career(self, *totals_over_66):
+        cards = [dict(EXAMPLE_CARD, flavor=EXAMPLE_CARD["flavor"] + extra) for extra in totals_over_66]
+        return self.r.career([{"scores": c, "include_in_average": True} for c in cards])
+
+    def test_a_quarter_rounds_up(self):
+        c = self.career(0, 0, 0, 1)                          # 66, 66, 66, 67
+        self.assertEqual(c["mean_total_exact"], 66.25)
+        self.assertEqual(c["mean_total"], 66.3)
+        self.assertEqual(c["categories"]["flavor"]["mean"], 12.3, "12.25, the same way")
+
+    def test_three_quarters_is_unchanged(self):
+        self.assertEqual(self.career(0, 1, 1, 1)["mean_total"], 66.8)
+
+    def test_a_twentieth_is_not_left_to_the_float(self):
+        """1321 / 20 is 66.05 — which a float holds as 66.0499999…"""
+        self.assertEqual(self.career(*([0] * 19 + [1]))["mean_total"], 66.1)
+
+    def test_the_medal_is_taken_from_the_score_as_shown(self):
+        """89.45 is shown as 89.5, and 89.5 is Diamond: the chip agrees with the number beside it."""
+        self.assertEqual(half_up(89.45, 1), 89.5)
+        self.assertEqual(self.r.medal(half_up(89.45, 1)), "Diamond")
+        self.assertEqual(self.r.medal(half_up(89.44, 1)), "Gold")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -1957,7 +1957,7 @@ class TestCompareOpensOnEveryScore(AppCase):
         """Ten rounded means added up drift by as much as half a point (SPEC.md §3.6)."""
         src = self.source()
         cols = src[src.index("function scoreColumns("):src.index("const rowName")]
-        self.assertIn("Math.round(flavour.reduce((a, k) => a + mean(r, k), 0) * 10) / 10", cols)
+        self.assertIn("halfUp1(flavour.reduce((a, k) => a + mean(r, k), 0))", cols)
         self.assertIn("flavour.every((k) => mean(r, k) !== null)", cols,
                       "a spirit missing a category has no flavor total, not a low one")
         self.assertIn("flavour.length && flavour.length < cats.length", cols)
@@ -2258,6 +2258,34 @@ class TestRankByHasTwoPresets(unittest.TestCase):
         cats = rubric_mod.Rubric(cfg["rubric"]).as_config()["categories"]
         self.assertEqual(sum(c["max"] for c in cats if c["flavour"]), 90)
         self.assertEqual(sum(c["max"] for c in cats), 100)
+
+class TestNoSettingDoesNothing(unittest.TestCase):
+    """config.example.yaml is what a new machine's settings are written from. It carried an `auth`
+    block left from the browser sign-in and an `aggregate` block offering a choice of rounding —
+    neither read by anything. A setting that does nothing is a promise the app does not keep."""
+
+    def setUp(self):
+        import yaml
+        self.example = yaml.safe_load((ROOT / "config.example.yaml").read_text(encoding="utf-8"))
+        self.code = "\n".join(p.read_text(encoding="utf-8")
+                              for p in list(ROOT.glob("*.py")) + list((ROOT / "tools").glob("*.py")))
+
+    def test_every_section_is_one_the_app_reads(self):
+        for section in self.example:
+            self.assertRegex(self.code, r"""cfg(\.get\(|\[)\s*["']%s["']""" % section,
+                             "%s: is in the template and nothing reads it" % section)
+
+    def test_every_setting_in_a_section_is_named_somewhere_in_the_code(self):
+        for section, body in self.example.items():
+            for key in (body if isinstance(body, dict) else {}):
+                self.assertRegex(self.code, r"""["']%s["']""" % key, "%s.%s is never read" % (section, key))
+
+    def test_the_desktop_rounds_the_way_the_server_does(self):
+        """One helper, used for every figure the page sums itself."""
+        app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("const halfUp1 = (v) => Math.round(Math.round(v * 1000) / 100) / 10;", app_js)
+        self.assertIn("return halfUp1(sum);", app_js)
+        self.assertNotIn("Math.round(sum * 10) / 10", app_js)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

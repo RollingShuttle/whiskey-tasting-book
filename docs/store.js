@@ -482,6 +482,14 @@ const Store = (() => {
 
   /** Bands come high-to-low from the rubric; half-up is irrelevant here because a single card's
       total is always a whole number. */
+  /** The mean of whole-number totals, to `places` decimals, half-up — worked on whole numbers
+      so it is rubric.half_up to the digit. Multiplying a float by ten and rounding is not: 84.05
+      becomes 840.4999… and drops to 84.0 where the PC shows 84.1. */
+  function meanHalfUp(sum, n, places = 1) {
+    const k = 10 ** places;
+    return Math.floor((2 * k * sum + n) / (2 * n)) / k;
+  }
+
   function medalFor(total, rub) {
     for (const b of rub.bands) if (total >= b.min) return b.name;
     return rub.bands[rub.bands.length - 1].name;
@@ -642,22 +650,30 @@ const Store = (() => {
     const held = new Map(cards().map((c) => [c.tasting_id, c.spirit_id]));
     const left = (t) => dead.has(t.tasting_id)
       || (held.has(t.tasting_id) && held.get(t.tasting_id) !== code);
-    if (!listed.some(left)) return pc;
     const has = (v) => v !== null && v !== undefined;
     const rest = listed.filter((t) => !left(t) && t.include_in_average !== false && has(t.total));
+    if (!listed.some(left)) {
+      // Nothing has left: the PC's own figure, with the exact sum behind it when the list of
+      // sittings accounts for every one it counted.
+      return rest.length === pc.n ? { ...pc, sum: rest.reduce((a, t) => a + t.total, 0) } : pc;
+    }
     if (!rest.length) return null;
     const mean = (vals) => vals.reduce((a, b) => a + b, 0) / vals.length;
     const totals = rest.map((t) => t.total);
+    const sum = totals.reduce((a, b) => a + b, 0);
+    const score = meanHalfUp(sum, rest.length);
     const categories = {};
     for (const cat of ((rub && rub.categories) || [])) {
       const vals = rest.map((t) => (t.scores || {})[cat.key]).filter(has);
       if (vals.length) categories[cat.key] = mean(vals);
     }
     return {
-      score: Math.round(mean(totals) * 10) / 10,
-      // From the mean itself, rounded half-up — not from the one-decimal figure shown.
-      medal: rub ? medalFor(Math.round(mean(totals)), rub) : pc.medal,
+      score,
+      // From the score as it is shown, rounded half-up — rubric.medal's rule: a bottle that
+      // reads 89.5 is Diamond, whatever the digits behind it.
+      medal: rub ? medalFor(Math.round(score), rub) : pc.medal,
       n: rest.length,
+      sum,                    // exact, so a card folded in on top is not added to a rounded mean
       best: Math.max(...totals),
       worst: Math.min(...totals),
       categories,
@@ -721,6 +737,6 @@ const Store = (() => {
     meta, setMeta, restoreFromNative, lastWriteError: () => lastWriteError,
     submitScorecard, submitPending, submitEncounter,
     encounters, addEncounter, asSpirit,
-    stamp, rand4, medalFor, today, localTime, localClock,
+    stamp, rand4, medalFor, meanHalfUp, today, localTime, localClock,
   };
 })();

@@ -19,19 +19,6 @@ paths:
   backups: "./data/backups"
   backup_keep: 30
 
-# Microsoft Graph — phone client only. The PC app reads the synced folder directly and needs none
-# of this. The client ID is a public identifier from your own Entra app registration (guide/SETUP.md
-# Part 3), not a secret — but fill in your own here rather than committing it.
-auth:
-  client_id: "YOUR_CLIENT_ID"
-  # "Personal accounts only" registration -> consumers authority, NOT common.
-  authority: "https://login.microsoftonline.com/consumers"
-  scopes:
-    - "Files.ReadWrite.AppFolder"     # the ONLY Graph scope. Never widen this.
-  redirect_uri_dev: "http://localhost:8765"
-  redirect_uri_prod: ""               # filled in once the static host exists
-  # A personal-accounts app authenticates against /consumers; no tenant/directory ID is needed.
-
 server:
   host: "127.0.0.1"
   port: 8765
@@ -103,8 +90,3 @@ rubric:
     - {name: Silver,   min: 70}
     - {name: Bronze,   min: 60}
     - {name: No Medal, min: 0}
-
-aggregate:
-  # Career score = mean of counted sittings, rounded half-up for the medal band. SPEC.md §3.6
-  rounding: half_up
-  show_range: true

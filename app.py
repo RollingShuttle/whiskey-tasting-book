@@ -295,7 +295,7 @@ def _group_scores(points, key):
     for k, ps in groups.items():
         scores = [p["score"] for p in ps]
         out.append({"key": k, "spirits": len(ps), "sittings": sum(p["n"] for p in ps),
-                    "mean": round(sum(scores) / len(scores), 1),
+                    "mean": rubric_mod.half_up(sum(scores) / len(scores), 1),
                     "min": min(scores), "max": max(scores)})
     return sorted(out, key=lambda g: (-g["mean"], -g["spirits"]))
 
@@ -493,7 +493,7 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
 
         # One mean per month over every counted sitting. This measures the scorer rather than the
         # spirit, and the phone cannot derive it: it holds its own cards, not the whole journal.
-        calibration = [{"month": m, "mean": round(sum(v) / len(v), 1), "n": len(v)}
+        calibration = [{"month": m, "mean": rubric_mod.half_up(sum(v) / len(v), 1), "n": len(v)}
                        for m, v in sorted(months.items())]
         # When these figures were worked out. The phone adds its own cards on top of them, and
         # without a cutoff it cannot tell a card the PC has already counted from one it has not —
@@ -998,7 +998,7 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
                 if len(month) == 7 and t.get("total") is not None:
                     months.setdefault(month, []).append(t["total"])
 
-        calibration = [{"month": m, "mean": round(sum(v) / len(v), 1), "n": len(v)}
+        calibration = [{"month": m, "mean": rubric_mod.half_up(sum(v) / len(v), 1), "n": len(v)}
                        for m, v in sorted(months.items())]
 
         return jsonify({

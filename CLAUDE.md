@@ -72,7 +72,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 753 tests, all passing
+python -m unittest discover -s tests    # 765 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -319,6 +319,24 @@ beside "Everything 100", and no flavor total on the phone that PC published for.
 defaults `aesthetics` and `value` to not-flavour (`NOT_FLAVOUR_BY_DEFAULT`); a category that
 says is believed. The template is fixed too. After updating such a PC, press Refresh so the
 phone's `rubric.json` is published with the marks.
+
+**One rounding rule, both halves** (26 Nov 2026). The score shown is the mean rounded
+**half-up to one decimal**, and the medal comes from that shown score rounded half-up again
+(`rubric.medal`) — so a bottle reading 89.5 is Diamond. `rubric.career` used `round()` for the
+shown score, which is banker's rounding: four sittings averaging 85.25 read 85.2 on the bottle
+while the table's sum of its own category means, and the phone, read 85.3. It is `half_up`
+everywhere now, as are the calibration and group means in `app.py`. In the browser a float times
+ten is not safe either (84.05 → 840.4999…): the desktop sums through `halfUp1` in
+`static/app.js`, and the phone through `Store.meanHalfUp(sum, n)`, which works on whole numbers —
+`Store.publishedCareer` hands back the PC's exact `sum` whenever the published sittings account
+for every one it counted, so a card folded in on top is not added to a rounded mean. Do not write
+`Math.round(x * 10) / 10` for a score; a test forbids it on the phone.
+
+**`config.example.yaml` holds only what something reads.** Its `auth` block (left from the
+browser sign-in; the client ID lives in `docs/config.js`) and its `aggregate` block (a choice of
+rounding that nothing honoured) are gone, and `tests/test_app.py` fails if a section or a setting
+appears in the template that no module names. A machine's own `config.yaml` may still carry
+them; they are ignored.
 
 `tools/demo_app.py` runs the desktop app on invented data in a temporary folder (a collection, a
 journal, a bar pour, a finished bottle; a master path that does not exist), served from `static/`

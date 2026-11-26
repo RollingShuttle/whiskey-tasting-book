@@ -4,7 +4,10 @@
    a list of pours with one active. SPEC.md §3, §4.1, §5, §10. */
 "use strict";
 
-const ML_PER_OZ = 29.5735;
+/** To one decimal, half-up — the rule rubric.half_up keeps on the server. These are means of
+    whole numbers, and the arithmetic leaves noise in the last place: 84.05 arrives as 84.0499999…
+    and would drop to 84.0. The noise is rounded away three places down first. */
+const halfUp1 = (v) => Math.round(Math.round(v * 1000) / 100) / 10;
 
 // Category accent by Type — 3px left edge on the card (SPEC.md §5).
 const TYPE_ACCENT = {
@@ -274,7 +277,7 @@ function lensScore(source, keys) {
     if (v === null || v === undefined) return null;
     sum += v;
   }
-  return Math.round(sum * 10) / 10;
+  return halfUp1(sum);
 }
 
 // ---------------------------------------------------------------- pending bottles

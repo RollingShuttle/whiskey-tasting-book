@@ -1567,5 +1567,29 @@ class TestMovingASittingAndGatheringBottles(unittest.TestCase):
         self.assertIn(".row.group.open .chev { transform: rotate(90deg); }", self.css)
         self.assertIn(".row.member { margin-left: 18px;", self.css)
 
+class TestThePhoneRoundsAsThePcDoes(unittest.TestCase):
+    """One bottle must not read 85.2 on the desktop and 85.3 on the phone. Both round half-up; the
+    phone does it on whole numbers (Store.meanHalfUp, run in test_phone_js.py) wherever it has the
+    sittings' own totals to add up."""
+
+    def setUp(self):
+        self.js = code("app.js")
+        block = self.js[self.js.index("function careerFor("):]
+        self.career = block[:block.index("\nfunction ")]
+
+    def test_a_folded_score_is_summed_exactly_where_the_pc_listed_its_sittings(self):
+        self.assertIn("Store.meanHalfUp((fromPc?.sum || 0) + mine, n)", self.career)
+        self.assertIn("halfUp1((fromPc.score * pcN + mine) / n)", self.career,
+                      "an older PC publishes no list; its rounded mean is all there is")
+
+    def test_the_medal_is_taken_from_the_score_as_shown(self):
+        self.assertIn("Store.medalFor(Math.round(score), app.rubric)", self.career)
+        self.assertIn("medal: rub ? medalFor(Math.round(score), rub) : pc.medal", code("store.js"))
+
+    def test_nothing_rounds_a_score_by_multiplying_a_float_by_ten(self):
+        for name in ("app.js", "store.js"):
+            self.assertNotRegex(code(name), r"Math\.round\([^;\n]*\* 10\) / 10",
+                                "%s: use Store.meanHalfUp or halfUp1" % name)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

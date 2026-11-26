@@ -457,11 +457,6 @@ select:focus { outline: 2px solid var(--brass-bright); border-color: transparent
 
 /* Per-sitting actions on the detail screen. 44 px targets, like everything else you tap. */
 .qrow.sitting { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; }
-.linkish {
-  background: none; border: 0; color: var(--brass-bright); font-size: 0.78rem;
-  min-height: 44px; padding: 0 4px; text-decoration: underline;
-}
-.linkish.danger { color: #C97A6A; }
 
 /* The bar between the collection's filters and its rows: the view on the left, that view's
    own choices on the right. */

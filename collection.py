@@ -22,7 +22,7 @@ import os
 import re
 import sys
 import zipfile
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import openpyxl

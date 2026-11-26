@@ -1,14 +1,11 @@
 # Setup — do this before the build starts
 
-Roughly 35 minutes across your PC and your iPhone. Nothing here installs a server or costs money.
+Roughly 25 minutes on your PC. Nothing here installs a server or costs money.
 Work through it in order; Part 3 is the only fiddly one.
 
-> **22 Nov 2026 — the phone is the iPhone app, and the web version is retired.** This guide was
-> written when the phone client was a web page. What it says about the Microsoft account and the
-> app registration still holds. What it says about a **Single-page application** redirect URI,
-> about **hosting** the phone app, and about installing it through **Safari** does not: none of
-> that is needed any more. The app's own redirect is a different kind of entry, described in
-> `ios/README.md`; the Single-page application entry can be deleted from the registration.
+> **The phone is the iPhone app** (since 22 Nov 2026). It reaches OneDrive through the
+> registration made in Part 3; the app's own redirect entry is added afterwards, as
+> `ios/README.md` describes. There is no web version to host or install.
 
 ---
 
@@ -69,11 +66,12 @@ This is what lets the phone reach OneDrive without a server, and what makes
    *Single tenant only*, *Multiple Entra ID tenants*, *Any Entra ID Tenant + Personal Microsoft
    accounts*, and *Personal accounts only*. Take the last one.
 
-   Consequence for the build: the MSAL authority becomes
+   Consequence for the build: the sign-in authority becomes
    `https://login.microsoftonline.com/consumers`, not `common`.
-5. **Redirect URI:** change the platform dropdown to **Single-page application (SPA)** — **not**
-   "Web". SPA is what enables PKCE without a client secret.
-   Enter `http://localhost:8765` for now. We add the real hosted URL once it exists.
+5. **Redirect URI:** leave it empty here. The iPhone app's redirect is added after the
+   registration exists — **Authentication → Add a platform → iOS / macOS** — and
+   `ios/README.md` has the exact values. Not *Web* (that expects a secret) and not
+   *Single-page application* (that was the retired web version's, and can be deleted).
 6. Click **Register**.
 7. On the overview page, copy the **Application (client) ID** — a GUID like
    `3f9a2c14-…`. Save it. **This is not a secret**; it is safe to paste to me.
@@ -82,8 +80,8 @@ This is what lets the phone reach OneDrive without a server, and what makes
    **`Files.ReadWrite.AppFolder`** → **Add permissions**.
    - You may see `User.Read` already there. Leave it, it is harmless.
    - No admin consent button is needed for a personal account.
-9. **Do not create a client secret.** A single-page app must not have one, and adding one would
-   actually break the sign-in flow we are using.
+9. **Do not create a client secret.** The app signs in without one, and adding one would
+   break the sign-in flow it uses.
 
 ### Two things that are not problems
 - **`OneDrive/Apps/Whiskey Tasting Book` will not exist yet.** The app folder is created the first
@@ -99,47 +97,13 @@ to your whole drive, including the collection workbook, which is precisely what 
 
 ---
 
-## Part 4 — A place to host the phone app (10 min)
+## Part 4 — iPhone
 
-Static hosting only. Nothing runs between visits; there is no server to keep alive or patch.
-
-- **Cloudflare Pages** (recommended) or **GitHub Pages**. Both free, both need a GitHub account.
-- If you do not have a GitHub account, create one now: https://github.com/signup
-- You do **not** need to create the project or repo yet. Just have the account.
-
----
-
-## Part 5 — iPhone (5 min)
-
-Nothing to install. Three things to check:
-
-1. **iOS up to date** — Settings → General → Software Update.
-2. **Use Safari to install the app.** Add to Home Screen is a Safari feature; installing from
-   Chrome on iOS does not give you the standalone app.
-3. **Settings → Apps → Safari** → confirm **Block All Cookies is OFF**. It breaks Microsoft
-   sign-in. *Prevent Cross-Site Tracking* can stay on; it does not affect us.
+The app arrives through TestFlight; `ios/README.md` covers building and sending it.
+Keep iOS up to date (Settings → General → Software Update).
 
 Optional, only if you want to open the rollup spreadsheet on the phone: the OneDrive app and Excel
 for iOS.
-
----
-
-## Known friction: you will sign in about once a day
-
-Worth knowing before it surprises you. Microsoft caps refresh tokens for browser-based apps at
-**24 hours**, and it is not adjustable. On top of that, Safari blocks the hidden-iframe trick that
-would otherwise renew silently. So roughly once a day the phone app will ask you to sign in again —
-usually a single "Continue as <you>" tap rather than typing a password, because the Microsoft session
-cookie lives inside the installed app.
-
-The important part: **this never blocks scoring.** Every scorecard writes to the phone's local
-storage the instant you submit it. Sign-in only affects *uploading*. If the token has expired while
-you are in a bar with no signal anyway, you score normally, and it all flushes the next time you
-open the app with a connection.
-
-If that daily tap turns out to annoy you, the alternative is a small always-on service holding a
-long-lived token — which is exactly the thing you said you did not want to run. My read is the tap
-is the better trade.
 
 ---
 
@@ -147,7 +111,6 @@ is the better trade.
 
 1. The **Application (client) ID** from Part 3 step 7.
 2. Whether Part 1 said **Personal** or **work/school**.
-3. Which static host you picked, and your GitHub username.
 
 ---
 

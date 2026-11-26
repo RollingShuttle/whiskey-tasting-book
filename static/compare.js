@@ -186,7 +186,7 @@ const CompareView = (() => {
     const whole = (v) => (has(v) ? String(v) : null);
     const mean = (r, key) => { const v = (r.category_means || {})[key]; return has(v) ? v : null; };
     const flavourTotal = (r) => (flavour.every((k) => mean(r, k) !== null)
-      ? Math.round(flavour.reduce((a, k) => a + mean(r, k), 0) * 10) / 10 : null);
+      ? halfUp1(flavour.reduce((a, k) => a + mean(r, k), 0)) : null);
     return [
       { key: "total", label: "Total", max: rub.max_total, of: (r) => r.career_score, show: (r) => one(r.career_score) },
       { key: "medal", label: "Medal", word: true, of: (r) => medalRank(r.medal), show: (r) => r.medal || null },
@@ -243,7 +243,7 @@ const CompareView = (() => {
       el("div", { class: "cmp-foot" },
         "One row for every spirit that has been scored, finished bottles and bar pours included. "
         + "Click a column to sort by it, and again to turn it round; click a row for its sittings. "
-        + "The flavor total leaves out the categories that are not flavour, and is summed from "
+        + "The flavor total leaves out the categories that are not flavor, and is summed from "
         + "exact means and rounded once (SPEC.md §3.6)."));
     paintScores();
   }

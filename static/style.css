@@ -32,7 +32,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.num, .cat-score, .total-num, .thresh-num { font-variant-numeric: tabular-nums; }
+.num, .cat-score, .total-num { font-variant-numeric: tabular-nums; }
 
 button { font-family: inherit; color: inherit; cursor: pointer; }
 
@@ -211,9 +211,6 @@ body.view-analysis #main { max-width: 1960px; }
   color: var(--text); font-size: 16px; padding: 8px 10px; min-width: 0;
 }
 .field input:focus { outline: 2px solid var(--brass-bright); border-color: transparent; }
-.field-date input { width: 150px; }
-.field-venue input { width: 220px; }
-.field-price input, .field-size input { width: 96px; }
 
 /* ---------------------------------------------------------------- category rows */
 .cats { margin-top: 14px; }

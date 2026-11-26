@@ -151,14 +151,21 @@ function careerFor(code) {
   const local = countedLocally(code).filter((c) => c.total !== null);
   const fromPc = publishedFor(code);
   if (!local.length) return fromPc || null;
-  const totals = local.map((c) => c.total);
+  const mine = local.reduce((a, c) => a + c.total, 0);
   const pcN = fromPc?.n || 0;
-  const pcSum = (fromPc?.score || 0) * pcN;
-  const n = pcN + totals.length;
-  const score = Math.round(((pcSum + totals.reduce((a, b) => a + b, 0)) / n) * 10) / 10;
+  const n = pcN + local.length;
+  // The PC's exact sum where its list of sittings gives one; its rounded mean times n where an
+  // older PC published no list. Either way the score is rounded half-up, as the PC rounds it.
+  const exact = !fromPc || Number.isFinite(fromPc.sum);
+  const score = exact ? Store.meanHalfUp((fromPc?.sum || 0) + mine, n)
+                      : halfUp1((fromPc.score * pcN + mine) / n);
   return { score, n, medal: app.rubric ? Store.medalFor(Math.round(score), app.rubric) : null,
            best: fromPc?.best, worst: fromPc?.worst };
 }
+
+/** To one decimal, half-up, for a figure that is not a sum of whole numbers. The noise the
+    arithmetic leaves in the last place is rounded away three places down first. */
+const halfUp1 = (v) => Math.round(Math.round(v * 1000) / 100) / 10;
 
 /** Per-category means, folded the same way and for the same reason. The lens and the comparison
     both need the parts rather than the total. */
@@ -208,7 +215,7 @@ function lensScore(source, keys) {
     if (v === null || v === undefined) return null;
     sum += v;
   }
-  return Math.round(sum * 10) / 10;
+  return halfUp1(sum);
 }
 
 function scoreCell(career) {
@@ -1340,7 +1347,7 @@ function localCalibration() {
   }
   return [...by.keys()].sort().map((month) => {
     const v = by.get(month);
-    return { month, mean: Math.round((v.reduce((x, y) => x + y, 0) / v.length) * 10) / 10, n: v.length };
+    return { month, mean: Store.meanHalfUp(v.reduce((x, y) => x + y, 0), v.length), n: v.length };
   });
 }
 
