@@ -54,8 +54,15 @@ standalone (`python tests/test_app.py`) as well as under discovery.
    Read it with `load_workbook(path, read_only=True, data_only=True)` and nothing else. New rows go
    in by the zip-level surgical append in SPEC.md §8, which fills a row that already exists inside
    the table and verifies every media part afterwards.
-2. **Journal files are immutable.** Corrections are new revision files, deletions are tombstones.
-   `write_tasting` refuses to overwrite an existing revision — leave that guard in place.
+2. **A journal file is written once and never modified, and a review is one file: its newest
+   revision** (the owner's rule since 26 Nov 2026; every revision used to be kept). A correction,
+   a move or an autosave is written as the *next* revision — `write_tasting` refuses to overwrite
+   an existing one; leave that guard in place — and only when that file is on disk and reads back
+   are the ones before it removed (`Journal.prune_tasting`). A deletion leaves a **marker**: the
+   id, the revision, `deleted`. It holds no scores and no notes, and it must stay — a phone keeps
+   the cards it scored, and the marker is what stops a late upload from putting the sitting back.
+   Never remove a review's files except through `prune_tasting` / `prune_superseded`, which will
+   not leave one with no file at all.
 3. **Every generated filename needs sub-second uniqueness.** See SPEC.md §0. This bug appeared
    three times; it is always silent.
 4. **The phone never reaches the collection workbook.** Its OAuth scope is
@@ -72,7 +79,7 @@ a matching `tests/test_*.py` that runs standalone.
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests    # 788 tests, all passing
+python -m unittest discover -s tests    # 796 tests, all passing
 python tools/verify_gate.py             # SPEC §7 shipping gate (reads the master)
 python collection.py                    # health report, writes nothing
 ```
@@ -266,6 +273,17 @@ waits for the PC's next Refresh. (That replaced the "still counted above" note a
 show.) A moved card counts for its new bottle until the PC lists it there, whatever the clock
 says. `careers.json` sittings now also carry `PUBLISHED_CARD_EXTRAS` (flight, pour price, tags…),
 because the phone writes a whole card when it revises or moves one it did not score.
+
+**One file per review** (26 Nov 2026). The journal had come to 243 files for 51 reviews: each
+autosave of a card being filled in was a revision, and so was every correction, move and
+deletion. The owner asked for the redundancy gone, and chose "newest version only" over "moves
+and deletions only" knowing that an earlier version of a card can then no longer be gone back
+to. `store.write_tasting`, `move_tasting` and `delete_tasting` each call `prune_tasting` after
+their own write; `POST /api/refresh` calls `prune_superseded()` (and reports `pruned`), which is
+what clears what a **phone** leaves behind — it uploads its new file and cannot take the old one
+away, and it was deliberately not given a delete of its own — and what cleared the journal as it
+stood. The confirmations say so now: a deletion "cannot be undone", an edit "replaces" the card.
+Sessions (flights) still keep their revisions; nobody asked about those.
 
 **The same bottle held more than once is one row** (26 Nov 2026): same distillery and same name,
 compared without capitals or stray spaces, **per sheet** — a bottle and a sample of it are never

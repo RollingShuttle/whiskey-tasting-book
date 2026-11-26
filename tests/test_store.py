@@ -66,29 +66,45 @@ class TestLayoutAndWriting(JournalCase):
 
 class TestImmutabilityAndRevisions(JournalCase):
     def test_a_correction_is_a_new_file_not_an_edit(self):
+        """It is written as the next revision, never over the last one — and then the last one
+        goes: a review is one file, its newest."""
         first = self.j.write_tasting(spirit_id="B-19", scores=EXAMPLE_CARD, date="2026-09-08")
-        original = (self.tmp / "tastings" / f"{first['tasting_id']}-r1.json").read_text()
+        r1 = self.tmp / "tastings" / f"{first['tasting_id']}-r1.json"
 
         self.j.write_tasting(spirit_id="B-19", scores=dict(EXAMPLE_CARD, finish=8),
                              date="2026-09-08", tasting_id=first["tasting_id"])
 
-        self.assertEqual((self.tmp / "tastings" / f"{first['tasting_id']}-r1.json").read_text(),
-                         original, "revision 1 must never be modified")
-        self.assertEqual(len(list((self.tmp / "tastings").glob("*.json"))), 2)
+        self.assertFalse(r1.exists(), "the version it replaced is not kept")
+        self.assertEqual([p.name for p in (self.tmp / "tastings").glob("*.json")],
+                         [f"{first['tasting_id']}-r2.json"])
 
         live = self.j.tastings()
         self.assertEqual(len(live), 1, "only the highest revision is live")
         self.assertEqual(live[0]["revision"], 2)
         self.assertEqual(live[0]["total"], 69)
 
-    def test_tombstone_hides_but_does_not_delete(self):
-        rec = self.j.write_tasting(spirit_id="B-19", scores=EXAMPLE_CARD)
+    def test_a_deleted_sitting_leaves_a_marker_and_nothing_of_the_card(self):
+        rec = self.j.write_tasting(spirit_id="B-19", scores=EXAMPLE_CARD,
+                                   notes={"nose": "toffee", "overall": "again"})
         self.j.delete_tasting(rec["tasting_id"], reason="wrong bottle")
         self.assertEqual(self.j.tastings(), [])
-        kept = self.j.tastings(include_deleted=True)
-        self.assertEqual(len(kept), 1)
-        self.assertTrue(kept[0]["deleted"])
-        self.assertEqual(len(list((self.tmp / "tastings").glob("*.json"))), 2)
+        left = list((self.tmp / "tastings").glob("*.json"))
+        self.assertEqual([p.name for p in left], [f"{rec['tasting_id']}-r2.json"])
+        marker = json.loads(left[0].read_text(encoding="utf-8"))
+        self.assertEqual(set(marker), {"tasting_id", "revision", "deleted", "reason", "created_at"},
+                         "no scores, no notes, no bottle: a marker, not a copy")
+        self.assertTrue(marker["deleted"])
+
+    def test_the_marker_keeps_a_late_copy_from_bringing_the_sitting_back(self):
+        """A phone holds the cards it scored. One that uploads its copy after the deletion must
+        not undo it — which is the whole reason the marker stays."""
+        rec = self.j.write_tasting(spirit_id="B-19", scores=EXAMPLE_CARD)
+        late = (self.tmp / "tastings" / f"{rec['tasting_id']}-r1.json").read_text(encoding="utf-8")
+        self.j.delete_tasting(rec["tasting_id"])
+        (self.tmp / "tastings" / f"{rec['tasting_id']}-r1.json").write_text(late, encoding="utf-8")
+        self.assertEqual(self.j.tastings(), [], "the highest revision is the deletion")
+        self.assertEqual(self.j.prune_superseded(), 1, "and the next sweep takes the late copy")
+        self.assertEqual(len(list((self.tmp / "tastings").glob("*.json"))), 1)
 
     def test_two_devices_writing_at_once_do_not_collide(self):
         """Same spirit, same second, two independent writers. Second-resolution timestamps are
@@ -298,11 +314,10 @@ class TestMovingASitting(JournalCase):
     def test_a_move_is_the_next_revision_naming_the_other_spirit(self):
         first = self.card()
         r1 = self.tmp / "tastings" / f"{first['tasting_id']}-r1.json"
-        original = r1.read_text()
 
         moved = self.j.move_tasting(first["tasting_id"], "B-20")
 
-        self.assertEqual(r1.read_text(), original, "revision 1 must never be modified")
+        self.assertFalse(r1.exists(), "the copy under the bottle it left is not kept")
         self.assertEqual((moved["revision"], moved["spirit_id"], moved["moved_from"]),
                          (2, "B-20", "B-19"))
         live = self.j.tastings()
@@ -323,7 +338,8 @@ class TestMovingASitting(JournalCase):
         self.j.move_tasting(first["tasting_id"], "B-20")
         back = self.j.move_tasting(first["tasting_id"], "B-19")
         self.assertEqual((back["revision"], back["spirit_id"], back["moved_from"]), (3, "B-19", "B-20"))
-        self.assertEqual(len(list((self.tmp / "tastings").glob("*.json"))), 3)
+        self.assertEqual([p.name for p in (self.tmp / "tastings").glob("*.json")],
+                         [f"{first['tasting_id']}-r3.json"], "one file, however often it moves")
 
     def test_moving_to_where_it_already_is_writes_nothing(self):
         first = self.card()
@@ -339,6 +355,66 @@ class TestMovingASitting(JournalCase):
         with self.assertRaises(KeyError):
             self.j.move_tasting("T-never-was", "B-20")
         self.assertEqual(self.j.tastings(), [], "a tombstone must not be brought back by a move")
+
+class TestOneFilePerReview(JournalCase):
+    """A review is its newest revision and nothing else (the owner's rule, 26 Nov 2026). Before
+    it, 51 reviews had come to 243 files — most of them the autosaves a card passes through while
+    it is filled in. What a new revision replaces is removed, but only once the new one is safe."""
+
+    def files(self):
+        return sorted(p.name for p in (self.tmp / "tastings").glob("*.json"))
+
+    def test_a_card_autosaved_ten_times_is_one_file(self):
+        first = self.j.write_tasting(spirit_id="B-19", scores={"aroma": 7}, status="draft")
+        for n in range(8):
+            self.j.write_tasting(spirit_id="B-19", scores={"aroma": 7, "flavor": 10 + n},
+                                 status="draft", tasting_id=first["tasting_id"])
+        done = self.j.write_tasting(spirit_id="B-19", scores=EXAMPLE_CARD, tasting_id=first["tasting_id"])
+        self.assertEqual(done["revision"], 10, "the numbering carries on from the file that is left")
+        self.assertEqual(self.files(), [f"{first['tasting_id']}-r10.json"])
+        self.assertEqual([(t["status"], t["total"]) for t in self.j.tastings()], [("submitted", 66)])
+
+    def test_one_reviews_clean_up_does_not_touch_another(self):
+        a = self.j.write_tasting(spirit_id="B-19", scores=EXAMPLE_CARD)
+        b = self.j.write_tasting(spirit_id="B-20", scores=EXAMPLE_CARD)
+        self.j.write_tasting(spirit_id="B-19", scores=dict(EXAMPLE_CARD, body=1), tasting_id=a["tasting_id"])
+        self.assertEqual(self.files(), sorted([f"{a['tasting_id']}-r2.json", f"{b['tasting_id']}-r1.json"]))
+
+    def test_nothing_older_goes_if_the_newest_cannot_be_read(self):
+        """A review must never be left with no file. A half-arrived upload is the case: the
+        newest revision is there by name and not yet by content."""
+        rec = self.j.write_tasting(spirit_id="B-19", scores=EXAMPLE_CARD)
+        (self.tmp / "tastings" / f"{rec['tasting_id']}-r2.json").write_text("{ not json", encoding="utf-8")
+        self.assertEqual(self.j.prune_tasting(rec["tasting_id"]), 0)
+        self.assertIn(f"{rec['tasting_id']}-r1.json", self.files())
+
+    def test_nothing_older_goes_if_the_newest_is_some_other_card(self):
+        rec = self.j.write_tasting(spirit_id="B-19", scores=EXAMPLE_CARD)
+        wrong = dict(rec, tasting_id="T-someone-else", revision=2)
+        (self.tmp / "tastings" / f"{rec['tasting_id']}-r2.json").write_text(json.dumps(wrong), encoding="utf-8")
+        self.assertEqual(self.j.prune_tasting(rec["tasting_id"]), 0)
+        self.assertEqual(len(self.files()), 2)
+
+    def test_the_sweep_takes_what_arrived_from_elsewhere(self):
+        """The phone uploads its new file and leaves the old one. So did the journal, before."""
+        rec = self.j.write_tasting(spirit_id="B-19", scores=EXAMPLE_CARD)
+        other = self.j.write_tasting(spirit_id="B-20", scores=EXAMPLE_CARD)
+        for rev in (2, 3):                                   # as a phone would have left them
+            later = dict(rec, revision=rev, scores=dict(EXAMPLE_CARD, body=rev))
+            (self.tmp / "tastings" / f"{rec['tasting_id']}-r{rev}.json").write_text(
+                json.dumps(later), encoding="utf-8")
+        self.assertEqual(self.j.prune_superseded(), 2)
+        self.assertEqual(self.files(), sorted([f"{rec['tasting_id']}-r3.json",
+                                               f"{other['tasting_id']}-r1.json"]))
+        self.assertEqual(self.j.prune_superseded(), 0, "and a second sweep finds nothing to do")
+        self.assertEqual(len(self.j.tastings()), 2)
+
+    def test_a_file_is_still_never_written_over(self):
+        rec = self.j.write_tasting(spirit_id="B-19", scores=EXAMPLE_CARD)
+        self.j.write_tasting(spirit_id="B-19", scores=EXAMPLE_CARD, tasting_id=rec["tasting_id"])
+        with self.assertRaises(FileExistsError):
+            self.j.write_tasting(spirit_id="B-19", scores=EXAMPLE_CARD,
+                                 tasting_id=rec["tasting_id"], revision=2)
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

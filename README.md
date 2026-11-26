@@ -20,7 +20,9 @@ total, and a medal band: Diamond 90+, Gold 80+, Silver 70+, Bronze 60+.
    zip-level surgical append (SPEC §8), verified afterwards, with automatic rollback.
 2. The phone reaches OneDrive with the `Files.ReadWrite.AppFolder` scope only. The collection
    workbook is not merely off-limits to it — it is invisible.
-3. Journal files are immutable. Corrections are new revisions; deletions are tombstones.
+3. A journal file is written once and never modified, and a review is one file — its newest
+   revision. A change is written as the next revision and what it replaced is then removed; a
+   deletion leaves a marker with nothing of the card in it.
 
 ## Layout
 
@@ -51,7 +53,7 @@ update-mac.command                      the one thing you double-click on the Ma
 | `static/` | the PC front end — `app.js` (sheet + flights), `table.js`, `compare.js`, `analysis.js` | — |
 | `docs/` | the iPhone client — offline-first, syncs through OneDrive | `tests/test_phone.py` |
 
-788 tests, all passing. `python tools/verify_gate.py` runs the shipping gate in [guide/SPEC.md](guide/SPEC.md) §7.
+796 tests, all passing. `python tools/verify_gate.py` runs the shipping gate in [guide/SPEC.md](guide/SPEC.md) §7.
 
 ## Views
 

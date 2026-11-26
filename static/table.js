@@ -412,7 +412,7 @@ const TableView = (() => {
   }
 
   /** Remove several at once. One confirmation for the lot, then one request each: the server
-      writes a tombstone per card, and doing them in a loop keeps that honest rather than
+      removes each card for good, and doing them in a loop keeps that honest rather than
       inventing a bulk endpoint that would have to repeat the same guarantees. */
   /** Jump to this spirit's reviews, filtered to it. */
   async function showReviewsOf(row) {
@@ -432,8 +432,8 @@ const TableView = (() => {
     const more = chosen.length > 8 ? `\n  ... and ${chosen.length - 8} more` : "";
     if (!window.confirm(
         `Delete ${chosen.length} review${many ? "s" : ""}?\n\n${listed}${more}\n\n`
-        + "They stop counting and stop being listed. Each stays in the journal as a "
-        + "tombstone, so nothing is actually destroyed.")) return;
+        + "They are removed for good: their scores and notes are not kept, and this "
+        + "cannot be undone.")) return;
 
     const failed = [];
     for (const r of chosen) {
@@ -496,8 +496,8 @@ const TableView = (() => {
                         onclick: () => {
                           if (!window.confirm(`Move the sitting of ${row.display_name} on ${row.date} `
                               + `to ${s.display_name || s.name} (${s.code})?\n\n`
-                              + "The scores and notes go across as they are. The journal keeps the "
-                              + "earlier record, and it can be moved back.")) return;
+                              + "The scores and notes go across as they are, and it can be "
+                              + "moved back.")) return;
                           dlg.close();
                           send(s.code);
                         } },
@@ -547,8 +547,7 @@ const TableView = (() => {
   async function removeSitting(row) {
     const what = `${row.display_name} on ${row.date}`;
     if (!window.confirm(`Delete the sitting of ${what}?\n\n`
-        + "It stops counting and stops being listed. The record stays in the journal as a "
-        + "tombstone, so nothing is actually destroyed.")) return;
+        + "It is removed for good: its scores and notes are not kept, and this cannot be undone.")) return;
     try {
       await api(`/api/tasting/${encodeURIComponent(row.tasting_id)}`, { method: "DELETE" });
       invalidate(); CompareView.invalidate(); AnalysisView.invalidate();

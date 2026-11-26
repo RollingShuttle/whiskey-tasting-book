@@ -1463,19 +1463,43 @@ class TestReviseAndDelete(AppCase):
         self.assertEqual(len(live), 1, "a revision must not read as a second sitting")
         self.assertEqual(live[0]["scores"]["flavor"], fixed["flavor"])
 
-    def test_the_earlier_revision_is_still_on_disk(self):
+    def test_a_corrected_card_is_one_file_the_new_one(self):
+        """Written as the next revision, never over the last — and then the last is removed."""
         first = self.card()
         self.card(tasting_id=first["tasting_id"], scores=dict(EXAMPLE_CARD, body=1))
         files = sorted(p.name for p in (self.tmp / "journal" / "tastings").glob("*.json"))
-        self.assertEqual(len(files), 2, "the original was overwritten: %s" % files)
+        self.assertEqual(files, ["%s-r2.json" % first["tasting_id"]])
 
-    def test_deleting_writes_a_tombstone_rather_than_unlinking(self):
-        made = self.card()
+    def test_deleting_leaves_a_marker_and_none_of_the_card(self):
+        made = self.card(notes={"nose": "toffee"})
         r = self.c.delete("/api/tasting/%s" % made["tasting_id"])
         self.assertEqual(r.status_code, 200, r.get_json())
         files = list((self.tmp / "journal" / "tastings").glob("*.json"))
-        self.assertEqual(len(files), 2, "the card was deleted from disk")
+        self.assertEqual([p.name for p in files], ["%s-r2.json" % made["tasting_id"]])
+        marker = json.loads(files[0].read_text(encoding="utf-8"))
+        self.assertTrue(marker["deleted"])
+        self.assertNotIn("scores", marker)
+        self.assertNotIn("notes", marker)
         self.assertEqual(self.journal().tastings(), [], "it still reads as live")
+
+    def test_refresh_sweeps_the_copies_a_phone_left_behind(self):
+        """The phone uploads a correction as a new file and cannot take the old one away."""
+        import collection as collection_mod
+        made = self.card()
+        folder = self.tmp / "journal" / "tastings"
+        from_phone = dict(made, revision=2, scores=dict(EXAMPLE_CARD, body=1), entered_from="phone")
+        (folder / ("%s-r2.json" % made["tasting_id"])).write_text(json.dumps(from_phone), encoding="utf-8")
+        self.assertEqual(len(list(folder.glob("*.json"))), 2)
+        stub = types.SimpleNamespace(errors=[], rows={"Bottle": FIXTURE_SNAPSHOT["spirits"]},
+                                     snapshot=lambda: FIXTURE_SNAPSHOT)
+        with mock.patch.object(collection_mod, "load", return_value=stub):
+            r = self.c.post("/api/refresh")
+        self.assertEqual((r.status_code, r.get_json()["pruned"]), (200, 1))
+        self.assertEqual([p.name for p in folder.glob("*.json")], ["%s-r2.json" % made["tasting_id"]])
+        self.assertEqual(self.journal().tastings()[0]["scores"]["body"], 1)
+        page = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("r.pruned ? ` Cleared ${r.pruned} earlier version", page,
+                      "the page says what Refresh cleared away")
 
     def test_a_deleted_card_stops_counting(self):
         made = self.card()
@@ -2127,9 +2151,10 @@ class TestMovingAReview(AppCase):
         live = self.journal().tastings()[0]
         for key in ("scores", "notes", "venue", "date", "total", "medal"):
             self.assertEqual(live[key], made[key], key)
-        self.assertEqual(live["moved_from"], "B-18", "the journal must say where it was")
+        self.assertEqual(live["moved_from"], "B-18", "the card says where it came from")
         files = sorted(p.name for p in (self.tmp / "journal" / "tastings").glob("*.json"))
-        self.assertEqual(len(files), 2, "a move is a new revision beside the old: %s" % files)
+        self.assertEqual(files, ["%s-r2.json" % made["tasting_id"]],
+                         "no copy is left under the bottle it was moved from")
 
     def test_what_cannot_be_moved_is_refused_with_the_reason(self):
         made = self.card()

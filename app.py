@@ -636,8 +636,9 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
 
     @app.delete("/api/tasting/<tasting_id>")
     def api_delete_tasting(tasting_id):
-        """Remove a sitting. Nothing is unlinked: this writes a tombstone revision, so the card
-        stops counting and stops being shown while the history of it survives (SPEC.md §1.3)."""
+        """Remove a sitting for good. A marker is written — the id, that it is deleted — and the
+        card's own files go with it, scores and notes and all (store.delete_tasting says why the
+        marker stays). SPEC.md §1.3."""
         try:
             rec = journal.delete_tasting(tasting_id, reason=_clean(
                 (request.get_json(silent=True) or {}).get("reason")))
@@ -1122,10 +1123,14 @@ def create_app(config_path="config.yaml", *, app_folder=None, snapshot_path=None
         journal.note_codes_seen(_highest_codes(coll))
         snap.parent.mkdir(parents=True, exist_ok=True)
         snap.write_text(json.dumps(coll.snapshot(), ensure_ascii=False), encoding="utf-8")
+        # One file per review. The PC removes what it replaces as it writes; what the phone
+        # replaced (it uploads the new file and leaves the old) is taken here, before the figures
+        # are published.
+        pruned = journal.prune_superseded()
         published = _publish_for_phone(coll)
         catalog.load()
         return jsonify({"ok": True, "count": len(catalog), "snapshot": str(snap),
-                        "published": published, "retired": retired})
+                        "published": published, "retired": retired, "pruned": pruned})
 
     return app
 

@@ -712,7 +712,7 @@ function openMove(card, spirit) {
     if (!window.confirm(`Move this sitting to ${name(s)} (${s._encounter ? "bar pour" : s.code})?\n\n`
         + `${card.date || "Undated"} · ${card.total ?? "—"} points, now under `
         + `${spirit._encounter ? name(spirit) : spirit.code}. `
-        + "The scores and notes go across as they are, and the journal keeps the earlier record.")) return;
+        + "The scores and notes go across as they are.")) return;
     Store.moveCard(card, s.code);
     updateBadge();
     flush();
@@ -794,11 +794,12 @@ function editSitting(card) {
 }
 
 function removeSitting(card, spirit) {
-  // Works for a card scored on the PC as well: the tombstone is a file named after the tasting
-  // and its next revision, and the phone has both from the published list.
+  // Works for a card scored on the PC as well: the marker is a file named after the tasting
+  // and its next revision, and the phone has both from the published list. The PC removes the
+  // card's own files when it reads the marker; nothing of the card is kept.
   const name = spirit.name || spirit.display_name || card.spirit_id;
-  if (!window.confirm(`Delete this sitting of ${name}?\n\nIt stops counting. The record stays `
-      + "in the journal as a tombstone, so nothing is actually destroyed.")) return;
+  if (!window.confirm(`Delete this sitting of ${name}?\n\nIt is removed for good: its scores and `
+      + "notes are not kept, and this cannot be undone.")) return;
   Store.deleteCard(card);
   updateBadge();
   flush();

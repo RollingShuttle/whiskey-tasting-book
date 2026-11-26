@@ -1,10 +1,16 @@
 """
 store.py — the tasting journal.
 
-An append-only folder of small immutable JSON files, living in the OneDrive app folder that the
+A folder of small JSON files, each written once, living in the OneDrive app folder that the
 phone and the PC both reach. Nothing is ever edited in place, which is what makes two devices
 writing at the same moment safe: they write different filenames into one folder and OneDrive
 merges it without conflict copies.
+
+A scorecard is ONE file: its newest revision (the owner's rule since 26 Nov 2026 — it was every
+revision ever written, and 51 reviews had come to 243 files, most of them the autosaves a card
+passes through while it is filled in). A change is still written as the next revision and never
+as an edit; what it replaced is removed only once the new file is on disk and reads back
+(prune_tasting). Nothing is kept of an earlier version.
 
   tastings/    T-<ts>-<spirit>-<rand>-r<n>.json   one scorecard sitting, immutable
   sessions/    F-<ts>-<rand>-r<n>.json       one flight/sitting that groups pours, immutable
@@ -19,8 +25,11 @@ merges it without conflict copies.
 Session ids use an `F-` (flight) prefix deliberately: `S-` is already a Sample bottle code, and a
 session id sitting in a `spirit_id`-shaped field would be a nasty thing to debug.
 
-Corrections are a NEW revision file, never an edit; deletions are a revision with deleted=true.
-Readers resolve the highest revision per tasting_id. See SPEC.md §1.2, §1.3, §9.1.
+Corrections are a NEW revision file, never an edit; deletions are a revision with deleted=true
+— a marker holding no scores and no notes, which stays, because it is what keeps a phone that
+still holds the card from putting it back. Readers resolve the highest revision per tasting_id,
+so a stale file that arrives late is ignored until the next sweep takes it.
+See SPEC.md §1.2, §1.3, §9.1.
 """
 from __future__ import annotations
 
@@ -158,6 +167,8 @@ class Journal:
                 f"refusing to overwrite an existing revision: {path.name}. "
                 "Journal files are immutable; write a new revision instead.")
         _atomic_write_json(path, rec)
+        if revision > 1:
+            self.prune_tasting(tasting_id)         # one file per review: this one
         return rec
 
     def move_tasting(self, tasting_id, spirit_id):
@@ -187,17 +198,68 @@ class Journal:
                 f"refusing to overwrite an existing revision: {target.name}. "
                 "Journal files are immutable; write a new revision instead.")
         _atomic_write_json(target, rec)
+        self.prune_tasting(tasting_id)             # the copy under the bottle it left is not kept
         return rec
 
     def delete_tasting(self, tasting_id, reason=None):
-        """A tombstone is just another revision. Nothing is unlinked."""
+        """Delete a sitting. What stays is a marker — the id, that it is deleted, when — and
+        nothing of the card: its scores and notes go with the revisions that held them.
+
+        The marker is not a copy and is not optional. A phone keeps the cards it scored, and one
+        that had not yet uploaded would put the sitting back the moment it did; readers take the
+        highest revision, and the marker is what makes that a deletion."""
         rev = self._highest_revision(tasting_id) + 1
         if rev == 1:
             raise KeyError(f"no such tasting {tasting_id}")
         rec = {"tasting_id": tasting_id, "revision": rev, "deleted": True,
                "reason": reason, "created_at": _now_iso()}
         _atomic_write_json(self._dir("tastings") / f"{tasting_id}-r{rev}.json", rec)
+        self.prune_tasting(tasting_id)
         return rec
+
+    # -- one file per review ---------------------------------------------------
+    @staticmethod
+    def _prune(tasting_id, revisions):
+        """Remove every file in `revisions` ([(rev, path)]) below the newest. Returns how many.
+
+        The newest is read back first, and if it cannot be read, or is not this card, nothing
+        older is touched: a review must never be left with no file at all. A file that will not
+        go — a sync client holding it open — is left for the next sweep; the readers ignore it
+        meanwhile, because the highest revision is the one they take."""
+        if len(revisions) < 2:
+            return 0
+        revisions = sorted(revisions)
+        top_rev, top = revisions[-1]
+        try:
+            rec = json.loads(top.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return 0
+        if (not isinstance(rec, dict) or rec.get("tasting_id") != tasting_id
+                or rec.get("revision", top_rev) != top_rev):
+            return 0
+        removed = 0
+        for _, path in revisions[:-1]:
+            try:
+                path.unlink()
+                removed += 1
+            except OSError:
+                pass
+        return removed
+
+    def prune_tasting(self, tasting_id):
+        """Keep this sitting's newest revision and remove the ones before it."""
+        return self._prune(tasting_id, [(rev, path) for path, tid, rev in self._tasting_files()
+                                        if tid == tasting_id])
+
+    def prune_superseded(self):
+        """The same, for every sitting on file. The PC removes what it replaces as it writes;
+        this is for what arrived from elsewhere — a correction, a move or a deletion made on the
+        phone uploads its new file and leaves the old one behind — and for the journal as it
+        stood before the rule. Run when the collection is refreshed."""
+        by_id = {}
+        for path, tid, rev in self._tasting_files():
+            by_id.setdefault(tid, []).append((rev, path))
+        return sum(self._prune(tid, revs) for tid, revs in by_id.items())
 
     # -- sessions (flights) --------------------------------------------------
     def write_session(self, *, title=None, date=None, location=None, company=None,

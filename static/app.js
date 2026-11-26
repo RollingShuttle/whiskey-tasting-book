@@ -241,7 +241,10 @@ async function refresh() {
     const r = await api("/api/refresh", { method: "POST" });
     TableView.invalidate(); CompareView.invalidate(); AnalysisView.invalidate();
     await loadSpirits(); await loadHealth(); await loadQuick(); await loadPending();
-    showStatus("ok", `Collection reread from the master (read-only): ${r.count} spirits.`);
+    // What the sweep took: earlier versions of reviews, left by a phone's corrections or from
+    // before a review was kept as one file. Said only when there was something to say.
+    showStatus("ok", `Collection reread from the master (read-only): ${r.count} spirits.`
+      + (r.pruned ? ` Cleared ${r.pruned} earlier version${r.pruned === 1 ? "" : "s"} of reviews.` : ""));
   } catch (e) {
     showStatus("err", `Refresh failed: ${e.body?.errors ? e.body.errors.join("; ") : e.message}`);
   } finally {
@@ -1147,8 +1150,8 @@ function buildFooter(p) {
 
   if (p.submitted) {
     foot.append(el("span", { class: "pill pill-ok" }, "Submitted"));
-    // A correction is a new revision and a deletion is a tombstone, so both are safe to offer
-    // right here: nothing is edited in place and nothing is unlinked.
+    // Both are offered right here. A correction replaces the card (the version before it is
+    // not kept) and a deletion is for good, which is why Delete asks first.
     foot.append(el("button", { class: "ghost", type: "button", id: "edit-card",
                                onclick: editCard }, "Edit"));
     foot.append(el("button", { class: "ghost danger", type: "button", id: "delete-card",
@@ -1368,8 +1371,8 @@ function editCard() {
   p.submitted = false;
   autosavedAs = "";
   renderSheet();
-  showStatus("ok", "Editing this card. Submitting again saves a new revision — "
-                 + "the earlier one stays in the journal.");
+  showStatus("ok", "Editing this card. Submitting again replaces it — "
+                 + "the version before is not kept.");
 }
 
 async function deleteCard() {
@@ -1378,8 +1381,7 @@ async function deleteCard() {
   if (!id) return;
   const name = p.spirit.name || p.spirit.display_name;
   if (!window.confirm(`Delete this sitting of ${name}?\n\n`
-      + "It stops counting and stops being listed. The record stays in the journal as a "
-      + "tombstone, so nothing is actually destroyed.")) return;
+      + "It is removed for good: its scores and notes are not kept, and this cannot be undone.")) return;
   try {
     await api(`/api/tasting/${encodeURIComponent(id)}`, { method: "DELETE" });
     TableView.invalidate(); CompareView.invalidate(); AnalysisView.invalidate();

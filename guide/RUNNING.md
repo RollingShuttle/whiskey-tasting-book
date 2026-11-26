@@ -150,15 +150,12 @@ against it, and the overall note. **Edit**, **Delete** and **Move to another bot
 foot of that screen. Move is for a pour scored against the wrong bottle: choose the right one and
 the sitting goes there at once, leaving the first bottle as it was before.
 
-Either way, nothing is destroyed. A correction or a move is saved as a *new revision* and the
-earlier one stays in the journal; a deletion writes a tombstone, so the card stops counting and stops being
-listed but the record remains. The phone can do both with no signal — the change queues like any
-other upload.
-
-One thing you may notice on the phone: after deleting a sitting that was scored on the PC, the
-score above it does not change straight away. That number is the PC's, and it still counts the
-deleted sitting until the PC has read the tombstone. The page says so underneath. Press Refresh on
-the PC and it settles.
+**Each review is kept once, as it now stands.** A correction or a move replaces the card, and the
+version before it is not kept. A deletion is for good: the scores and notes are removed, and all
+that stays is a small marker saying that review is gone — it is what stops a phone that still
+holds the card from putting it back. You are asked before anything is deleted, because it cannot
+be undone. The phone can do all of this with no signal — the change queues like any other upload,
+and the PC clears away what the phone replaced the next time you press **Refresh**.
 
 ### Where your data goes
 

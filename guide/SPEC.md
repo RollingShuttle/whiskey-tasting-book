@@ -160,6 +160,11 @@ venue · first_tasted · linked_bottle_code · notes`.
 1. **Every file is written once and never modified.** A correction is a new file with a higher
    revision number; the reader takes the highest revision per `tasting_id`. A deletion is a tombstone
    file. This is what makes concurrent writes safe.
+   **A scorecard is one file, its newest revision** (26 Nov 2026 — every revision used to be
+   kept, and 51 reviews had become 243 files). Once a new revision is on disk and reads back, the
+   ones before it are removed: by the PC as it writes, and at Refresh for what a phone left
+   behind. Nothing is kept of an earlier version. A tombstone holds the id and that it is deleted
+   — no scores, no notes — and stays, so a copy that arrives late cannot bring the sitting back.
 2. Filenames are globally unique and self-describing:
    `tastings/T-20260908-183012-B-18-9f3a-r1.json`.
    **The random suffix is load-bearing.** Timestamps are second-resolution, so without it two

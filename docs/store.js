@@ -705,7 +705,9 @@ const Store = (() => {
     };
   }
 
-  /** A tombstone is just another revision. Nothing is unlinked, here or on the PC. */
+  /** A deletion is a marker — the id, the next revision, `deleted` — and nothing of the card.
+      The phone drops its own copy here and now; the PC removes the card's files when it reads
+      the marker, which stays so that no late copy can put the sitting back. */
   function deleteCard(previous, reason) {
     const revision = (previous.revision || 1) + 1;
     const rec = {
