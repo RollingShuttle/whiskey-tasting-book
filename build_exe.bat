@@ -7,6 +7,13 @@ REM The icon and static paths are absolute because --specpath moves the build di
 REM PyInstaller resolves relative paths against it, not against this file.
 cd /d "%~dp0"
 
+REM PyInstaller has to delete the old exe before writing the new one. If the app is
+REM still running (usually minimised in the notification area), Windows refuses with
+REM "Access is denied", so close it first and give Windows a moment to release the file.
+echo Closing any running copy of the app...
+taskkill /F /IM "Whiskey Tasting Book.exe" >nul 2>&1
+ping -n 3 127.0.0.1 >nul
+
 python -m pip install --quiet --disable-pip-version-check pyinstaller
 if errorlevel 1 goto :fail
 
